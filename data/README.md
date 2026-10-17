@@ -1,6 +1,8 @@
 # 数据
 
-原生数据入口见 [独立原生运动导入与标准化](../docs/native-motion-import.md)：`NativeMotion`/`SampledMotion` 保存来源骨架，JSON/二进制按骨架签名共享，原生审核复用现有页面。2026-10-17 的新训练方向见 [SOMA 训练骨架方案](../docs/soma-training-data-direction.md)，后续以固定 SOMA 人体骨架为目标适配 UEFN 等来源；跨骨架转换尚未实现。
+UE 来源转统一 SOMA 的实现与目录见 [UE → SOMA 离线重定向](../docs/uefn-soma-retarget.md)：原始不同骨架仍在 `raw/gameanimation`，新 78 节点结果和 BVH 在 `processed/gameanimation_soma`，来源/目标和排除记录在 `reports/gameanimation_soma`。
+
+原生数据入口见 [独立原生运动导入与标准化](../docs/native-motion-import.md)：`NativeMotion`/`SampledMotion` 保存来源骨架，JSON/二进制按骨架签名共享，原生审核复用现有页面。2026-10-17 的新训练方向见 [SOMA 训练骨架方案](../docs/soma-training-data-direction.md)，来源导入与后续固定 SOMA 骨架转换分开执行。
 
 最新计划明确普通 Locomotion 直接执行，使用当前姿态、站蹲状态和基础姿态参考；复杂跑酷由代理提供轨迹、语义和硬参考。数据侧共用 SOMA 标准化动作与分区，分别建立条件窗口索引，先用小样本核对 Root/Hips、时间轴及条件可见性，详见上述开发计划。
 
