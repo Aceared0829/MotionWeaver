@@ -1,0 +1,74 @@
+{
+  "environment": {
+    "python": "3.12.12",
+    "numpy": "2.5.3",
+    "scipy": "1.18.1"
+  },
+  "pilots": [
+    {
+      "run_id": "20261018-soma-retarget-pilot-v1",
+      "selected": 30,
+      "status_counts": {
+        "normalized": 23,
+        "needs_skeleton_review": 7
+      },
+      "run_sha256": "58cf08e02962da0bab5bd3f101e0eb5157c05cf1dbf3d27da5dde089d8e18d96",
+      "frames": 2509,
+      "max_bvh_world_readback_error_m": 5.152219273441006e-09,
+      "exclusions": [
+        {
+          "source_id": "GameAnimation/Content/Characters/UE5_Mannequins/Rigs/Poses/Manny/Manny_calf_l_anim.Manny_calf_l_anim",
+          "reason": "非单位缩放的校正姿态尚不支持重定向"
+        },
+        {
+          "source_id": "GameAnimation/Content/MetaHumans/Common/Female/Medium/NormalWeight/Poses/f_med_nrw_calf_l_anim.f_med_nrw_calf_l_anim",
+          "reason": "非单位缩放的校正姿态尚不支持重定向"
+        },
+        {
+          "source_id": "GameAnimation/Content/MetaHumans/Common/Face/neckPoses/neckCorr_m_med_nrw_RBFSolver_anim.neckCorr_m_med_nrw_RBFSolver_anim",
+          "reason": "来源缺少完整人体映射，保留原始数据"
+        },
+        {
+          "source_id": "GameAnimation/Content/MetaHumans/Common/Female/Medium/NormalWeight/Poses/f_med_nrw_pinky_03_r_anim.f_med_nrw_pinky_03_r_anim",
+          "reason": "非单位缩放的校正姿态尚不支持重定向"
+        },
+        {
+          "source_id": "GameAnimation/Content/MetaHumans/Common/Male/Medium/NormalWeight/Poses/m_med_nrw_pinky_01_l_anim.m_med_nrw_pinky_01_l_anim",
+          "reason": "非单位缩放的校正姿态尚不支持重定向"
+        },
+        {
+          "source_id": "GameAnimation/Content/Characters/UEFN_Mannequin/Animations/Run/M_Neutral_Run_Diamond_BL_F_Lfoot.M_Neutral_Run_Diamond_BL_F_Lfoot",
+          "reason": "非单位缩放的校正姿态尚不支持重定向"
+        },
+        {
+          "source_id": "GameAnimation/Content/Characters/UEFN_Mannequin/Animations/Sprint/M_Neutral_Sprint_Reface_Start_F_L_090.M_Neutral_Sprint_Reface_Start_F_L_090",
+          "reason": "非单位缩放的校正姿态尚不支持重定向"
+        }
+      ]
+    },
+    {
+      "run_id": "20261018-soma-retarget-pilot-v2",
+      "selected": 30,
+      "status_counts": {
+        "normalized": 29,
+        "needs_skeleton_review": 1
+      },
+      "run_sha256": "cada7f221eb06963e02a8db0f8a41aff0102a96b3725a7bc3e1278543fd15979",
+      "frames": 2688,
+      "max_bvh_world_readback_error_m": 5.788892849523108e-09,
+      "exclusions": [
+        {
+          "source_id": "GameAnimation/Content/MetaHumans/Common/Face/neckPoses/neckCorr_m_med_nrw_RBFSolver_anim.neckCorr_m_med_nrw_RBFSolver_anim",
+          "reason": "来源缺少完整人体映射，保留原始数据"
+        }
+      ]
+    }
+  ],
+  "pilot_http": {
+    "clips": 29,
+    "frames": 2688,
+    "source_and_target_identity": "passed",
+    "retarget_mode": true,
+    "user_approvals_recorded": 0
+  }
+}

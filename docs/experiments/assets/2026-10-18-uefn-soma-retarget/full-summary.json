@@ -1,0 +1,59 @@
+{
+  "run_id": "20261018-soma-retarget-v1",
+  "selected": 1970,
+  "status_counts": {
+    "normalized": 1969,
+    "needs_skeleton_review": 1
+  },
+  "output_clips": 1969,
+  "output_frames": 226455,
+  "output_bvh": 1969,
+  "shared_target_skeletons": 1,
+  "target_signature": "215689644b435e6307ec67ce9b81fd579f781a5f0148c1c86ac23e7b4267c412",
+  "source_families": {
+    "91": 1843,
+    "201": 8,
+    "354": 89,
+    "363": 1,
+    "161": 28
+  },
+  "auxiliary_poses": 139,
+  "max_bvh_world_readback_error_m": 6.035711521690246e-09,
+  "max_bone_direction_sine_error": 2.192541660052538e-13,
+  "min_bone_direction_cosine": 0.9999999999999994,
+  "source_index_sha256": "5a8d0ffe5bc6ca282d74503d195f188d047196ae78337fe8b879e233242b4e78",
+  "run_sha256": "79fa2142162c6a6124727d5125decc52d3992f94d0ceea928c0e3047386426b3",
+  "index_sha256": "0bf855c0c381dabf1b152950cfd4a77fa1a6018a4309074712830e386f957ea2",
+  "exclusions": [
+    {
+      "source_id": "GameAnimation/Content/MetaHumans/Common/Face/neckPoses/neckCorr_m_med_nrw_RBFSolver_anim.neckCorr_m_med_nrw_RBFSolver_anim",
+      "error": "来源缺少完整人体映射，保留原始数据"
+    }
+  ],
+  "training_ready": false,
+  "retry": {
+    "selected": 1,
+    "status_counts": {
+      "needs_skeleton_review": 1
+    },
+    "recomputed_from_native_raw": true
+  },
+  "http_8784": {
+    "total": 1969,
+    "pages": 40,
+    "status": "passed",
+    "decisions_recorded": 0
+  },
+  "http_8785": {
+    "total": 1,
+    "pages": 1,
+    "status": "passed",
+    "decisions_recorded": 0
+  },
+  "original_review_database": {
+    "quick_check": "ok",
+    "statuses": {
+      "approved": 1970
+    }
+  }
+}
