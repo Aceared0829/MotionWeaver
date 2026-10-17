@@ -200,7 +200,7 @@ const flyKeys=new Set();
 const clipCache=new Map(),clipRequests=new Map();
 const MAX_PRELOAD_BYTES=512*1024*1024;
 let preloadRunning=false,preloadStop=false,clipCacheBytes=0;
-const translate={needs_segmentation:'片段过长，未执行重定向',needs_skeleton_review:'骨架映射待适配，未执行重定向',needs_secondary_review:'技术检查异常，保留二审',retarget_failed:'重定向失败，保留二审',possible_ground_penetration:'疑似穿地',bone_length_deviation:'骨长异常',heading_not_validated:'根朝向待人工核对',contacts_not_validated:'脚接触待人工核对',visual_quality_not_validated:'视觉待验收'};
+const translate={needs_segmentation:'片段过长，未执行重定向',needs_skeleton_review:'骨架映射待适配，未执行重定向',needs_secondary_review:'技术检查异常，保留二审',retarget_failed:'重定向失败，保留二审',possible_ground_penetration:'疑似穿地',bone_length_deviation:'骨长异常',heading_not_validated:'根朝向待人工核对',contacts_not_validated:'脚接触待人工核对',visual_quality_not_validated:'视觉待验收',auxiliary_pose_not_motion_training:'辅助校正姿态，未用于动作训练'};
 Object.assign(translate,{processing_heading_unknown:'部分朝向无效，保留未知',processing_multiple_heights:'脚部存在多个稳定高度候选',processing_source_conflict:'来源说明待核对',processing_historical_note:'有历史人工备注'});
 const stateName={approved:'人工通过',rejected:'有问题',unsure:'待定',unreviewed:'未验收'};
 const canvases=[$('source'),$('target')];
@@ -248,7 +248,7 @@ async function preloadPage(){
 $('preloadClips').onclick=preloadPage;
 function visible(){return catalog.entries.filter(e=>(filter==='all'||e.group===filter)&&e.name.toLowerCase().includes($('search').value.toLowerCase()))}
 function list(){const holder=$('list');holder.replaceChildren();for(const entry of visible()){const button=document.createElement('button');button.className='item'+(entry.id===current?.id?' active':'');const title=document.createElement('strong');title.textContent=entry.name;const meta=document.createElement('small');meta.className=entry.group==='issue'?'issue':'';meta.textContent=(entry.group==='issue'?'● 待核对':catalog.native_mode?'◇ 待人工审核':catalog.prepared_mode?'◇ 分类抽样':'◇ 固定 5% 抽样')+' · '+(stateName[catalog.decisions[entry.id]?.status]||'未验收');button.append(title,meta);button.onclick=()=>select(entry);holder.append(button)}$('progress').textContent=`已标记 ${Object.values(catalog.decisions).filter(d=>d.status!=='unreviewed').length} / ${catalog.entries.length} · 记录保存在本机`}
-async function select(entry){if(current&&$('note').value!==(catalog.decisions[current.id]?.note||'')&&!confirm('当前备注尚未保存，仍要切换吗？'))return;const version=++loadVersion;current=entry;data=null;playing=false;frame=0;hover=null;$('play').textContent='▶ 播放';$('loading').classList.remove('error');$('loading').style.display='grid';$('loading').textContent='校验来源哈希并加载真实动作…';$('name').textContent=entry.name;$('description').textContent=entry.reason||'';$('group').textContent=catalog.prepared_mode?'prepared 数据 · 人工复核':catalog.exception_mode?'异常分流 · 人工筛选':'疑似问题 · 全部人工复核';$('note').value=catalog.decisions[entry.id]?.note||'';$('saved').textContent=stateName[catalog.decisions[entry.id]?.status]||'未验收';$('flags').replaceChildren();for(const flag of [...entry.flags,...entry.integrity_errors]){const tag=document.createElement('span');tag.className='tag warn';tag.textContent=translate[flag]||flag;$('flags').append(tag)}if(!entry.flags.length&&!entry.integrity_errors.length){const tag=document.createElement('span');tag.className='tag';tag.textContent='基础完整性 / 几何初筛未发现问题';$('flags').append(tag)}list();try{const loaded=await loadClip(entry);if(version!==loadVersion)return;data=loaded;$('timeline').max=data.frames-1;$('timeline').value=0;$('sourceCount').textContent=data.source.names.length+' 骨骼';$('targetCount').textContent=data.target?data.target.names.length+' 骨骼':'未生成';document.querySelector('.view-mode-label').textContent=data.target?'导出 Root 坐标 · 查看位移':'源动作 Root 坐标 · 查看位移';$('description').textContent=`${data.package} / ${data.description}${data.review_note?' · '+data.review_note:''}`;$('loading').style.display='none';fitView();updateTime()}catch(error){if(version===loadVersion){$('loading').textContent='无法加载：'+error.message;$('loading').classList.add('error')}}}
+async function select(entry){if(current&&$('note').value!==(catalog.decisions[current.id]?.note||'')&&!confirm('当前备注尚未保存，仍要切换吗？'))return;const version=++loadVersion;current=entry;data=null;playing=false;frame=0;hover=null;$('play').textContent='▶ 播放';$('loading').classList.remove('error');$('loading').style.display='grid';$('loading').textContent='校验来源哈希并加载真实动作…';$('name').textContent=entry.name;$('description').textContent=entry.reason||'';$('group').textContent=catalog.retarget_mode?'UE → SOMA · 来源/目标复核':catalog.prepared_mode?'prepared 数据 · 人工复核':catalog.exception_mode?'异常分流 · 人工筛选':'疑似问题 · 全部人工复核';$('note').value=catalog.decisions[entry.id]?.note||'';$('saved').textContent=stateName[catalog.decisions[entry.id]?.status]||'未验收';$('flags').replaceChildren();for(const flag of [...entry.flags,...entry.integrity_errors]){const tag=document.createElement('span');tag.className='tag warn';tag.textContent=translate[flag]||flag;$('flags').append(tag)}if(!entry.flags.length&&!entry.integrity_errors.length){const tag=document.createElement('span');tag.className='tag';tag.textContent='基础完整性 / 几何初筛未发现问题';$('flags').append(tag)}list();try{const loaded=await loadClip(entry);if(version!==loadVersion)return;data=loaded;$('timeline').max=data.frames-1;$('timeline').value=0;$('sourceCount').textContent=data.source.names.length+' 骨骼';$('targetCount').textContent=data.target?data.target.names.length+' 骨骼':'未生成';document.querySelector('.view-mode-label').textContent=data.target?'导出 Root 坐标 · 查看位移':'源动作 Root 坐标 · 查看位移';$('description').textContent=`${data.package} / ${data.description}${data.review_note?' · '+data.review_note:''}`;$('loading').style.display='none';if(catalog.retarget_mode)focusCurrentFrame();else fitView();updateTime()}catch(error){if(version===loadVersion){$('loading').textContent='无法加载：'+error.message;$('loading').classList.add('error')}}}
 function position(rig,f,i){let o=(f*rig.names.length+i)*3;return [rig.positions[o],rig.positions[o+1],rig.positions[o+2]]}
 function rootPosition(rig,f){if(data?.processing&&rig===data.source){const o=f*3;return data.processing.root_positions.slice(o,o+3)}if(rig.root_positions){const o=f*3;return [rig.root_positions[o],rig.root_positions[o+1],rig.root_positions[o+2]]}return position(rig,f,rig.pelvis)}
 // 始终使用动画导出坐标，保留 Root 的 XYZ 位移与高度。
@@ -547,7 +547,7 @@ window.addEventListener('blur',()=>{rmbHeld=false;flyKeys.clear()});
 api('/api/catalog').then(value=>{
  catalog=value;
  if(value.native_mode){
-  document.body.classList.add('prepared-mode');
+  if(!value.retarget_mode)document.body.classList.add('prepared-mode');
   document.querySelector('.brand small').textContent='MotionWeaver / 本地动作数据审核';
   $('queuePill').textContent='● 全量动画审核 · 原始数据受保护';
   $('sampleFilter').hidden=true;
@@ -559,6 +559,15 @@ api('/api/catalog').then(value=>{
   $('saveLocation').textContent=`审核结论保存到 ${value.review_directory}；原始与处理数据不会因标记而改变。`;
   $('export').textContent='导出本页审核记录 ↗';
   document.querySelector('.sync').textContent='单动作骨架 / 时间轴';
+ }
+ if(value.retarget_mode){
+  $('queuePill').textContent='● UE → SOMA · 来源与目标同步对照';
+  $('sourceLabel').textContent='来源骨架 · 显示朝向与比例对齐';
+  $('targetLabel').textContent='SOMA uniform · 固定参考骨架';
+  $('source').setAttribute('aria-label','UE 来源骨骼交互视图');
+  $('target').setAttribute('aria-label','SOMA 目标骨骼交互视图');
+  $('disclaimer').textContent='来源轨道保留原骨架，右侧为固定 SOMA 骨长的离线重定向。BVH 与原生格式已进行数值回读；蒙皮、真实接触和训练效果仍待验证。';
+  document.querySelector('.sync').textContent='来源 / SOMA 同步播放';
  }
  if(value.processing_mode){
   document.body.classList.add('processing-mode');
