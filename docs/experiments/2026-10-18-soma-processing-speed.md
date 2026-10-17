@@ -18,7 +18,7 @@
 
 ## 代码、环境与数据
 
-- 对照基线 `ba67be2`，本次工作区 dirty 文件为 5 个数据模块及新测试，最终代码以本实验提交及回执 `code_sha256` 为准。
+- 对照基线 `ba67be2`，优化实现提交 `0183075`；测量时工作区 dirty 文件为 5 个数据模块及新测试，精确代码身份见回执 `code_sha256`。
 - Windows，Python 3.12.12、NumPy 2.5.3、SciPy 1.18.1，32 逻辑处理器、约 32 GB 内存；无新依赖。BLAS 每进程 1 线程。E 卷本次非 Dirty。
 - 元数据 SHA `71d09422034946d17dbb0db027d569408c486545bdb12f7979d55e6ffd9bbc39`；固定目标与处理策略延续原批次 manifest。
 - 在 71,132 条非镜像元数据按 `linspace(0, N-1, 8)` 确定性选择 8 条，总计 14,926 帧，帧数为 3769、316、1520、655、779、220、688、6979。7 轮重复使用同一组样本，不合计为独立数据量。未划分训练/验证集、未训练模型、未进行人工视觉验收。
@@ -40,11 +40,15 @@
 
 8 条基线分别与优化 4 进程、8 进程及复测版本比较，共 24 次配对：raw 和 processed 的 motion.json/arrays.bin SHA-256 完全相同，9 个 NPZ 数组逐元素完全相同，观察结果与逐条回执除输出路径/派生文件哈希外语义相同。最大 Root/身体重合成误差为回执中的对应值，门槛仍 `1e-9 m`。
 
-仓库内证据：[等价与计时回执](assets/2026-10-18-soma-processing-speed/equivalence.json)。完整对照产物、本机 profiling 与修改前代码在 `E:/MotionWeaverData/reports/soma_uniform/20261018-speed-*/`、原批次 `manifest-history/` 及本机 `output/soma-speed-profile/`；路径仅本机有效，原始大文件未提交。对照脚本读取原批次 selection.csv；原版子进程显式加载备份模块，优化模块加载路径已核对与维护源码哈希相同。
+仓库内证据：[等价与计时回执](assets/2026-10-18-soma-processing-speed/equivalence.json)、[对照脚本](assets/2026-10-18-soma-processing-speed/benchmark.py)和[核对脚本](assets/2026-10-18-soma-processing-speed/verify.py)。完整对照产物、本机 profiling 与修改前代码在 `E:/MotionWeaverData/reports/soma_uniform/20261018-speed-*/`、原批次 `manifest-history/` 及本机 `output/soma-speed-profile/`；路径仅本机有效，原始大文件未提交。对照脚本读取原批次 selection.csv；八进程原版子进程显式加载备份模块，优化模块加载路径已核对与维护源码哈希相同。
 
 ## 实际命令与验证
 
 ```powershell
+# 重建本机对照目录：脚本放到 output/soma-speed-profile/，修改前代码使用原批次
+# manifest-history/code-578813d11c239f311fcbe01109e574ae97fdb564c8c702e8c80f346929d91fbd/
+# 的副本放到 output/soma-speed-profile/baseline-code/（其中含旧 manifest.json）。
+# 每次计时用新的 version 后缀/输出目录，避免覆盖先前对照。
 # 本机对照脚本，version 分别取 baseline-w1/w4/w8、optimized-w4/w8 和两次 repeat
 $env:OPENBLAS_NUM_THREADS='1'
 ./.venv/Scripts/python.exe output/soma-speed-profile/benchmark.py baseline-w8 --workers 8
@@ -60,6 +64,10 @@ $env:OPENBLAS_NUM_THREADS='1'
 新增 4 组参数化用例验证回读哈希、共享 FK、显式代码升级及拒绝策略改变；现有固定骨架、导入、运动特征和观察检查通过。最初按包名执行观察测试时，其既有顶层 `test_motion_import` 导入失败，改用该测试既有 discover 路径后通过；不是管线计算错误。修改文件通过 Ruff `E9,F63,F7,F82,I`。
 
 优化后台启动于 02:25:01，wrapper PID 52116。stdout/stderr/启动命令在本机 `E:/MotionWeaverData/reports/soma_uniform/20261018-soma-full-v1-launch/optimized-*`。续跑先校验全部已有回执哈希，再处理剩余片段；旧回执不会因优化作废。实时状态以原批次 progress.json 为准，不能把对照完成当作全库完成。
+
+02:27:19，原有 518 条回执全部校验完成，主进程 60660 进入 `running`，工作进程数 8。续跑启动读取约 13.1 GB 是已有输出完整哈希校验，不能计入新片段处理耗时。
+
+02:28:40 的运行进度为 700/71,132，全部 `normalized`，新会话经过 81.0 秒；stderr 为空，8 个工作进程存活。[续跑快照](assets/2026-10-18-soma-processing-speed/resume-snapshot.json)仅记录观察时刻，完整进度继续在 E 盘更新；不同动作长度和中断前已写部分产物使该窗口不能充当严谨的新旧全库速度对照。
 
 ## 结论与使用边界
 
