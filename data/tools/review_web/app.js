@@ -201,7 +201,7 @@ const clipCache=new Map(),clipRequests=new Map();
 const MAX_PRELOAD_BYTES=512*1024*1024;
 let preloadRunning=false,preloadStop=false,clipCacheBytes=0;
 const translate={needs_segmentation:'片段过长，未执行重定向',needs_skeleton_review:'骨架映射待适配，未执行重定向',needs_secondary_review:'技术检查异常，保留二审',retarget_failed:'重定向失败，保留二审',possible_ground_penetration:'疑似穿地',bone_length_deviation:'骨长异常',heading_not_validated:'根朝向待人工核对',contacts_not_validated:'脚接触待人工核对',visual_quality_not_validated:'视觉待验收',auxiliary_pose_not_motion_training:'辅助校正姿态，未用于动作训练'};
-Object.assign(translate,{processing_heading_unknown:'部分朝向无效，保留未知',processing_multiple_heights:'脚部存在多个稳定高度候选',processing_source_conflict:'来源说明待核对',processing_historical_note:'有历史人工备注'});
+Object.assign(translate,{processing_heading_unknown:'部分朝向无效，保留未知',processing_multiple_heights:'脚部存在多个稳定高度候选',processing_source_conflict:'来源说明待核对',processing_historical_note:'有历史人工备注',processing_reference_offsets_normalized:'已统一来源参考偏移'});
 const stateName={approved:'人工通过',rejected:'有问题',unsure:'待定',unreviewed:'未验收'};
 const canvases=[$('source'),$('target')];
 const sub=(a,b)=>a.map((v,i)=>v-b[i]);

@@ -1,5 +1,7 @@
 # 数据
 
+71,132 条非镜像 SOMA uniform 的全量处理入口、续跑与目录见 [SOMA 全库处理](../docs/soma-full-processing.md)，当前批次为 `20261018-soma-full-v1`；是否完成以 E 盘报告中的 `progress.json` 为准。
+
 UE 来源转统一 SOMA 的实现与目录见 [UE → SOMA 离线重定向](../docs/uefn-soma-retarget.md)：原始不同骨架仍在 `raw/gameanimation`，新 78 节点结果和 BVH 在 `processed/gameanimation_soma`，来源/目标和排除记录在 `reports/gameanimation_soma`。
 
 原生数据入口见 [独立原生运动导入与标准化](../docs/native-motion-import.md)：`NativeMotion`/`SampledMotion` 保存来源骨架，JSON/二进制按骨架签名共享，原生审核复用现有页面。2026-10-17 的新训练方向见 [SOMA 训练骨架方案](../docs/soma-training-data-direction.md)，来源导入与后续固定 SOMA 骨架转换分开执行。
