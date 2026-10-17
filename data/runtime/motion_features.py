@@ -15,11 +15,12 @@ def derivative(values, times):
     return np.gradient(values, times, axis=0) if len(times) > 1 else np.zeros_like(values)
 
 
-def extract_features(motion, roles):
+def extract_features(motion, roles, *, world=None):
     validate_sampled_motion(motion)
     names = motion.skeleton.names
     indices = {key: names.index(roles[key]) for key in ROLES}
-    world = world_positions(motion)
+    if world is None:
+        world = world_positions(motion)
     p = {key: world[:, index] for key, index in indices.items()}
     times = motion.timestamps
     pelvis_v = derivative(p["pelvis"], times)

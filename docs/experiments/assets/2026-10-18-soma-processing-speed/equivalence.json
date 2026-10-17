@@ -1,0 +1,381 @@
+{
+  "previous_manifest_sha256": "578813d11c239f311fcbe01109e574ae97fdb564c8c702e8c80f346929d91fbd",
+  "code_sha256": {
+    "tools/process_soma_dataset.py": "ee62e6d045da8bf4989aec180e7e26de03a483446a1edfbe22746719c3032790",
+    "runtime/motion_processing.py": "0c082786ca6250ba606973ac7e54e1eaa239a09315aa912480cd03406902f844",
+    "runtime/motion_features.py": "e2bdc1b333567df418b5006990b674f26526ee6b623448311d6301f89b90e843",
+    "runtime/native_motion.py": "558a3387e35b84701c086d807f166c67f6b9275b1eec3158162e9566875c9a78",
+    "runtime/native_motion_io.py": "9b2494b8bebee31c7719d2c7a6cef891bae4fe334ce19180b2cf850b54c91a44",
+    "runtime/bvh_reader.py": "3e641f8de20c020c710a59cf6f5245ce0211e6b738875bcf4818d18b81377a17",
+    "runtime/importers/bvh.py": "ee8b49a5dd3afbed071cf73b57f246b661feb39c4e4ae3a6ce67213a052088f7",
+    "runtime/normalize_motion.py": "70bc45c9fe5e73fc74789c4146728a07c7d7b137af42df6ea9acde788d24c76e",
+    "runtime/motion_kinematics.py": "3277d16444a34ac1550052d22f4ae94cba0a3a44622d839ddcee331f4d552d15",
+    "tools/soma_observation.py": "70e8360dc968d51730f3aa9e2ace5dd0b2be1e9af0ecedaa8e13f038bda8c102"
+  },
+  "equivalent_outputs": true,
+  "checks": [
+    {
+      "version": "optimized-w4",
+      "clip_id": "28c191f1c617e478d4a739b7",
+      "frames": 3769,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w4",
+      "clip_id": "1d5eef8ca4bccd424ce9a382",
+      "frames": 316,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 4.440892098500626e-15
+    },
+    {
+      "version": "optimized-w4",
+      "clip_id": "5495d5e4fc8aab186a20a442",
+      "frames": 1520,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w4",
+      "clip_id": "816e512a04ca9a9da2f7817f",
+      "frames": 655,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w4",
+      "clip_id": "9f3aa69f232f82379f8eb0ae",
+      "frames": 779,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w4",
+      "clip_id": "accff1a68dfff81881f65ff1",
+      "frames": 220,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w4",
+      "clip_id": "60e63d1a2e03146f2dc7f864",
+      "frames": 688,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 1.7763568394002505e-15
+    },
+    {
+      "version": "optimized-w4",
+      "clip_id": "ad0ad5eec7a12503dadffbb1",
+      "frames": 6979,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-15
+    },
+    {
+      "version": "optimized-w8",
+      "clip_id": "28c191f1c617e478d4a739b7",
+      "frames": 3769,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8",
+      "clip_id": "1d5eef8ca4bccd424ce9a382",
+      "frames": 316,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 4.440892098500626e-15
+    },
+    {
+      "version": "optimized-w8",
+      "clip_id": "5495d5e4fc8aab186a20a442",
+      "frames": 1520,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8",
+      "clip_id": "816e512a04ca9a9da2f7817f",
+      "frames": 655,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8",
+      "clip_id": "9f3aa69f232f82379f8eb0ae",
+      "frames": 779,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8",
+      "clip_id": "accff1a68dfff81881f65ff1",
+      "frames": 220,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8",
+      "clip_id": "60e63d1a2e03146f2dc7f864",
+      "frames": 688,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 1.7763568394002505e-15
+    },
+    {
+      "version": "optimized-w8",
+      "clip_id": "ad0ad5eec7a12503dadffbb1",
+      "frames": 6979,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-15
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "clip_id": "28c191f1c617e478d4a739b7",
+      "frames": 3769,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "clip_id": "1d5eef8ca4bccd424ce9a382",
+      "frames": 316,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 4.440892098500626e-15
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "clip_id": "5495d5e4fc8aab186a20a442",
+      "frames": 1520,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "clip_id": "816e512a04ca9a9da2f7817f",
+      "frames": 655,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "clip_id": "9f3aa69f232f82379f8eb0ae",
+      "frames": 779,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "clip_id": "accff1a68dfff81881f65ff1",
+      "frames": 220,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-16
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "clip_id": "60e63d1a2e03146f2dc7f864",
+      "frames": 688,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 1.7763568394002505e-15
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "clip_id": "ad0ad5eec7a12503dadffbb1",
+      "frames": 6979,
+      "native_files_bitwise_equal": true,
+      "fixed_files_bitwise_equal": true,
+      "processing_arrays_bitwise_equal": true,
+      "observation_and_receipt_semantics_equal": true,
+      "recomposition_error_m": 8.881784197001252e-15
+    }
+  ],
+  "timing_runs": [
+    {
+      "version": "baseline-w1",
+      "workers": 1,
+      "seconds": 22.52413959999103,
+      "frames": 14926,
+      "clips": 8,
+      "clip_seconds": [
+        3.825368499994511,
+        1.9017629000009038,
+        2.5873961999895982,
+        2.0185181999986526,
+        2.434687600005418,
+        1.6399138999986462,
+        2.0821199000056367,
+        6.0343277999782
+      ]
+    },
+    {
+      "version": "baseline-w4",
+      "workers": 4,
+      "seconds": 14.54562179997447,
+      "frames": 14926,
+      "clips": 8,
+      "clip_seconds": [
+        7.027974000026006,
+        5.55500310001662,
+        5.654919299995527,
+        5.629975599993486,
+        4.547520900028758,
+        4.246098899981007,
+        4.4415690999885555,
+        6.781465899985051
+      ]
+    },
+    {
+      "version": "baseline-w8",
+      "workers": 8,
+      "seconds": 11.364428300003055,
+      "frames": 14926,
+      "clips": 8,
+      "clip_seconds": [
+        10.144456900015939,
+        9.346542600018438,
+        9.7786097000062,
+        9.759403500007465,
+        9.757603499980178,
+        9.31581100000767,
+        9.751598400005605,
+        10.414196900004754
+      ]
+    },
+    {
+      "version": "optimized-w4",
+      "workers": 4,
+      "seconds": 8.576567499985686,
+      "frames": 14926,
+      "clips": 8,
+      "clip_seconds": [
+        3.6864240000140853,
+        2.0203177999937907,
+        2.8822305999929085,
+        1.9935891999921296,
+        1.799307300010696,
+        1.6352135999768507,
+        1.4046533000073396,
+        4.188583600014681
+      ]
+    },
+    {
+      "version": "optimized-w8",
+      "workers": 8,
+      "seconds": 6.718339599989122,
+      "frames": 14926,
+      "clips": 8,
+      "clip_seconds": [
+        5.03628200001549,
+        4.309328900009859,
+        4.293182900000829,
+        4.286896500008879,
+        4.281724600004964,
+        4.251877300004708,
+        4.257286900014151,
+        5.754656299977796
+      ]
+    },
+    {
+      "version": "baseline-w8-repeat",
+      "workers": 8,
+      "seconds": 11.938053299993044,
+      "frames": 14926,
+      "clips": 8,
+      "clip_seconds": [
+        10.267635399999563,
+        10.040696099982597,
+        10.043950299994322,
+        10.024152499972843,
+        10.016306000004988,
+        9.564197100000456,
+        9.988242399995215,
+        10.967454800003907
+      ]
+    },
+    {
+      "version": "optimized-w8-repeat",
+      "workers": 8,
+      "seconds": 6.643082599999616,
+      "frames": 14926,
+      "clips": 8,
+      "clip_seconds": [
+        5.03868239998701,
+        4.215382800000953,
+        4.413371299975552,
+        4.215569899999537,
+        4.208930699998746,
+        4.185699000023305,
+        4.195531599980313,
+        5.650445899984334
+      ]
+    }
+  ],
+  "timing_limits": "Same 8 source clips and 14926 frames on E:, one host, sequential runs, filesystem cache uncontrolled; not a full-batch ETA.",
+  "comparison": "Native and fixed JSON/binary SHA-256 equal; all 9 NPZ arrays exactly equal; observation and receipt paths/archive hashes excluded from semantic comparison."
+}

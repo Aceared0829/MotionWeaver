@@ -11,6 +11,7 @@ from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -77,6 +78,35 @@ def hashes(folder):
     return {name: sha(folder / name) for name in ("motion.json", "arrays.bin")}
 
 
+@lru_cache(maxsize=1)
+def soma_contract():
+    return load_skeleton_contract(DATA / "skeletons/soma_uniform_v1.json")
+
+
+@lru_cache(maxsize=1024)
+def output_directory(path):
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def verify_resume_manifest(report, manifest, upgrade_receipt=None):
+    previous = json.loads((report / "manifest.json").read_text(encoding="utf-8"))
+    if previous == manifest:
+        return
+    if upgrade_receipt is None or {k: v for k, v in previous.items() if k != "code_sha256"} != {
+            k: v for k, v in manifest.items() if k != "code_sha256"}:
+        raise ValueError("元数据、代码、目标或处理规则已改变，不能续写原版本")
+    receipt = json.loads(Path(upgrade_receipt).read_text(encoding="utf-8"))
+    old_sha = sha(report / "manifest.json")
+    if (receipt["previous_manifest_sha256"] != old_sha or receipt["code_sha256"] != manifest["code_sha256"]
+            or receipt["equivalent_outputs"] is not True):
+        raise ValueError("代码升级回执与当前代码或原清单不符")
+    history = report / "manifest-history"
+    history.mkdir(exist_ok=True)
+    shutil.copyfile(report / "manifest.json", history / (old_sha + ".json"))
+    shutil.copyfile(upgrade_receipt, history / (old_sha + "-equivalence.json"))
+    atomic_json(report / "manifest.json", manifest)
+
+
 def recover_partial(folder, root, report):
     """只保留本运行未写完的片段，来源文件及别的版本不移动。"""
     resolved = folder.resolve()
@@ -100,7 +130,7 @@ def process_clip(item):
         raise ValueError("原始 BVH 路径越界")
     record = {"id": identity, "source_id": source_id, "name": row["filename"], "original_bvh": str(original)}
     try:
-        fixed, contract = load_skeleton_contract(DATA / "skeletons/soma_uniform_v1.json")
+        fixed, contract = soma_contract()
         profile = {"source_id": source_id, "meters_per_unit": .01, "basis": np.eye(3).tolist(),
                    "root_joint": "Root", "absolute_position_joints": ["Hips"]}
         native = read_bvh_motion(original, profile)
@@ -108,7 +138,8 @@ def process_clip(item):
         if len(source.timestamps) != int(row["move_duration_frames"]):
             raise ValueError("BVH 帧数与来源元数据不一致")
         motion, adjustment = fixed_soma_motion(source, fixed)
-        arrays, measures = process_motion(motion, contract["roles"])
+        world = world_positions(motion)
+        arrays, measures = process_motion(motion, contract["roles"], world=world)
         if measures["recomposition_max_abs_error_m"] > 1e-9:
             raise ValueError("Root/身体位置重合成误差超标")
         raw = root / "raw/soma_uniform" / run_id / "clips" / identity
@@ -119,12 +150,14 @@ def process_clip(item):
                 recover_partial(folder, root, report)
         if not raw.exists():
             write_native_motion(raw, native)
-        restored_raw = read_native_motion(raw)
+        raw_hashes = {}
+        restored_raw = read_native_motion(raw, file_hashes=raw_hashes)
         if restored_raw.source.file_hashes != native.source.file_hashes or restored_raw.source.source_id != source_id:
             raise ValueError("已保存的原生来源与当前 BVH 身份不同")
         if not processed.exists():
             write_sampled_motion(processed, motion, processed.parent.parent / "skeletons")
-        restored = read_sampled_motion(processed)
+        processed_hashes = {}
+        restored = read_sampled_motion(processed, file_hashes=processed_hashes)
         if skeleton_signature(restored.skeleton) != contract["skeleton_signature"]:
             raise ValueError("输出不是固定 SOMA 骨架")
         for key in ("positions", "rotations", "scales", "timestamps", "track_mask"):
@@ -133,7 +166,7 @@ def process_clip(item):
             for key in ("position_times", "positions", "rotation_times", "rotations", "scale_times", "scales"):
                 np.testing.assert_array_equal(getattr(actual, key), getattr(expected, key))
         path = root / "processed/soma_processing" / run_id / identity[:2] / (identity + ".npz")
-        path.parent.mkdir(parents=True, exist_ok=True)
+        output_directory(path.parent)
         temporary = path.with_suffix(".npz.tmp")
         with temporary.open("wb") as stream:
             np.savez_compressed(stream, **arrays)
@@ -146,11 +179,12 @@ def process_clip(item):
             flags.append("processing_heading_unknown")
         if adjustment > 1e-5:
             flags.append("processing_reference_offsets_normalized")
-        observation = observe(motion, row, row["category"], contract["roles"])
-        observation["processing"] = {"policy": POLICY, "arrays": str(path), "arrays_sha256": sha(path),
+        arrays_sha256 = sha(path)
+        observation = observe(motion, row, row["category"], contract["roles"], world=world)
+        observation["processing"] = {"policy": POLICY, "arrays": str(path), "arrays_sha256": arrays_sha256,
                                      **measures, "historical_notes": [], "review_flags": flags}
         sidecar = report / "observations" / identity[:2] / (identity + ".json")
-        sidecar.parent.mkdir(parents=True, exist_ok=True)
+        output_directory(sidecar.parent)
         write_json(sidecar, observation)
         references = [{"id": f"{identity}:{e['frame']}:{e['kind']}", "clip_id": identity,
                        "frame": e["frame"], "time_s": float(motion.timestamps[e["frame"]]),
@@ -161,10 +195,10 @@ def process_clip(item):
         route = ("interaction_candidate" if movement & {"climbing box", "vaulting", "climbing"}
                  else "locomotion_candidate" if movement & {"walking", "jogging", "turning", "standing"} else "unassigned")
         record.update(status="normalized", frames=len(motion.timestamps), joints=78, fps=motion.fps,
-            duration=motion.source_duration, raw=str(raw), processed=str(processed), raw_sha256=hashes(raw),
-            processed_sha256=hashes(processed), source_bvh_sha256=native.source.file_hashes[str(original)],
+            duration=motion.source_duration, raw=str(raw), processed=str(processed), raw_sha256=raw_hashes,
+            processed_sha256=processed_hashes, source_bvh_sha256=native.source.file_hashes[str(original)],
             observation=str(sidecar), observation_sha256=sha(sidecar), processing_flags=flags,
-            processing_arrays=str(path), processing_arrays_sha256=sha(path),
+            processing_arrays=str(path), processing_arrays_sha256=arrays_sha256,
             reference_candidates=references, task={"clip_id": identity, "route": route,
                 "source_motion": str(processed), "processing_arrays": str(path), "reference_candidates": [r["id"] for r in references],
                 "condition_reference_ids": [], "future_pose_visibility": "none_until_explicitly_selected",
@@ -188,7 +222,7 @@ def select_rows(root, limit):
     return rows
 
 
-def run(root, run_id, workers=4, limit=None, resume=False):
+def run(root, run_id, workers=4, limit=None, resume=False, upgrade_receipt=None):
     root = Path(root).resolve()
     if not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in run_id):
         raise ValueError("无效 run_id")
@@ -204,8 +238,7 @@ def run(root, run_id, workers=4, limit=None, resume=False):
                     "runtime/importers/bvh.py", "runtime/normalize_motion.py", "runtime/motion_kinematics.py", "tools/soma_observation.py")},
                 "limit": limit, "scope": "all_nonmirror_soma_uniform_fixed_reference_and_candidates"}
     if resume:
-        if json.loads((report / "manifest.json").read_text(encoding="utf-8")) != manifest:
-            raise ValueError("元数据、代码、目标或处理规则已改变，不能续写原版本")
+        verify_resume_manifest(report, manifest, upgrade_receipt)
     else:
         report.mkdir(parents=True, exist_ok=False)
         write_json(report / "manifest.json", manifest)
@@ -332,8 +365,9 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--upgrade-receipt", type=Path, help="仅允许已逐项对照等价的代码优化；保留原清单与回执")
     args = parser.parse_args()
-    run(args.data_root, args.run_id, args.workers, args.limit, args.resume)
+    run(args.data_root, args.run_id, args.workers, args.limit, args.resume, args.upgrade_receipt)
 
 
 if __name__ == "__main__":
