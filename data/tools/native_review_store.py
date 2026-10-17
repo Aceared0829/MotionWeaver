@@ -62,6 +62,8 @@ def load_native_review_inputs(index_path, data_root):
                                source_processed_sha256=record["source_processed_sha256"],
                                source_sha256=record["source_processed_sha256"]["arrays.bin"],
                                output_sha256=record["processed_sha256"]["arrays.bin"], flags=record["flags"])
+        if "review_flags" in record:
+            entries[-1].update(flags=record["review_flags"], group="issue", reason=record["review_reason"])
         if "observation" in record:
             sidecar = Path(record["observation"]).resolve()
             if not sidecar.is_relative_to(index_path.parent):

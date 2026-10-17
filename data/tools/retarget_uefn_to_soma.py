@@ -15,10 +15,12 @@ from scipy.spatial.transform import Rotation
 from data.runtime.bvh_reader import read_bvh
 from data.runtime.motion_kinematics import world_positions
 from data.runtime.native_motion_io import (
+    read_native_motion,
     read_sampled_motion,
     skeleton_signature,
     write_sampled_motion,
 )
+from data.runtime.normalize_motion import normalize_motion
 from data.runtime.retarget_motion import SomaRetargeter
 from data.runtime.skeleton_contract import load_skeleton_contract
 from data.tools.native_review_store import load_native_review_inputs
@@ -76,7 +78,7 @@ def write_bvh(path, motion):
     return error
 
 
-def retarget_batch(index, data_root, run_id, target_path=None, mapping_path=None, limit=None):
+def retarget_batch(index, data_root, run_id, target_path=None, mapping_path=None, limit=None, retry_report=None):
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}", run_id):
         raise ValueError("无效 run_id")
     root = Path(data_root).resolve()
@@ -85,6 +87,17 @@ def retarget_batch(index, data_root, run_id, target_path=None, mapping_path=None
     mapping_path = Path(mapping_path or DATA / "skeletons/mappings/ue_humanoid_to_soma_v1.json")
     target, contract = load_skeleton_contract(target_path)
     mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+    if retry_report is not None:
+        previous = Path(retry_report).resolve()
+        if not previous.is_relative_to(root / "reports"):
+            raise ValueError("重试报告必须位于本数据根目录")
+        previous = json.loads(previous.read_text(encoding="utf-8"))
+        if previous["source_index_sha256"] != sha(index):
+            raise ValueError("重试来源索引与原批次不一致")
+        failed = {r["source_id"] for r in previous["results"] if r["status"] != "normalized"}
+        entries = [e for e in entries if e["asset"] in failed]
+        if not entries or len(entries) != len(failed):
+            raise ValueError("没有可重试的来源条目，或来源条目不完整")
     if limit is not None:
         if limit <= 0:
             raise ValueError("limit 必须为正")
@@ -122,7 +135,9 @@ def retarget_batch(index, data_root, run_id, target_path=None, mapping_path=None
                     raise ValueError("来源路径越过数据分区")
                 if file_hashes(folder) != entry[partition + "_sha256"]:
                     raise ValueError("来源文件与原生审核版本不一致")
-            source = read_sampled_motion(entry["processed"])
+            source = (normalize_motion(read_native_motion(entry["raw"]), entry["fps"])
+                      if retry_report is not None else read_sampled_motion(entry["processed"]))
+            record["recomputed_from_native_raw"] = retry_report is not None
             signature = skeleton_signature(source.skeleton)
             if signature not in mapping["source_signatures"]:
                 raise ValueError("来源缺少完整人体映射，保留原始数据")
@@ -159,6 +174,7 @@ def retarget_batch(index, data_root, run_id, target_path=None, mapping_path=None
         writer.writerows(rows)
     report_data = {"schema_version": 1, "dataset": "gameanimation_soma", "run_id": run_id,
                    "source_index": str(index), "source_index_sha256": sha(index), "source_queue_sha256": digest,
+                   "retry_report": str(retry_report) if retry_report is not None else None,
                    "mapping_sha256": sha(mapping_path), "target_signature": contract["skeleton_signature"],
                    "selected": len(entries), "status_counts": dict(Counter(r["status"] for r in records)),
                    "raw": None, "processed": str(output), "results": records}
@@ -171,14 +187,61 @@ def retarget_batch(index, data_root, run_id, target_path=None, mapping_path=None
     return report_data
 
 
+def prepare_unresolved_review(source_index, retry_report, data_root, run_id):
+    """待复核列表显示仍失败条目的真实来源骨架，不伪造 SOMA 结果。"""
+    root = Path(data_root).resolve()
+    _, entries, _ = load_native_review_inputs(source_index, root)
+    retry_path = Path(retry_report).resolve()
+    if not retry_path.is_relative_to(root / "reports"):
+        raise ValueError("重试报告路径越界")
+    retry = json.loads(retry_path.read_text(encoding="utf-8"))
+    failures = {r["source_id"]: r["error"] for r in retry["results"] if r["status"] != "normalized"}
+    if not failures:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}", run_id):
+        raise ValueError("无效复核 run_id")
+    report = root / "reports/gameanimation_soma" / run_id
+    report.mkdir(parents=True, exist_ok=False)
+    rows, records = [], []
+    for entry in entries:
+        if entry["asset"] not in failures:
+            continue
+        record = {"status": "normalized", "source_id": entry["asset"], "raw": entry["raw"],
+                  "processed": entry["processed"], "raw_sha256": entry["raw_sha256"],
+                  "processed_sha256": entry["processed_sha256"], "review_flags": ["needs_skeleton_review"],
+                  "review_reason": "重试后仍需核对：" + failures[entry["asset"]], "retarget_status": "unresolved"}
+        records.append(record)
+        motion = read_sampled_motion(entry["processed"])
+        rows.append({"asset": entry["asset"], "name": entry["name"], "frames": entry["frames"], "joints": entry["joints"],
+                     "duration": motion.source_duration, "fps": entry["fps"], "raw": entry["raw"], "processed": entry["processed"]})
+    if len(records) != len(failures):
+        raise ValueError("未解决条目与来源列表不一致")
+    with (report / "export-index.csv").open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    (report / "run.json").write_text(json.dumps({"scope": "native_source_review_for_failed_retarget",
+         "retry_report": str(retry_path), "results": records}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (report / "acceptance.json").write_text(json.dumps({"batches": [run_id], "status_counts": {"normalized": len(rows)},
+         "raw_and_processed_readback_errors": [], "source_endpoint_gaps": [], "scope": "native_source_review_only",
+         "retargeted_clips": 0}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return report / "export-index.csv"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", type=Path, default=Path("E:/MotionWeaverData"))
     parser.add_argument("--index", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--retry-report", type=Path, help="只重试报告中的失败条目，从原生 raw 重新标准化")
     args = parser.parse_args()
-    result = retarget_batch(args.index, args.data_root, args.run_id, limit=args.limit)
+    result = retarget_batch(args.index, args.data_root, args.run_id, limit=args.limit, retry_report=args.retry_report)
+    if args.retry_report is not None:
+        review = prepare_unresolved_review(args.index, args.data_root / "reports/gameanimation_soma" / args.run_id / "run.json",
+                                           args.data_root, args.run_id + "-issues")
+        if review:
+            print(json.dumps({"unresolved_review_index": str(review)}, ensure_ascii=False))
     print(json.dumps({key: result[key] for key in ("run_id", "selected", "status_counts", "processed")}, ensure_ascii=False))
 
 

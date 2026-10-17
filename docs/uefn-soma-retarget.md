@@ -56,6 +56,17 @@ BVH 使用厘米、Y-up、Z-forward、局部 ZXY 欧拉旋转；Root/Hips 的平
 
 `--limit 30` 选择覆盖来源骨架和运动类别的技术试点。已有输出版本拒绝覆盖；数据盘 I/O 失败中止批次，来源数据保持不变。报告中的 `needs_skeleton_review` 记录不支持或几何退化的片段。
 
+失败条目可以单独从 raw 重新标准化后再转换一次：
+
+```powershell
+./.venv/Scripts/python.exe -m data.tools.retarget_uefn_to_soma `
+  --index E:/MotionWeaverData/reports/gameanimation/20261015-full-export/export-index.csv `
+  --run-id 20261018-soma-retarget-retry-v1 `
+  --retry-report E:/MotionWeaverData/reports/gameanimation_soma/20261018-soma-retarget-v1/run.json
+```
+
+仍失败的条目自动形成 `<重试run-id>-issues/export-index.csv`，可用同一审核服务查看其真实来源。该列表的 `normalized` 仅表示来源标准化数据可读，`retarget_status=unresolved`、`retargeted_clips=0` 明确表示没有生成合格 SOMA 目标，不进入成功结果索引。
+
 审核页同步显示来源和目标，左侧只在显示时校正朝向、比例和固定位置基线，右侧读取真实落盘目标。原生数组逐项回读相等；每个 BVH 经独立解析和 FK 后与目标世界位置比较，最大分量误差门槛为 `1e-7 m`。所有方向约束同时检查叉积误差和方向点积，防止反向骨段通过。
 
 局部校正、PoseAsset 和服装烘焙姿态有独立 `auxiliary_pose` 标记，不因成功转换就成为普通动作训练样本。所有结果 `training_ready=false`：本工作交付统一动画与来源追踪，尚未建立正式划分/训练窗口，未执行接触 IK、蒙皮或场景碰撞验收。跨骨架骨长变化可能改变手脚落点；方向和回读检查不等于接触精度。Epic 对跨骨架与接触约束的区分见 [IK Rig Retargeting 文档](https://dev.epicgames.com/documentation/unreal-engine/ik-rig-animation-retargeting-in-unreal-engine?lang=en-US)。本实现为项目离线 FK 方法，没有调用 UE IK Retargeter。
