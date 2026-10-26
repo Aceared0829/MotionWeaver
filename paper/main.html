@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MotionWeaver：以离散姿态 Token 驱动的角色动画生成技术报告</title>
+<meta name="author" content="赵梓宁 (Zining Zhao)">
+<meta name="description" content="MotionWeaver 技术报告初稿：数据管线、离散姿态 Token 主干、20k 步训练与离线/控制器条件对照证据。">
+<style>
+/* ============================================================
+   arXiv 风格排版：单栏、Times 系衬线、booktabs 表格、
+   图表随文编号、脚注式说明。屏幕阅读时保留页宽与留白。
+   ============================================================ */
+:root{
+  --ink:#15161a;
+  --ink-soft:#3f434b;
+  --ink-faint:#6b7078;
+  --rule:#c8ccd2;
+  --rule-strong:#4a4f57;
+  --link:#1b4d8f;
+  --paper:#ffffff;
+  --canvas:#eceef1;
+  --serif:"Times New Roman","Nimbus Roman","Liberation Serif","Source Han Serif SC","Noto Serif CJK SC","Songti SC",SimSun,serif;
+  --mono:"Cascadia Mono","Consolas","SFMono-Regular",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--canvas);
+  color:var(--ink);
+  font-family:var(--serif);
+  font-size:15.5px;
+  line-height:1.72;
+  text-rendering:optimizeLegibility;
+  font-kerning:normal;
+}
+.sheet{
+  width:min(860px,100%);
+  margin:0 auto;
+  background:var(--paper);
+  padding:56px 64px 72px;
+  box-shadow:0 1px 3px rgba(20,22,26,.10),0 12px 40px rgba(20,22,26,.07);
+}
+header.titleblock{text-align:center;margin:0 0 26px}
+.doctype{
+  font-size:.72rem;letter-spacing:.20em;text-transform:uppercase;
+  color:var(--ink-faint);margin:0 0 20px;
+}
+h1.title{
+  font-size:1.72rem;line-height:1.34;font-weight:700;letter-spacing:.005em;
+  margin:0 0 8px;
+}
+h1.title-en{
+  font-size:1.02rem;line-height:1.45;font-weight:400;font-style:italic;
+  color:var(--ink-soft);margin:0 auto 22px;max-width:44em;
+}
+.authors{font-size:1.0rem;margin:0 0 4px}
+.affil{font-size:.86rem;color:var(--ink-soft);font-style:italic;margin:0 0 3px}
+.contact{font-size:.84rem;margin:2px 0 0}
+.contact a{color:var(--ink-soft);border-bottom:1px dotted rgba(63,67,75,.45);font-family:var(--mono);font-size:.96em}
+.contact a:hover{color:var(--link);border-bottom-color:var(--link)}
+.meta{
+  font-size:.78rem;color:var(--ink-faint);margin:10px auto 0;max-width:46em;
+  text-align:center;line-height:1.6;
+}
+.title-rule{border:0;border-top:1px solid var(--rule);margin:24px 0 0}
+.abstract{margin:26px auto 4px;max-width:52em}
+.abstract h2{
+  font-size:.86rem;text-align:center;letter-spacing:.16em;text-transform:uppercase;
+  font-weight:700;margin:0 0 10px;color:var(--ink);
+}
+.abstract p{
+  font-size:.94rem;line-height:1.68;text-align:justify;margin:0 0 10px;text-indent:0;
+}
+.abstract p.en{font-size:.90rem;color:var(--ink-soft)}
+.keywords{margin:18px 0 0;font-size:.86rem;color:var(--ink-soft);text-align:center}
+.keywords b{color:var(--ink)}
+h2.sec{
+  font-size:1.06rem;font-weight:700;margin:34px 0 10px;line-height:1.4;
+  page-break-after:avoid;break-after:avoid;
+}
+h3.sub{
+  font-size:.98rem;font-weight:700;margin:22px 0 8px;color:var(--ink);
+  page-break-after:avoid;break-after:avoid;
+}
+p{margin:0 0 10px;text-align:justify;text-indent:1.6em}
+p.noindent,li>p{text-indent:0}
+ul,ol{margin:0 0 12px;padding-left:1.7em}
+li{margin:0 0 5px;text-align:justify}
+a{color:var(--link);text-decoration:none;border-bottom:1px solid rgba(27,77,143,.28)}
+a:hover{border-bottom-color:var(--link)}
+code,.mono{
+  font-family:var(--mono);font-size:.86em;background:#f4f5f7;
+  padding:.06em .32em;border-radius:2px;color:#24262b;
+}
+pre{
+  font-family:var(--mono);font-size:.80rem;line-height:1.55;
+  background:#f7f8fa;border:1px solid #e3e6ea;border-left:3px solid var(--rule-strong);
+  padding:12px 14px;overflow-x:auto;margin:0 0 14px;border-radius:2px;
+  page-break-inside:avoid;
+}
+pre code{background:none;padding:0;font-size:1em}
+figure{margin:22px 0;text-align:center;page-break-inside:avoid;break-inside:avoid}
+figure img{max-width:100%;height:auto;display:block;margin:0 auto 9px}
+figcaption{
+  font-size:.83rem;line-height:1.6;color:var(--ink-soft);text-align:justify;
+  max-width:50em;margin:0 auto;
+}
+figcaption b{color:var(--ink)}
+.tblwrap{margin:20px 0;page-break-inside:avoid;break-inside:avoid}
+.tblwrap .caption{
+  font-size:.83rem;line-height:1.6;color:var(--ink-soft);margin:0 auto 7px;
+  text-align:justify;max-width:50em;
+}
+.tblwrap .caption b{color:var(--ink)}
+table{
+  width:100%;border-collapse:collapse;font-size:.84rem;line-height:1.5;
+  font-variant-numeric:tabular-nums;
+}
+thead th{
+  font-weight:700;text-align:left;padding:6px 7px;border-top:1.4px solid var(--rule-strong);
+  border-bottom:.7px solid var(--rule-strong);vertical-align:bottom;
+}
+tbody td{padding:5px 7px;border:0;vertical-align:top;overflow-wrap:anywhere}
+tbody tr:last-child td{border-bottom:1.4px solid var(--rule-strong)}
+tbody td.num,thead th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.rule td{border-top:.7px solid var(--rule)}
+.tnotes{font-size:.78rem;color:var(--ink-faint);margin:6px 0 0;line-height:1.55}
+.bad{color:#9a2f2f}
+.good{color:#1f6b3a}
+.callout{
+  border:1px solid #dfe3e8;border-left:3px solid #6b7078;background:#fafbfc;
+  padding:12px 15px;margin:16px 0;font-size:.88rem;line-height:1.65;border-radius:2px;
+  page-break-inside:avoid;
+}
+.callout .lbl{font-weight:700;font-variant:small-caps;letter-spacing:.04em}
+ol.refs{list-style:none;counter-reset:r;padding-left:0;font-size:.83rem;line-height:1.6}
+ol.refs li{
+  counter-increment:r;position:relative;padding-left:2.4em;margin:0 0 7px;text-align:left;
+}
+ol.refs li::before{
+  content:"[" counter(r) "]";position:absolute;left:0;top:0;color:var(--ink-soft);
+  font-variant-numeric:tabular-nums;
+}
+hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
+.footnote{
+  font-size:.80rem;color:var(--ink-soft);border-top:1px solid var(--rule);
+  padding-top:10px;margin-top:30px;line-height:1.6;
+}
+@page{size:A4;margin:20mm 19mm 18mm}
+@media print{
+  body{background:#fff;font-size:10.2pt;line-height:1.58}
+  .sheet{width:auto;max-width:none;margin:0;padding:0;box-shadow:none}
+  h1.title{font-size:16.5pt}
+  h1.title-en{font-size:10.5pt}
+  h2.sec{font-size:11pt;margin-top:16pt}
+  h3.sub{font-size:10.3pt;margin-top:12pt}
+  .abstract p{font-size:9.6pt}
+  figcaption,.tblwrap .caption,table{font-size:8.4pt}
+  ol.refs{font-size:8.3pt}
+  a{color:var(--ink);border-bottom:none}
+  pre,.callout{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  figure,.tblwrap,.callout{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header class="titleblock">
+  <p class="doctype">Technical Report · 初稿 · 2026-10-26</p>
+  <h1 class="title">MotionWeaver：面向游戏角色动画的<br>离散姿态 Token 生成与数据管线</h1>
+  <p class="title-en">MotionWeaver: Discrete Pose-Token Generation and Data Pipeline for Game Character Animation</p>
+  <p class="authors">赵梓宁</p>
+  <p class="affil">独立研究者</p>
+  <p class="contact"><a href="mailto:zzn1982638980@gmail.com">zzn1982638980@gmail.com</a></p>
+  <p class="meta">本报告中的所有数值均读取自仓库内已提交的证据文件（<code>docs/experiments/assets/</code>），
+  每张图与每张表都可由 <code>paper/generate_figures.py</code> 重新生成。</p>
+  <hr class="title-rule">
+</header>
+
+<section class="abstract">
+  <h2>摘要</h2>
+  <p>本报告记录 MotionWeaver 的技术现状：一个把<strong>离散姿态 Token</strong>用于游戏角色全身姿态生成的实验系统，
+  以及支撑它的数据管线。系统在 NVIDIA GR00T-WholeBodyControl / MotionBricks 的架构基础上裁剪，
+  以 VQ-VAE 把逐帧骨架姿态压缩为离散码，再以 Pose Token 主干在给定前 4 帧历史姿态与一条独立的
+  Actor 世界轨迹的条件下预测未来姿态 Token，最后经解码器还原为世界空间骨架。
+  数据侧，我们完成了 1,722 段 UE 动画（79 骨、30 FPS）与 71,132 条 SOMA 通用动作（78 节点、120.0048 FPS）的
+  接入与处理，并把处理吞吐提高到约 1.69–1.80 倍，且输出逐数组等价。
+  训练侧在单卡 A800 上从零训练 20,000 步，固定验证口径下的掩码姿态 Token 交叉熵由 2,000 步的
+  1.862 nats 降至 1.454 nats（−21.9%）。
+  <strong>但本报告同样记录失败</strong>：在 3 条同轨迹对照片段中，Walk 的世界关节 RMSE 由基线 6.72 cm 改善至 6.03 cm，
+  而 Run（7.36 → 12.00 cm）与 Crouch（5.87 → 8.25 cm）明显退化；接触期脚滑整体仍显著高于来源动作；
+  换用另录的 CMC 轨迹后，90° 转向只改变 Actor 局部关节姿态 0.50 cm，且蹲伏状态未被模型响应。
+  我们据此明确当前系统的能力边界：姿态 Token 预测的学习信号确实在改善，
+  但从「Token 交叉熵下降」到「玩家可操控时姿态与位移一致」之间仍缺一条已验收的链路。</p>
+  <p class="en"><b>Abstract.</b> This report documents MotionWeaver, an experimental system that generates
+  full-body character poses through discrete pose tokens, together with the data pipeline behind it.
+  Built on the NVIDIA GR00T-WholeBodyControl / MotionBricks architecture, a frozen VQ-VAE quantizes
+  per-frame skeletons into codebook indices; a pose-token backbone then predicts future tokens from four
+  history frames and an independent actor world trajectory. On the data side we ingest 1,722 Unreal Engine
+  clips (79 bones, 30 FPS) and 71,132 SOMA clips (78 joints, 120.0048 FPS), and improve processing
+  throughput by 1.69–1.80x with array-level equivalence. A 20,000-step training run on a single A800 reduces
+  masked pose-token cross-entropy on a frozen validation split from 1.862 to 1.454 nats (-21.9%).
+  We also report failures: on three same-trajectory clips, walk improves (6.72 to 6.03 cm joint RMSE) while
+  run (7.36 to 12.00 cm) and crouch (5.87 to 8.25 cm) degrade; contact-phase foot sliding remains far above
+  the source motion; and replacing the trajectory with a recorded CMC capture changes local joint poses by
+  only 0.50 cm under a 90 degree turn, with crouch state unobserved. We therefore state the capability
+  boundary explicitly rather than inferring playable quality from a falling token loss.</p>
+  <p class="keywords"><b>关键词</b>：动作生成 · 离散姿态 Token · VQ-VAE · 角色动画 · Unreal Engine · 数据管线</p>
+</section>
+
+<hr class="big">
+
+<h2 class="sec">1&nbsp;&nbsp;引言</h2>
+
+<p>游戏角色的全身动画长期由动画状态机、混合空间与 Motion Matching 等检索式方法主导。这类方法在
+  确定性与可调试性上有明显优势，但其表现力被资产库的覆盖范围所限制：玩家做出资产库没有的组合动作时，
+  系统只能退回到不匹配的片段或生硬的混合。近年来，学习式动作生成在动作补间、文本驱动动作以及
+  物理角色控制上取得进展，使「由条件实时合成姿态」成为一个现实的工程选项。</p>
+
+<p>MotionWeaver 的目标是一个具体的工程问题：<strong>在 Unreal Engine 中，让模型根据玩家控制器的运动状态
+  与历史姿态，持续生成与该位移一致的全身姿态</strong>。我们把世界位移（Root）的权威留给引擎的运动组件
+  （CMC / Mover），模型只负责生成 Actor 相对的身体姿态。这个分工不是架构偏好，而是把
+  「碰撞、网络权威、可回滚的位移」留在引擎侧，把「姿态合理性」交给模型。</p>
+
+<p>技术路线上我们沿用 NVIDIA GR00T-WholeBodyControl 仓库中 MotionBricks 的做法：先把动作离散化为
+  姿态 Token，再在 Token 空间做序列预测。离散化的好处是模型只需预测有限码本上的索引，误差不会像
+  逐关节回归那样直接累积到厘米级的关节位置上；代价是量化误差与解码器条件的耦合，这一点在
+  §6.6 的 oracle 诊断里被量化了。</p>
+
+<p>本报告的三点贡献是：</p>
+<ul>
+  <li><b>一条可追溯的双来源数据管线。</b>UE 导出与 SOMA 通用动作在统一的 78 节点目标骨架上汇合，
+      每条 clip 带内容哈希、帧率分组与显式边界声明（§3）。</li>
+  <li><b>一组可复现的固定口径评测。</b>冻结验证集、冻结划分、冻结随机种子，同时报告
+      Token 级指标、世界姿态指标、接触指标与控制器条件探针（§5、§6）。</li>
+  <li><b>一份如实的能力边界陈述。</b>我们把退化案例、缺失条件以及「哪些数字不能当成在线能力」
+      逐条写进报告与附录（§7）。</li>
+</ul>
+
+<div class="callout">
+  <span class="lbl">阅读方式</span> —— 本报告刻意把「训练指标改善」与「产品可用」分成两件事陈述。
+  §6.1–§6.2 是学习信号，§6.3–§6.5 是离线质量，§6.6 是上限诊断，§7 是缺陷清单。
+  任何一节单独拿出来都不足以支撑「模型可用」的结论。
+</div>
+
+<h2 class="sec">2&nbsp;&nbsp;相关工作</h2>
+
+<h3 class="sub">2.1&nbsp;&nbsp;离散动作表示与生成</h3>
+<p>VQ-VAE 把连续信号映射到有限码本上的离散索引，是离散生成式建模的基础构件<span class="mono">[3]</span>。
+  在图像领域，VQGAN 展示了「离散 Token + 自回归先验」的有效性<span class="mono">[4]</span>；
+  在人体动作领域，T2M-GPT<span class="mono">[7]</span> 与 MoMask<span class="mono">[8]</span>
+  沿同一思路把 HumanML3D<span class="mono">[5]</span> 的动作序列压缩为 Token 再做生成；
+  扩散模型路线则由 MDM<span class="mono">[6]</span> 等代表。MotionWeaver 属于前者，
+  但把 Token 的预测任务限定为「短历史 + 已知外部轨迹 → 未来姿态」，
+  而不是「文本 → 整段动作」。</p>
+
+<h3 class="sub">2.2&nbsp;&nbsp;目标驱动的角色动画</h3>
+<p>面向目标（trajectory / keyframe / contact）的动画方法大致分两支。
+  程序化一侧以 Motion Matching 为代表，把当前姿态与目标特征放到同一空间里做最近邻检索
+  <span class="mono">[9]</span>，并用 Learned Motion Matching 把检索网络化<span class="mono">[10]</span>。
+  学习一侧用相位、VAE 或扩散模型生成中间姿态：Local Motion Phases 用相位变量组织多接触动作
+  <span class="mono">[11]</span>，Motion VAE 控制器把状态与潜变量一起驱动角色<span class="mono">[12]</span>，
+  Robust Motion In-betweening 用带噪插值策略学习关键帧之间的补间<span class="mono">[13]</span>，
+  扩散式方法进一步放宽了关键帧的约束形式<span class="mono">[14]</span>。</p>
+<p>MotionWeaver 的位置介于两支之间：它借用学习式生成来表达资产库之外的姿态，
+  但把确定性约束（步幅、朝向、脚部贴地）交给 Warping 与 IK 这类程序化模块（§4.4），
+  并用阈值化的回退路径保证失败可控。</p>
+
+<h3 class="sub">2.3&nbsp;&nbsp;与上游项目的关系</h3>
+<p>本仓库基于 <span class="mono">[1, 2]</span> 的架构与参考实现，保留了 VQ-VAE 分词器、
+  姿态主干与 G1 参考演示；面向 UE 的裁剪包括：79 骨（后为 78 节点 SOMA 骨架）的姿态表示、
+  独立 Actor Root sidecar、玩家状态条件接口，以及 Windows 本地推理与导出工具。
+  上游权重与本仓库训练权重严格区分，报告中的任何指标都来自本仓库自己的检查点。</p>
+
+<h2 class="sec">3&nbsp;&nbsp;数据管线</h2>
+
+<figure>
+  <img src="figures/fig1-architecture.png" alt="MotionWeaver 系统总览：离线数据、训练、证据与诊断、在线执行四条泳道">
+  <figcaption><b>图 1</b>：系统总览。左起四条泳道依次是离线数据、训练、证据与诊断、在线执行。
+    实线表示已有产物与权重的实际路径；虚线表示已定义但尚未验收的接口（例如 UE NNE 闭环、
+    模型自驱 Root）。图中所有数值取自仓库内已提交的证据文件，
+    完整生成脚本见 <code>paper/generate_figures.py</code>。</figcaption>
+</figure>
+
+<h3 class="sub">3.1&nbsp;&nbsp;两个来源，一套目标骨架</h3>
+<p>训练数据来自两条互不相同的管道。第一条是<strong>项目自有 UE 动画</strong>：从
+  <code>AnimSequence</code> 导出骨架与逐帧姿态，得到 1,722 段 79 骨、30 FPS、954 维的动作，
+  划分 train 1,355 / validation 189 / test 178，三个分区的动作家族（asset family）两两交集为 0。
+  这条管道的关键产物是一份<strong>独立的 Actor Root sidecar</strong>：每段附一条 <code>[frames, 7]</code>
+  的米制 Y-up 世界轨迹（xyz + xyzw 四元数），使「身体姿态」与「世界位移」在数据层就分离开。</p>
+
+<p>第二条是<strong>SOMA / BONES-SEED 通用动作库</strong>：71,132 条非镜像记录、62,301,201 帧，
+  最短 69 帧、最长 21,617 帧、中位 685 帧，来源声明帧率约 120.0048 FPS。
+  这套数据使用 78 节点的 <code>soma_uniform_v1</code> 固定骨架，含手指与面部关节。</p>
+
+<p>两条来源的骨架不同（79 骨 vs 78 节点），但都汇入同一个目标骨架定义。
+  处理时遵循一条硬约束：<strong>原始数据永不改写</strong>。派生表示一律写入新批次目录，
+  并以内容哈希绑定；回读校验的门槛是 Root/身体重合成误差不超过 <code>1e-9 m</code>，
+  实测四轮试点的最大误差为 <code>8.88e-15 m</code>。</p>
+
+<h3 class="sub">3.2&nbsp;&nbsp;Root 的离线表示：代理而非真值</h3>
+<p>SOMA 的 <code>Root</code> 节点在多数片段中是静止的，真实运动合并在 <code>Hips</code> 上。
+  因此训练用的 <code>root_track</code> 是一条<b>从 Hips 派生的代理轨迹</b>：水平位置与朝向取自 Hips，
+  垂直高度全部保留在身体姿态里。该代理可逆（回读可完全恢复录制位置），
+  但它不是场景中观测到的 Actor Root，输出中显式标注
+  <code>root_status = offline_proxy_not_observed_actor_root</code>。</p>
+<p>这个区分不是学术洁癖。2026-09-28 的实验中，早期把
+  <code>motion_*.npy</code> 里的 5 维 root（实为 Actor 相对的骨盆特征）误当作 CMC Root 使用，
+  会直接污染「模型能否跟随控制器轨迹」的结论；发现问题后改为逐片段重建 sidecar，
+  并用「复跑所得 1,722 个文件与上传内容逐字节一致」来确认修复。</p>
+
+<h3 class="sub">3.3&nbsp;&nbsp;接触候选：区分「未知」与「非接触」</h3>
+<p>脚部接触是逐帧四值状态：<code>-1 unknown</code>、<code>0 noncontact_candidate</code>、
+  <code>1 contact_candidate</code>，另有手部始终为未知。规则是几何与运动学的联合判据：
+  脚使用踝/趾代理点在完整录制空间的速度（不是骨盆相对速度），
+  并要求持续时间、进出速度与高度变化同时满足；每只脚可保留多个稳定代理高度，
+  避免把高台上的脚因远离全局最低点而一律判为腾空。</p>
+<p>必须强调的是：<code>contact_known_mask</code> 只表示「有候选值」，
+  <strong>不表示人工确认或传感器真值</strong>。本报告中的所有「接触脚速」指标都建立在
+  这层启发式标签上，用来做相对比较，不作为绝对物理量。</p>
+
+<h3 class="sub">3.4&nbsp;&nbsp;双帧率：用 Token 时间粒度对齐，而不是用帧数</h3>
+<p>UE 来源是 30 FPS，SOMA 主库是 120.0048 FPS。直接把两者混进同一个 batch 会破坏 Token 的时间语义：
+  同一个 <code>down_t</code> 在 120 FPS 下是 133 ms，在 30 FPS 下却变成 533 ms。
+  我们的做法是让<strong>每个 Token 覆盖的时间一致</strong>：</p>
+<pre><code>down_t(fps) = down_t(base) - round(log2(base_fps / fps))      base_fps = 120.0048
+
+场景 A（常规移动，窗口 0.4 s）
+    120fps + down_t=4  ->  16 帧/Token  =  133.33 ms
+     30fps + down_t=2  ->   4 帧/Token  =  133.33 ms
+
+场景 B/C（大姿态转换 / 跑酷，0.6 s）
+    120fps + down_t=3  ->   8 帧/Token  =   66.67 ms
+     30fps + down_t=1  ->   2 帧/Token  =   66.67 ms</code></pre>
+<p>两侧的时间误差约 0.004%，仅来自 <code>120.0048</code> 与 <code>30</code> 的舍入差。
+  但注意：<code>down_t</code> 在本架构中就是编码器的 stride-2 卷积层数，
+  层数不同意味着<strong>权重不可共享</strong>，因此每个（场景 × 帧率）组合需要独立训练分词器。
+  这一条我们在早期方案里判断错了，后来按源码 <code>encdec.py:26-32</code> 纠正。</p>
+
+<h3 class="sub">3.5&nbsp;&nbsp;训练视图与当前构建进度</h3>
+<p>训练视图是一个派生层：每条 clip 输出四键 NPZ（<code>positions / rotations / timestamps / root_track</code>），
+  带 <code>fps</code> 与 <code>fps_group</code>，按组写入不同子目录，绝不混批。
+  构建过程只读源数据，失败时不写 <code>dataset.json</code>（发布屏障）。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 1</b>：训练视图的实测统计量。数据由本次构建的
+    <code>clips.jsonl</code> 与 <code>rejected.jsonl</code> 直接聚合得到。
+    该构建晚于本稿的测量时点，因此总数小于登记的 73,101 条，属进行中的快照。</p>
+  <table>
+    <thead><tr><th>统计项</th><th class="num">数值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>已构建 clip 数</td><td class="num">34,167</td><td>占登记总量 73,101 的 46.7%（快照）</td></tr>
+      <tr><td>累计源帧数</td><td class="num">29,450,215</td><td>单帧即一个 78 节点的局部 TRS 样本</td></tr>
+      <tr><td>片段长度 中位 / p10 / p90</td><td class="num">662 / 333 / 1,394 帧</td><td>最短 21 帧，最长 21,617 帧</td></tr>
+      <tr class="rule"><td>fps120 组</td><td class="num">33,116 条 · 29,321,413 帧</td><td>折合 67.9 小时</td></tr>
+      <tr><td>fps30 组</td><td class="num">1,051 条 · 128,802 帧</td><td>折合 1.2 小时（UE 重定向来源）</td></tr>
+      <tr class="rule"><td>场景 A（常规移动）</td><td class="num">28,233 条 · 25,797,932 帧</td><td>walk / run / jog / idle / turn / strafe</td></tr>
+      <tr><td>场景 B（大姿态转换）</td><td class="num">5,934 条 · 3,652,283 帧</td><td>jump / land / crouch / kneel / lying</td></tr>
+      <tr class="rule"><td>被拒绝条目</td><td class="num">41</td><td>主因「帧数 69 少于 72（窗口 + 历史）」</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">注：拒绝条目全部来自同一批 69 帧的短片段。场景 C/D 在本快照中尚未落盘，
+    因此表中不列该项，而不是记为零。</p>
+</div>
+
+<h3 class="sub">3.6&nbsp;&nbsp;处理吞吐：把 I/O 等待当成一等问题</h3>
+<p>全库处理最初的瓶颈不在计算而在文件系统。对一条 3,769 帧动作做 profile，
+  单条耗时 19.870 s，其中文件打开累计 6.912 s、目录创建 5.015 s、<code>stat</code> 2.084 s、
+  替换 1.851 s，而真正的压缩只占约 0.320 s。优化保持数学过程不变，只做四件事：
+  复用已计算的世界坐标、回读时直接算文件字节 SHA、每进程缓存固定骨架与已建目录、
+  把写缓冲从默认值提到 1 MiB。没有任何回读校验被删减，精度没有降低，也没有降采样。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 2</b>：同一 8 条样本、顺序运行的端到端计时（含工作进程启动与落盘回读）。
+    每轮输出到独立 run ID；OS 缓存未清空，因此只作同条件对照，不能外推为全库完成时间。</p>
+  <table>
+    <thead><tr><th>版本</th><th class="num">并发</th><th class="num">端到端秒数</th><th>比较</th></tr></thead>
+    <tbody>
+      <tr><td>原版</td><td class="num">1</td><td class="num">22.524</td><td>并发探测</td></tr>
+      <tr><td>原版</td><td class="num">4</td><td class="num">14.546</td><td>并发探测</td></tr>
+      <tr><td>原版</td><td class="num">8</td><td class="num">11.364</td><td>对照第 1 轮</td></tr>
+      <tr class="rule"><td>优化</td><td class="num">4</td><td class="num">8.577</td><td>较同并发原版 <b>1.70×</b> 吞吐</td></tr>
+      <tr><td>优化</td><td class="num">8</td><td class="num">6.718</td><td>较第 1 轮 <b>1.69×</b>，耗时 −40.9%</td></tr>
+      <tr><td>原版</td><td class="num">8</td><td class="num">11.938</td><td>对照第 2 轮</td></tr>
+      <tr><td>优化</td><td class="num">8</td><td class="num">6.643</td><td>较第 2 轮 <b>1.80×</b>，耗时 −44.4%</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">等价性：8 条基线分别与优化 4 进程、8 进程及复测版本比较，共 24 次配对；
+    <code>raw</code> 与 <code>processed</code> 的 SHA-256 完全相同，9 个 NPZ 数组逐元素完全相同。
+    加速比只对本样本集成立，全库平均加速未验证。</p>
+</div>
+
+<h2 class="sec">4&nbsp;&nbsp;模型</h2>
+
+<h3 class="sub">4.1&nbsp;&nbsp;两段式：分词器 + 姿态主干</h3>
+<p>系统由两个可分离的网络组成。左侧是 <strong>VQ-VAE 分词器</strong>：编码器把一段窗口内的
+  逐帧局部 TRS 压到潜空间，再经多头 EMA 码本量化成离散索引；解码器把索引还原为姿态特征。
+  右侧是 <strong>Pose Token 主干</strong>：一个 6 层、8 头、宽度 256 的 Transformer，
+  在给定条件下预测未来窗口的 Token 序列。训练姿态主干时，分词器<strong>冻结</strong>，
+  因此主干的训练目标是一个干净的「预测哪些码」的分类问题。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 3</b>：两次训练的关键配置。两轮使用同一 VQ 检查点、同一随机种子，
+    但调度器总步数不同（2,000 vs 20,000），因此<strong>不能</strong>当作「只改步数」的消融。</p>
+  <table>
+    <thead><tr><th>项目</th><th>2k 链式短跑</th><th>20k 正式训练</th></tr></thead>
+    <tbody>
+      <tr><td>硬件</td><td>单卡 A800-SXM4-80GB</td><td>单卡 A800-SXM4-80GB</td></tr>
+      <tr><td>精度 / 批量</td><td>bf16-mixed / 8</td><td>bf16-mixed / 8</td></tr>
+      <tr><td>随机种子</td><td>42</td><td>42</td></tr>
+      <tr><td>优化器</td><td>AdamAtan2，lr 1e-4，wd 0</td><td>AdamAtan2，lr 1e-4，wd 0</td></tr>
+      <tr><td>调度</td><td>warmup 200 到 cosine，总计 2,000 步</td><td>warmup 1,000 到 cosine 至 2e-6，总计 20,000 步</td></tr>
+      <tr class="rule"><td>可训练参数</td><td colspan="2">8,278,544（Pose Backbone；VQ-VAE 全冻结）</td></tr>
+      <tr><td>条件 profile</td><td colspan="2"><code>actor_root_history4_compact_v1</code>：仅 4 帧历史姿态</td></tr>
+      <tr><td>监督目标</td><td colspan="2">未来姿态 Token（masked ratio 0.8），未来真实姿态不作输入</td></tr>
+      <tr><td>Token 预算</td><td colspan="2">6–16 Token / 窗口；1 Token = 4 帧（down_t = 2）</td></tr>
+      <tr><td>有效样本窗口</td><td>约 15,900</td><td>约 159,415（约 117 个 epoch）</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3 class="sub">4.2&nbsp;&nbsp;条件与监督的边界</h3>
+<p>一个训练样本包含三类信息，其可见性被严格区分：</p>
+<ul>
+  <li><b>可见条件</b>：前 4 帧真实姿态（作为历史），以及由外部提供的未来 Actor 轨迹。</li>
+  <li><b>不可见条件</b>：未来真实姿态。它只以 Token 目标的形式出现在损失里。</li>
+  <li><b>训练期可见、推理期不可得</b>：来源动作的未来 Actor Root。它作为「配对轨迹教师」参与训练，
+      但在真实游戏里，未来的轨迹只能由 CMC/Mover 或规划器给出，不可能等于真值。</li>
+</ul>
+<p>第三点是本报告所有对照实验的解读前提。凡是标注「配对教师轨迹」的结果，
+  都只说明模型在该轨迹下能生成什么，<strong>不说明它在玩家控制下能生成什么</strong>。
+  为此我们另设了一组使用「另录 CMC 轨迹」的探针（§6.5）。</p>
+
+<h3 class="sub">4.3&nbsp;&nbsp;为什么是 4 帧历史</h3>
+<p>历史长度决定了推理延迟的下界与信息的充分性。本项目早期的轻量基线
+  <code>ReferenceGuidedPose</code>（约 310 万参数，GRU 历史编码加 3 层 Transformer）使用 24 帧历史；
+  MotionWeaver 的 <code>actor_root_history4_compact_v1</code> 只给 4 帧。
+  这是一个刻意的取舍：4 帧 @30 FPS 是 133 ms，恰好等于一个重规划步长，
+  使「上一窗口的输出立即成为下一窗口的历史」成为可能。
+  代价是模型获得的动力学信息更少，这可能是 §6.3 中 Run 退化的原因之一，
+  但那只是假设：本报告没有做「只改历史长度」的受控实验来证明它。</p>
+
+<h3 class="sub">4.4&nbsp;&nbsp;模型与程序化的分工</h3>
+<p>我们不要求模型学会「脚必须贴地」。分工如下：</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 4</b>：职责划分。最后一列的阈值是初始值，需在实测后调整；
+    这些阈值尚未进入任何已验收的闭环，属于设计约定而非实测结论。</p>
+  <table>
+    <thead><tr><th>层</th><th>负责方</th><th>理由</th></tr></thead>
+    <tbody>
+      <tr><td>世界位移（Root）</td><td>CMC / Mover（默认）；Model Root 为可选模式</td><td>碰撞与网络权威必须在引擎侧</td></tr>
+      <tr><td>姿态生成</td><td><b>模型</b></td><td>模型的唯一核心职责</td></tr>
+      <tr><td>步幅 / 朝向匹配</td><td>Stride / Orientation Warping</td><td>确定性几何，模型做不准</td></tr>
+      <tr><td>脚部接触固定</td><td>Foot Lock + Foot IK</td><td>需要世界空间约束</td></tr>
+      <tr><td>大姿态转换</td><td>模型生成 + 程序化相位门控</td><td>显式告知「正在蹲到 40%」比让模型自己发现更可靠</td></tr>
+      <tr><td>手部环境接触</td><td>不判定，由 Gameplay 提供 IK 目标</td><td>无场景几何</td></tr>
+      <tr><td>失败回退</td><td>程序化监控</td><td>Foot IK 修正超 5 cm，或 Warping 缩放出 [0.8, 1.25]，或朝向偏差超 30°</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3 class="sub">4.5&nbsp;&nbsp;硬参考姿态的等式约束投影</h3>
+<p>除纯生成路径外，系统还支持「给定若干时刻的硬参考姿态」这一条件形式。
+  做法是在窗口融合之后，对局部平移与旋转残差求解一个最小范数加二阶差分平滑的等式约束问题：
+  参考帧被精确投影回源局部变换，距离所有参考 8 帧以上的帧修正为零，非参考帧的真实姿态不参与求解。</p>
+<p>在一个用户手选 6 帧的跑酷翻越片段上（源帧 32/34/44/52/56/59），平均关节误差由
+  11.322 cm 降至 6.903 cm，加速度误差由 4.008 升至 4.186 cm/帧²。参考帧位置误差为数值零
+  （最大局部旋转误差小于 0.000003°），<strong>但这是约束构造的结果，不是模型预测精度</strong>。
+  平滑版本明显优于直接覆盖（后者加速度误差恶化到 9.428），却仍不如软输出平滑，
+  因此不能声称已消除抽搐。该路径没有速度等式、接触、碰撞或关节限位保证。</p>
+
+<h2 class="sec">5&nbsp;&nbsp;实验设置</h2>
+
+<h3 class="sub">5.1&nbsp;&nbsp;冻结的评测口径</h3>
+<p>为了在多次训练之间做可比，我们固定了三件事：</p>
+<ul>
+  <li><b>验证集</b>：48 条片段（Walk / Run / Crouch 各 16 条），共 2,608 个监督 Token，
+      随机种子 1701，manifest 与 sidecar 哈希两次记录完全相同。</li>
+  <li><b>采样协议</b>：每条片段使用前 4 帧来源姿态作为历史，生成其后 24 帧；
+      不输入任何未来真实姿态。</li>
+  <li><b>对照基线</b>：<code>ReferenceGuidedPose</code> 在同一条来源 Actor Root 下运行，
+      共享同一批测试片段。两者历史长度不同（24 vs 4 帧），
+      因此这是<strong>产品路线对照</strong>，不是「只改架构」的严格消融。</li>
+</ul>
+
+<h3 class="sub">5.2&nbsp;&nbsp;指标定义</h3>
+<div class="tblwrap">
+  <p class="caption"><b>表 5</b>：指标定义与已知口径限制。</p>
+  <table>
+    <thead><tr><th>指标</th><th>定义</th><th>口径限制</th></tr></thead>
+    <tbody>
+      <tr><td>Pose Token CE</td><td>掩码位置上的 pose token 交叉熵，单位 nats</td><td>只反映 Token 分类，不含解码误差</td></tr>
+      <tr><td>关节 RMSE</td><td>未来 24 帧、79 骨<strong>世界</strong>关节位置均方根误差</td><td>依赖外部轨迹；轨迹不同时不可直接比</td></tr>
+      <tr><td>接触脚速</td><td>来源接触标签连续两帧成立时的脚部世界速度</td><td>启发式标签；样本量小（5–24 帧对）</td></tr>
+      <tr><td>接缝速度误差</td><td>历史末帧与生成首帧之间的速度跳变</td><td>反映衔接平滑度，不反映整体步态</td></tr>
+      <tr><td>朝向 RMSE</td><td>身体朝向相对来源动作的均方根误差</td><td>世界朝向大部分来自外部 Actor 旋转</td></tr>
+      <tr><td>时延</td><td>Python eager 前向，同步计时，含预热</td><td>不含数据准备、NNE、蒙皮、渲染、线程调度</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 class="sec">6&nbsp;&nbsp;结果</h2>
+
+<h3 class="sub">6.1&nbsp;&nbsp;训练动态</h3>
+
+<figure>
+  <img src="figures/fig2-training-loss.png" alt="20,000 步训练损失曲线，含 200 步滑动平均">
+  <figcaption><b>图 2</b>：20,000 步正式训练的逐步训练损失（浅色）与 200 步滑动平均（深色）。
+    前 100 步均值 2.325 nats，末 100 步均值 1.440 nats，虚线为末 100 步均值参考线。
+    曲线在 12,500 步后进入平台期，末段仍有可见的步间抖动。
+    原始数据见 <code>metrics.csv</code>（20,119 行）。</figcaption>
+</figure>
+
+<p>训练以 <code>Trainer.fit stopped: max_steps=20000 reached</code> 正常结束，
+  检查点在本地与远端 SHA-256 一致（<code>5c41d53b…3199</code>）。
+  2,000 步链式短跑记录到相似的早期下降速度，这被用来确认链路正确，
+  而不是用来证明「更长的训练更好」——两者的调度器配置不同。</p>
+
+<h3 class="sub">6.2&nbsp;&nbsp;固定验证口径下的 Token 交叉熵</h3>
+
+<figure>
+  <img src="figures/fig3-val-token-ce.png" alt="2k 与 20k 在固定验证集上的类别 Token CE 对比">
+  <figcaption><b>图 3</b>：同一 48 段冻结验证集上的掩码 Token 交叉熵。柱上方数字为相对 2k 的百分比变化。
+    这是<strong>源 Actor Root 教师轨迹</strong>条件下的指标，只证明此固定子集的 Token 预测改善，
+    不代表世界姿态、接触或 UE 实时效果。</figcaption>
+</figure>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 6</b>：固定验证集的 Token 交叉熵（nats，越低越好）。
+    两次记录使用完全相同的 manifest、sidecar 哈希与索引集合。</p>
+  <table>
+    <thead><tr><th>类别</th><th class="num">目标 Token</th><th class="num">2k CE</th><th class="num">20k CE</th><th class="num">相对变化</th></tr></thead>
+    <tbody>
+      <tr><td>Walk</td><td class="num">922</td><td class="num">1.7407</td><td class="num">1.1887</td><td class="num good">−31.7%</td></tr>
+      <tr><td>Run</td><td class="num">953</td><td class="num">1.9809</td><td class="num">1.6847</td><td class="num">−15.0%</td></tr>
+      <tr><td>Crouch</td><td class="num">733</td><td class="num">1.8599</td><td class="num">1.4863</td><td class="num">−20.1%</td></tr>
+      <tr class="rule"><td><b>总体</b></td><td class="num">2,608</td><td class="num">1.8620</td><td class="num">1.4536</td><td class="num good">−21.9%</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">注：Run 的改善幅度最小（−15.0%），与 §6.3 中 Run 的世界姿态退化方向一致，
+    是「Token 级改善未必传导到世界姿态」的一个具体例子。</p>
+</div>
+
+<h3 class="sub">6.3&nbsp;&nbsp;同轨迹下的世界姿态与接触</h3>
+
+<figure>
+  <img src="figures/fig4-trajectory.png" alt="同来源 Actor Root 下的姿态 RMSE 与接触脚速对照">
+  <figcaption><b>图 4</b>：(a) 未来 24 帧 79 骨世界关节 RMSE，柱上数字为 20k 减基线之差；
+    (b) 接触期世界脚速，灰色为来源动作的理想值。(b) 中 Run 无连续接触帧对，因此不计算该项。
+    两组都使用同一条来源导出的未来 Actor Root，这是离线配对教师轨迹，不是玩家可提前取得的轨迹。</figcaption>
+</figure>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 7</b>：同轨迹循环片段的世界姿态与接触指标。
+    RMSE 与脚速之外的列用于诊断衔接与朝向。</p>
+  <table>
+    <thead>
+      <tr>
+        <th>片段</th>
+        <th class="num">关节 RMSE (cm)<br>基线 → 20k</th>
+        <th class="num">来源脚速<br>(m/s)</th>
+        <th class="num">接触脚速 (m/s)<br>基线 → 20k</th>
+        <th class="num">接缝速度误差 (cm/帧)<br>基线 → 20k</th>
+        <th class="num">朝向 RMSE (°)<br>基线 → 20k</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Walk 1403</td>
+        <td class="num">6.72 → <span class="good">6.03</span></td>
+        <td class="num">0.031</td>
+        <td class="num">0.681 → 0.780</td>
+        <td class="num">3.73 → 2.39</td>
+        <td class="num">12.25 → <span class="good">4.35</span></td>
+      </tr>
+      <tr>
+        <td>Run 820</td>
+        <td class="num">7.36 → <span class="bad">12.00</span></td>
+        <td class="num">—</td>
+        <td class="num">— （无接触帧对）</td>
+        <td class="num">6.86 → 2.44</td>
+        <td class="num">7.39 → 7.07</td>
+      </tr>
+      <tr>
+        <td>Crouch 145</td>
+        <td class="num">5.87 → <span class="bad">8.25</span></td>
+        <td class="num">0.073</td>
+        <td class="num">1.141 → <span class="good">0.875</span></td>
+        <td class="num">2.75 → 2.12</td>
+        <td class="num">3.36 → 5.95</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="tnotes">结论是分裂的：衔接更平滑（三段的接缝误差全部下降），Walk 的姿态与朝向都更好，
+    但 Run 与 Crouch 的世界姿态显著退化，Walk 的接触脚速反而略升。
+    来源动作的接触脚速是 0.031 / 0.073 m/s，两个模型都在 0.78 / 0.88 m/s 量级，
+    说明<strong>脚滑问题在这条轨道上远未解决</strong>。</p>
+</div>
+
+<figure>
+  <img src="figures/fig5-contact-stops.png" alt="接触更密集的停止片段上的脚速对比">
+  <figcaption><b>图 5</b>：接触更密集的停止片段（接触帧对 11 / 20 / 24）。
+    这里能看到局部改善真实存在：Run Stop 的接触脚速由 0.847 降到 0.166 m/s，
+    Walk Stop 由 0.321 降到 0.276；但 Crouch Stop 反而由 0.127 升到 0.186。
+    「整体变好」不等于「每一段都变好」，所以三个片段都列出来而不做平均。</figcaption>
+</figure>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 8</b>：接触停止片段的完整指标。停止片段的接触帧对更多，
+    因此接触脚速比循环片段更可信；但样本量仍在 10–24 帧对的量级。</p>
+  <table>
+    <thead>
+      <tr><th>片段</th><th class="num">接触帧对</th><th class="num">关节 RMSE (cm)</th>
+      <th class="num">来源 / 基线 / 20k 脚速 (m/s)</th><th class="num">脚速 RMSE (m/s)</th><th class="num">接缝误差 (cm/帧)</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Walk 1653</td><td class="num">11</td><td class="num">10.28 → <span class="good">9.21</span></td>
+      <td class="num">0.035 / 0.321 / <b>0.276</b></td><td class="num">0.898 → <span class="good">0.498</span></td><td class="num">5.02 → 2.05</td></tr>
+      <tr><td>Run 898</td><td class="num">20</td><td class="num">10.25 → <span class="bad">14.13</span></td>
+      <td class="num">0.027 / 0.847 / <b>0.166</b></td><td class="num">1.135 → <span class="good">0.577</span></td><td class="num">5.94 → 2.29</td></tr>
+      <tr><td>Crouch 411</td><td class="num">24</td><td class="num">5.69 → <span class="bad">13.42</span></td>
+      <td class="num">0.007 / <b>0.127</b> / 0.186</td><td class="num">0.400 → 0.362</td><td class="num">4.25 → 3.21</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3 class="sub">6.4&nbsp;&nbsp;为什么 Run/Crouch 会退化：一个可检验的解释</h3>
+<p>数据审计给出了一条线索。独立 Actor Root 的水平速度分布（米/秒，按帧汇总，排除补齐帧）：</p>
+<ul>
+  <li>Walk（48,443 帧差）：p10 / p50 / p90 = <b>1.291 / 1.650 / 2.000</b></li>
+  <li>Run（33,734 帧差）：<b>1.247 / 3.750 / 5.000</b></li>
+  <li>Crouch（40,112 帧差）：<b>1.453 / 1.650 / 2.250</b></li>
+</ul>
+<p>而评估所用 CMC 轨迹的速度是 Walk 1.4、Run 4.0、Crouch 0.8 m/s。
+  也就是说：Walk 落在训练分布低端、Run 在分布内、<b>Crouch 0.8 明显低于训练的 p10</b>。
+  这解释了 Crouch 退化的一部分——模型没有见过这么慢的蹲伏位移，
+  而且它<strong>也没有显式的 Crouch 状态输入</strong>。
+  这是一条解释，不是一条已完成的因果证明：要证明它需要一次只改速度分布的受控实验，我们尚未做。</p>
+
+<h3 class="sub">6.5&nbsp;&nbsp;控制器条件探针：换一条轨迹会发生什么</h3>
+
+<figure>
+  <img src="figures/fig6-cmc-sensitivity.png" alt="换用另录 CMC 轨迹后局部关节姿态的变化幅度">
+  <figcaption><b>图 6</b>：把外部轨迹从「来源导出的教师轨迹」换成「另录的 CMC 轨迹」后，
+    模型输出的 Actor 局部关节 RMS 变化（蓝）与未来 Token 改变比例（橙）。
+    三条片段都有约 90° 的 Actor 转向。Crouch 430 的 CMC 捕获带有蹲伏状态，
+    但该状态<strong>没有</strong>输入模型。</figcaption>
+</figure>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 9</b>：控制器条件探针。局部关节 RMS 变化衡量「模型对轨迹变化的敏感度」；
+    Actor 转向与生成身体转向的差衡量「世界朝向变化的来源」。</p>
+  <table>
+    <thead>
+      <tr><th>片段</th><th class="num">CMC 均速<br>(m/s)</th><th class="num">局部关节<br>RMS 变化 (cm)</th>
+      <th class="num">未来 Token<br>改变比例</th><th class="num">Actor 转向 /<br>生成身体转向</th><th class="num">CMC 轨迹中<br>的蹲伏帧</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Walk 1403</td><td class="num">1.40</td><td class="num">1.38</td><td class="num">8.3%</td><td class="num">90.0° / 94.07°</td><td class="num">0 / 24</td></tr>
+      <tr><td>Run 820</td><td class="num">3.96</td><td class="num">5.24</td><td class="num">25.0%</td><td class="num">90.0° / 75.21°</td><td class="num">0 / 24</td></tr>
+      <tr><td>Crouch 430</td><td class="num">0.80</td><td class="num">0.50</td><td class="num">2.1%</td><td class="num">90.0° / 93.74°</td><td class="num"><b>24 / 24</b></td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">注意 Crouch 行：整段 CMC 轨迹都处于蹲伏状态，但模型输出的局部关节只变化 0.50 cm、
+    未来 Token 只改变 2.1%，视频中「来源姿态下蹲而模型仍直立」。
+    世界朝向的大幅变化来自外部 Actor 旋转本身，
+    <b>不能</b>据此宣称模型学会了转弯或蹲伏。</p>
+</div>
+
+<h3 class="sub">6.6&nbsp;&nbsp;上限诊断：解码器缺的是什么</h3>
+<p>为了区分「主干预测错了」与「解码器条件不足」，我们做了一个故意的 oracle 实验：
+  保持 Pose Token <strong>完全相同</strong>，只在解码阶段喂入来源未来的 pose-feature Root。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 10</b>：解码器 pose-root oracle 诊断。Token 完全相等（已逐项校验），
+    唯一变化是解码器的外部 Root 条件。这是<strong>未来真值泄漏的离线上界</strong>，不是可部署效果。</p>
+  <table>
+    <thead><tr><th>片段</th><th class="num">关节 RMSE (cm)<br>零外部 → oracle</th><th class="num">接触脚速 (m/s)<br>零外部 → oracle</th><th class="num">脚速 RMSE (m/s)<br>零外部 → oracle</th></tr></thead>
+    <tbody>
+      <tr><td>Walk 1403</td><td class="num">6.03 → 4.86</td><td class="num">0.780 → 0.970</td><td class="num">0.769 → 0.693</td></tr>
+      <tr><td>Run 820</td><td class="num">12.00 → 11.06</td><td class="num">—</td><td class="num">1.559 → 1.466</td></tr>
+      <tr><td>Crouch 145</td><td class="num">8.25 → 6.48</td><td class="num">0.875 → 0.437</td><td class="num">1.168 → 0.831</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">关节误差可由 6.03 / 12.00 / 8.25 降到 4.86 / 11.06 / 6.48 cm，
+    说明<b>缺少合理的解码器 pose-root 条件是部分误差的来源</b>。
+    但 Run 仍停在 11 cm，且 Walk 的接触脚速在 oracle 下反而变差，
+    因此这组数不能解释全部脚滑，也不能当作「补上这个条件就好了」的证据。</p>
+</div>
+
+<h3 class="sub">6.7&nbsp;&nbsp;推理时延</h3>
+<div class="tblwrap">
+  <p class="caption"><b>表 11</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
+    计 3 条 × 3 次同步前向）。不含数据准备、UE NNE、蒙皮、渲染与线程调度。</p>
+  <table>
+    <thead><tr><th>条件</th><th class="num">P50 (ms)</th><th class="num">P95 (ms)</th><th class="num">4 帧预算 @30 Hz (ms)</th><th>是否在预算内</th></tr></thead>
+    <tbody>
+      <tr><td>配对教师轨迹</td><td class="num">18.24</td><td class="num">21.04</td><td class="num">133.33</td><td>是</td></tr>
+      <tr><td>CMC 轨迹</td><td class="num">17.78</td><td class="num">19.95</td><td class="num">133.33</td><td>是</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">作为工程参照：同仓库的 UE 实验插件在旧 VQ-VAE 重建任务上报告过
+    6.07 ms 平均 / 10.45 ms P95 的同步推理耗时，并伴随 9.06 cm 平均关节误差。
+    两个数字属于不同任务与不同模型，<b>不能相加或互相替代</b>。</p>
+</div>
+
+<h2 class="sec">7&nbsp;&nbsp;讨论、局限与缺陷清单</h2>
+
+<h3 class="sub">7.1&nbsp;&nbsp;这份报告能支撑什么</h3>
+<ul>
+  <li>Tokenizer 加 Pose Token 的两段式链路在本仓库跑通：数据、训练、检查点、离线推理、视频导出全链路可复现。</li>
+  <li>固定验证口径下，20k 训练相对 2k 显著改善 Token 预测（−21.9%），且该改善在三个类别上方向一致。</li>
+  <li>数据管线在保持逐数组等价的前提下把处理吞吐提到 1.69–1.80 倍，且有 24 次配对的哈希证据。</li>
+  <li>时延在 Python 前向层面有约 6 倍余量（P95 21 ms 对 133 ms 预算）。</li>
+</ul>
+
+<h3 class="sub">7.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
+<div class="tblwrap">
+  <p class="caption"><b>表 12</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
+  <table>
+    <thead><tr><th>问题</th><th>当前状态</th></tr></thead>
+    <tbody>
+      <tr><td>玩家可操控时姿态与位移一致吗</td><td class="bad">未验收。尚无 UE NNE / AnimGraph 接入、无蒙皮闭环、无真实玩家输入。</td></tr>
+      <tr><td>能可靠蹲伏吗</td><td class="bad">不能。CMC 探针中蹲伏状态未输入模型，模型保持直立。</td></tr>
+      <tr><td>脚滑解决了吗</td><td class="bad">没有。循环片段接触脚速 0.78–0.88 m/s，来源为 0.03–0.07 m/s。</td></tr>
+      <tr><td>Token 改善等于姿态改善吗</td><td class="bad">不等。Run 的 CE 降 15%，世界 RMSE 却由 7.36 升到 12.00 cm。</td></tr>
+      <tr><td>两种模型是严格消融吗</td><td>不是。历史长度 24 vs 4 帧、架构不同、参数量不同，属产品路线对照。</td></tr>
+      <tr><td>时延满足 UE 实时预算吗</td><td>部分。Python 前向有余量，但 UE 侧全过程未测。</td></tr>
+      <tr><td>SOMA 全库都训了吗</td><td>没有。训练视图快照 34,167 / 73,101，构建未完成；本报告的结果全部来自 1,722 段 UE 数据。</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3 class="sub">7.3&nbsp;&nbsp;方法论上的经验</h3>
+<p>这次工作中最值得记录的不是某个指标，而是三处「差点把结论写错」的地方：</p>
+<ol>
+  <li><b>把 Actor 相对的骨盆特征当成 CMC Root。</b>后果是把「模型跟随控制器」这一命题的验证污染了。
+      修复方式不是改解释，而是重建 sidecar 并逐字节复核。</li>
+  <li><b>把 <code>down_t</code> 当成可共享的超参数。</b>它在源码里就是卷积层数，
+      层数不同则权重不可共享。方案里「一套码本服务双帧率」的结论因此被推翻。</li>
+  <li><b>把「接触候选」当成接触真值。</b>启发式标签能用于相对比较，
+      但一旦用来宣称「脚滑已解决」就越界了。</li>
+</ol>
+<p>共同点是：<strong>指标本身没错，错的是指标所依附的对象身份</strong>。
+  因此本报告把每个数字都附上它所属的条件（教师轨迹 / 控制器轨迹 / oracle），
+  并在表 5 与表 12 中显式列出不可跨越的边界。</p>
+
+<h2 class="sec">8&nbsp;&nbsp;结论与下一步</h2>
+<p>MotionWeaver 已经建成一条可追溯的数据与训练链路：两套骨骼数据汇入同一目标骨架，
+  分词器与姿态主干可分离训练与替换，评测口径被冻结并可复现，
+  20,000 步训练在 Token 层面给出确定的改善。同时，世界姿态、接触质量与控制器响应三项指标
+  明确未达标，我们据此把当前检查点定位为<strong>可复现的基线</strong>，而不是可用产品。</p>
+
+<p>下一步按依赖顺序排列：</p>
+<ol>
+  <li><b>补齐在线可得条件。</b>把 Crouch / Gait / RotationMode 状态，以及 CMC 实际提供的
+      短时轨迹作为显式输入与掩码，替代当前「用来源未来 Root 当条件」的做法。</li>
+  <li><b>修正解码器条件。</b>§6.6 表明 pose-root 条件是部分误差来源；
+      需要设计一个<strong>推理期可得</strong>的替代量（例如模型自预测的骨盆高度先验），
+      并证明它不是变相的未来泄漏。</li>
+  <li><b>把 SOMA 数据真正接进训练。</b>训练视图仍在构建；接入前必须先按来源家族 / 会话 / 镜像组划分，
+      再生成窗口，否则会产生跨分区泄漏。</li>
+  <li><b>完成 UE 闭环。</b>NNE 导出、AnimGraph 重建、动画线程推理、蒙皮播放，以及
+      4 帧步长加播放延迟下的可操控体验，都需要在真实场景里验收。</li>
+  <li><b>用程序化模块兜住确定性约束。</b>按表 4 的分工接入 Warping 与 Foot IK，
+      并实测回退阈值是否合理。</li>
+</ol>
+<p>每一项目标都要同时报告 Token CE、世界姿态、接触脚速与 UE 实测四项，
+  不接受只报其中一项的「通过」。</p>
+
+<hr class="big">
+
+<h2 class="sec">附录 A&nbsp;&nbsp;复现</h2>
+<pre><code># 0. 环境（Windows，Python 3.12）
+cd MotionWeaver
+.\.venv\Scripts\python.exe --version
+
+# 1. 重新生成本报告的全部插图（直接读取仓库内证据文件）
+.\.venv\Scripts\python.exe paper\generate_figures.py
+
+# 2. 由 HTML 生成 PDF（headless Chrome，A4，无页眉页脚）
+powershell -ExecutionPolicy Bypass -File paper\build-pdf.ps1
+
+# 3. 数据处理（示例：SOMA 全库批次，参数写在一行以避免续行符）
+.\.venv\Scripts\python.exe -u -m data.tools.process_soma_dataset --data-root E:/MotionWeaverData --run-id 20261018-soma-full-v1 --workers 8
+
+# 4. 训练（A800，20,000 步，从零初始化 Pose Backbone）
+python -u -m training.pretrain.train_unreal --model pose --dataset ../dataset --actor_root_sidecar ../actor_root_sidecar --vqvae ../weights/vqvae.ckpt --output ../runs/motionweaver_actor_root_compact_20k_v1 --motionweaver_online --max_steps 20000 --batch_size 8 --checkpoint_every 2000 --accelerator gpu --precision bf16-mixed --seed 42</code></pre>
+
+<h2 class="sec">附录 B&nbsp;&nbsp;证据文件索引</h2>
+<div class="tblwrap">
+  <table>
+    <thead><tr><th>文件</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td><code>docs/experiments/2026-09-28-motionweaver-a800-actor-root.md</code></td><td>20k 训练与本地验收的完整记录</td></tr>
+      <tr><td><code>…/assets/…/metrics.csv</code></td><td>20,119 行逐步训练日志</td></tr>
+      <tr><td><code>…/assets/…/val_token_ce_2k.json</code>、<code>…_20k.json</code></td><td>固定验证集的 Token CE 与索引集合</td></tr>
+      <tr><td><code>…/assets/…/motionweaver_20k_acceptance_summary_20260928.json</code></td><td>本报告 §6.3–§6.7 的数值来源</td></tr>
+      <tr><td><code>…/assets/…/config.yaml</code></td><td>训练配置（含 VQ 哈希、调度器与条件 profile）</td></tr>
+      <tr><td><code>docs/experiments/2026-10-18-soma-processing-speed.md</code></td><td>吞吐优化与 24 次等价核对</td></tr>
+      <tr><td><code>docs/soma-training-execution-plan.md</code></td><td>双帧率对齐、场景划分、窗口与 Token 预算</td></tr>
+      <tr><td><code>inference/profiling/pose-reference-lab.md</code></td><td>硬参考等式约束投影的对照结果</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 class="sec">参考文献</h2>
+<ol class="refs">
+  <li>NVIDIA GEAR Lab. <i>GR00T-WholeBodyControl</i>. GitHub repository, 2025. github.com/NVlabs/GR00T-WholeBodyControl</li>
+  <li>NVIDIA. <i>MotionBricks: real-time versatile motion generation for humanoid robots</i>. Project page, 2025. nvlabs.github.io/motionbricks</li>
+  <li>A. van den Oord, O. Vinyals, and K. Kavukcuoglu. Neural discrete representation learning. In <i>Advances in Neural Information Processing Systems (NeurIPS)</i>, 2017.</li>
+  <li>P. Esser, R. Rombach, and B. Ommer. Taming transformers for high-resolution image synthesis. In <i>CVPR</i>, 2021.</li>
+  <li>C. Guo, S. Zou, X. Zuo, S. Wang, W. Ji, X. Li, and L. Cheng. Generating diverse and natural 3D human motions from text. In <i>CVPR</i>, 2022.</li>
+  <li>G. Tevet, S. Raab, B. Gordon, Y. Shafir, D. Cohen-or, and A. H. Bermano. Human motion diffusion model. In <i>ICLR</i>, 2023.</li>
+  <li>J. Zhang, Y. Zhang, X. Cun, S. Huang, Y. Zhang, H. Zhao, H. Lu, and X. Shen. T2M-GPT: Generating human motion from textual descriptions with discrete representations. In <i>CVPR</i>, 2023.</li>
+  <li>G. Chen, Y. Mu, Z. Wang, Y.-H. Wu, S. Lin, C.-C. Hsu, and Y.-J. Zhang. MoMask: Generative masked modeling of 3D human motions. In <i>CVPR</i>, 2024.</li>
+  <li>S. Clavet. Motion matching and the road to next-gen animation. In <i>Game Developers Conference</i>, 2016.</li>
+  <li>D. Holden, O. Kanoun, M. Perepichka, and T. Popa. Learned motion matching. <i>ACM Transactions on Graphics (SIGGRAPH)</i>, 2020.</li>
+  <li>S. Starke, Y. Zhao, T. Komura, and K. Zaman. Local motion phases for learning multi-contact character movements. <i>ACM Transactions on Graphics (SIGGRAPH)</i>, 2020.</li>
+  <li>H. Y. Ling, F. Zinno, G. Cheng, and M. van de Panne. Character controllers using motion VAEs. <i>ACM Transactions on Graphics (SIGGRAPH)</i>, 2020.</li>
+  <li>F. G. Harvey, M. Yurick, D. Nowrouzezahrai, and C. Pal. Robust motion in-betweening. <i>ACM Transactions on Graphics (SIGGRAPH)</i>, 2020.</li>
+  <li>S. Cohan, D. S. L. K. Reda, K. Wu, and M. van de Panne. Flexible motion in-betweening with diffusion models. In <i>SIGGRAPH</i>, 2024.</li>
+  <li>Lucidrains. <i>adam-atan2</i>: Adam with the atan2 update rule. Software library.</li>
+</ol>
+
+<p class="footnote">
+  <b>文档状态</b>：初稿（v0.1），2026-10-26。所有数值取自仓库内已提交的证据文件，
+  由 <code>paper/generate_figures.py</code> 直接读取并绘图，未在本文件中手工转录。
+  作者：赵梓宁（独立研究者），联系 zzn1982638980@gmail.com。
+  本报告不代表 NVIDIA 官方产品，也不表示获得 NVIDIA 的认可或背书。
+</p>
+
+</div>
+</body>
+</html>
