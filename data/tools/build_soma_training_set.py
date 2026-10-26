@@ -1,4 +1,4 @@
-﻿"""把 SOMA processed 库构建成训练视图（Schema v3），支持双帧率分组。
+"""把 SOMA processed 库构建成训练视图（Schema v3），支持双帧率分组。
 
 产物目录结构（与 docs/soma-training-execution-plan.md §5.1 对齐）：
 
@@ -17,6 +17,7 @@
 import argparse
 import hashlib
 import json
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -37,6 +38,10 @@ from data.runtime.soma_train_dataset import (
 
 MAX_TOKENS = 16
 REFERENCE_TOKENS = 4
+# 源数据在 USB 外接盘，会短暂掉线：读取失败按指数退避重试，避免把瞬时故障记成永久拒绝。
+# 实测一次掉线造成 36,177 条被误判为 rejected，因此重试是必需的。
+IO_RETRIES = 4
+IO_RETRY_DELAY = 5.0
 SCENES = ("A", "B", "C", "D")
 
 
@@ -140,14 +145,38 @@ def _worker_convert(payload):
             token_budget as _budget,
         )
         from data.runtime.soma_train_dataset import write_npz as _write
-        record, arrays = _build(item["processed"], None, roles, scene=item["scene"])
+
+        # 源数据在 USB 外接盘上，会短暂掉线：OSError 属于可重试的瞬时故障，
+        # 直接把它记成「拒绝」会让整批数据永久缺失（实测一次掉线损失 36,177 条）。
+        # 这里退避重试；只有重试用尽才记为失败，且原因带 retry_exhausted 标记。
+        last_error = None
+        for attempt in range(IO_RETRIES):
+            try:
+                record, arrays = _build(item["processed"], None, roles, scene=item["scene"])
+                break
+            except OSError as error:
+                last_error = error
+                if attempt == IO_RETRIES - 1:
+                    return None, f"OSError(after {IO_RETRIES} retries): {error}"
+                time.sleep(IO_RETRY_DELAY * (2 ** attempt))
+        else:
+            return None, f"OSError(after {IO_RETRIES} retries): {last_error}"
+
         if not record["usable"]:
             return None, record["reject_reason"]
         check = _budget(item["scene"], record["fps"], REFERENCE_TOKENS)
         if check["total"] > MAX_TOKENS:
             return None, f"token 预算超限 {check['total']:.1f} > {MAX_TOKENS}"
         destination = (_Path(clips_root_arg) / record["fps_group"] / item["id"] / "arrays.npz")
-        _write(destination, arrays)
+        # 写入目标在本地 NVMe，正常不会失败；仍保留一次重试以应对审计软件占用句柄。
+        for attempt in range(3):
+            try:
+                _write(destination, arrays)
+                break
+            except OSError as error:
+                if attempt == 2:
+                    return None, f"OSError writing output: {error}"
+                time.sleep(1.0)
         size_sha = hashlib.sha256(destination.read_bytes()).hexdigest()
         return {
             "clip_id": item["id"], "asset": item["asset"], "name": item["name"],
