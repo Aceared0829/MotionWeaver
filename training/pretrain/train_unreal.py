@@ -17,10 +17,6 @@ from data.runtime.motionweaver_dataset import (
     MotionWeaverUnrealDataset,
     collate_motionweaver,
 )
-from data.runtime.soma_realtime_dataset import (
-    SomaRealtimeCollate,
-    SomaRealtimeDataset,
-)
 from data.runtime.synthetic_dataset import collate_batch
 from data.runtime.unreal_dataset import UnrealMotionDataset, file_sha256
 from motionweaver.legacy import canonical_config
@@ -194,6 +190,9 @@ def train(args):
     if soma_views:
         # 直接吃四键 NPZ 训练视图：不预展开 942 维稠密数组（全库需 918 GB），
         # 改为在 collate 里对整批一次算特征。详见 soma_realtime_dataset 的实测说明。
+        # 延迟导入：本模块只在 SOMA 四键视图路径下需要。放在文件顶层会让
+        # 「以文件路径直接运行本脚本」的既有测试在 import 阶段就失败（data 包不在 sys.path）。
+        from data.runtime.soma_realtime_dataset import SomaRealtimeDataset
         dataset = SomaRealtimeDataset(
             soma_views,
             window_frames=getattr(args, "soma_window_frames", 48),
@@ -263,17 +262,22 @@ def train(args):
             # （19.7ms/批），worker 的预取会随之停摆——实测 workers=8 比单进程
             # 还慢 3-5 倍。放 worker 里则 8 进程真正并行，主线程拿到特征就能训练。
             indices_arr = dataset.representation.indices["global_rep"]
+            from data.runtime.soma_realtime_dataset import SomaRealtimeCollate
             collate_fn = SomaRealtimeCollate(dataset.representation, indices_arr)
         else:
             collate_fn = collate_motionweaver if getattr(args, "motionweaver_online", False) else collate_batch
         workers = 0 if soma_views and args.accelerator == "cpu" else int(
             getattr(args, "num_workers", 0) or 0)
-        # persistent_workers 在 Windows spawn 下重建进程池的代价很高，
-        # 且常驻 worker 会和主进程争抢，因此显式关闭。
+        # persistent_workers 必须开启：数据量小时一个 epoch 只有几十步，
+        # 若每个 epoch 都销毁重建 worker 进程池，每次要付 1-2 秒的 torch
+        # JIT 初始化（日志里每个 worker 一条 "triton not found"）。
+        # 实测 200 条数据跑 5 个 epoch：关闭时 57 秒，开启时 24.9 秒（2.3 倍），
+        # 且首 epoch 之后每轮只要 3.7 秒。关闭时累积的重建开销会让长训练
+        # 看起来像卡死（曾观察到 119 步后长时间无进展）。
         loader = DataLoader(Subset(dataset, indices), batch_size=args.batch_size,
                             shuffle=True, num_workers=workers,
                             collate_fn=collate_fn,
-                            persistent_workers=False,
+                            persistent_workers=workers > 0,
                             prefetch_factor=(2 if workers > 0 else None))
     trainer.fit(model, train_dataloaders=loader, ckpt_path=args.resume)
     trainer.save_checkpoint(output / "checkpoints" / "final.ckpt")
