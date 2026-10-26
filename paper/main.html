@@ -246,9 +246,12 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   以 VQ-VAE 把逐帧骨架姿态压缩为离散码，再以 Pose Token 主干在给定前 4 帧历史姿态与一条独立的
   Actor 世界轨迹的条件下预测未来姿态 Token，最后经解码器还原为世界空间骨架。
   数据侧，我们完成了 1,722 段 UE 动画（79 骨、30 FPS）与 71,132 条 SOMA 通用动作（78 节点、120.0048 FPS）的
-  接入与处理，并把处理吞吐提高到约 1.69–1.80 倍，且输出逐数组等价。
+  接入与处理，并把处理吞吐提高到约 1.69–1.80 倍，且输出逐数组等价。在此基础上建成训练视图 72,933 条（覆盖登记总量 73,101 条的 99.77%）、训练窗口 116.6 万个，四个场景 A/B/C/D 分别为 28,233 / 14,820 / 2,743 / 27,137 条。
   训练侧在单卡 A800 上从零训练 20,000 步，固定验证口径下的掩码姿态 Token 交叉熵由 2,000 步的
   1.862 nats 降至 1.454 nats（−21.9%）。
+  训练工程侧，我们让训练端直接读取四键 NPZ 并在 worker 内整批计算特征，
+  单条特征成本由 125.6 ms 降至 0.4 ms（约 16×）；契约生成与全量评测改为多进程后分别约 12 分钟与 16 分钟，
+  并实测出「32 进程反而把吞吐从 6,350 降到 1,400 条/分钟」这一并发上限（§6）。
   <strong>但本报告同样记录失败</strong>：在 3 条同轨迹对照片段中，Walk 的世界关节 RMSE 由基线 6.72 cm 改善至 6.03 cm，
   而 Run（7.36 → 12.00 cm）与 Crouch（5.87 → 8.25 cm）明显退化；接触期脚滑整体仍显著高于来源动作；
   换用另录的 CMC 轨迹后，90° 转向只改变 Actor 局部关节姿态 0.50 cm，且蹲伏状态未被模型响应。
@@ -268,9 +271,9 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   only 0.50 cm under a 90 degree turn, with crouch state unobserved. We therefore state the capability
   boundary explicitly rather than inferring playable quality from a falling token loss.</p>
   <p>形式上，本报告把它定义为一个<strong>以离散姿态码为目标的掩码条件预测问题</strong>（§3）：
-  给定 $h$ 帧历史姿态与一条外部 Actor 轨迹，最大化未来姿态码的对数似然（式 3.7）。
+  给定 $h$ 帧历史姿态与一条外部 Actor 轨迹，最大化未来姿态码的对数似然（式 3.3）。
   损失函数、评测指标与硬约束投影都写成可复核的显式定义，
-  使每个数字都能追溯到它对应的数学对象（§5、§6）。</p>
+  使每个数字都能追溯到它对应的数学对象（§5、§7）。</p>
   <p class="keywords"><b>关键词</b>：动作生成 · 离散姿态 Token · VQ-VAE · 角色动画 · Unreal Engine · 数据管线</p>
 </section>
 
@@ -291,21 +294,21 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 <p>技术路线上我们沿用 NVIDIA GR00T-WholeBodyControl 仓库中 MotionBricks 的做法：先把动作离散化为
   姿态 Token，再在 Token 空间做序列预测。离散化的好处是模型只需预测有限码本上的索引，误差不会像
   逐关节回归那样直接累积到厘米级的关节位置上；代价是量化误差与解码器条件的耦合，这一点在
-  §7.6 的 oracle 诊断里被量化了。</p>
+  §8.6 的 oracle 诊断里被量化了。</p>
 
 <p>本报告的三点贡献是：</p>
 <ul>
   <li><b>一条可追溯的双来源数据管线。</b>UE 导出与 SOMA 通用动作在统一的 78 节点目标骨架上汇合，
       每条 clip 带内容哈希、帧率分组与显式边界声明（§3）。</li>
   <li><b>一组可复现的固定口径评测。</b>冻结验证集、冻结划分、冻结随机种子，同时报告
-      Token 级指标、世界姿态指标、接触指标与控制器条件探针（§6、§7）。</li>
+      Token 级指标、世界姿态指标、接触指标与控制器条件探针（§7、§8）。</li>
   <li><b>一份如实的能力边界陈述。</b>我们把退化案例、缺失条件以及「哪些数字不能当成在线能力」
-      逐条写进报告与附录（§8）。</li>
+      逐条写进报告与附录（§9）。</li>
 </ul>
 
 <div class="callout">
   <span class="lbl">阅读方式</span> —— 本报告刻意把「训练指标改善」与「产品可用」分成两件事陈述。
-  §7.1–§7.2 是学习信号，§7.3–§7.5 是离线质量，§7.6 是上限诊断，§8 是缺陷清单。
+  §8.1–§8.2 是学习信号，§8.3–§8.5 是离线质量，§8.6 是上限诊断，§9 是缺陷清单。
   任何一节单独拿出来都不足以支撑「模型可用」的结论。
 </div>
 
@@ -341,7 +344,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 <h2 class="sec">3&nbsp;&nbsp;问题形式化</h2>
 
 <p>本节把「由玩家控制状态生成全身姿态」写成显式优化问题。公式里出现的每个符号都在下表定义，
-后续所有损失、指标与约束只用这些符号。这样做不是因为偏好形式化，而是为了修掉我们在 §8.3
+后续所有损失、指标与约束只用这些符号。这样做不是因为偏好形式化，而是为了修掉我们在 §9.3
 记录的三次误判——它们的共同点是<strong>同一个符号在不同章节指代了不同对象</strong>。</p>
 
 <div class="terms">
@@ -386,7 +389,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 <p>条件里<strong>不含</strong> $\mathbf{b}_{h+1:h+T}$：未来真实姿态只作为监督目标。
 另一条更隐蔽的约束是 $\mathbf{q}_{h+1:h+T}$ 在推理期不可得——游戏里它只能来自 CMC/Mover
 或规划器，不可能等于真值。因此凡是使用 $\mathbf{q}^{\text{true}}$ 的数字都只在
-「配对教师轨迹」口径下成立，这一点在 §5.2 与 §8.2 各强调一次。</p>
+「配对教师轨迹」口径下成立，这一点在 §5.2 与 §9.2 各强调一次。</p>
 
 <h3 class="sub">3.3&nbsp;&nbsp;训练目标</h3>
 <p>采用掩码建模目标：随机遮住比例 $r$ 的姿态码，只对被遮住的位置计损失，</p>
@@ -407,7 +410,7 @@ VQ-VAE 一侧的损失（本报告中被冻结，不参与主干训练）为</p>
 <div class="eq multi"><span class="eqno">(3.6)</span>\[\Big\|\tfrac{\d}{\d t}\mathbf{p}_t^{\text{foot}}\Big\|_2\le\epsilon
 \qquad\text{当}\quad c_t^{\text{foot}}=1.\]</div>
 <p>式 (3.6) <strong>不进入</strong> $\mathcal{L}_{\text{token}}$。我们把脚部约束交给输出端的
-Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§7.3 报告的 0.78–0.88 m/s
+Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§8.3 报告的 0.78–0.88 m/s
 就是式 (3.6) 未被满足的量化形式。</p>
 
 <h2 class="sec">4&nbsp;&nbsp;数据管线</h2>
@@ -492,16 +495,28 @@ Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§7.3 报告
         <td>§5.1、§5.2</td>
       </tr>
       <tr>
+        <td><b>训练数据接入</b></td>
+        <td>直接读四键 NPZ（不预展开 918 GB 稠密数组）；特征在 worker 内整批计算；旋转改存 float32 四元数</td>
+        <td><code>soma_realtime_dataset.py</code><br><code>compress_training_views.py</code></td>
+        <td>§6.1–§6.3</td>
+      </tr>
+      <tr>
+        <td><b>并行与参数</b></td>
+        <td>契约与评测按窗口分片改多进程；新增 <code>--soma_views</code> / <code>--num_workers</code> 等运行时参数；训练污染主动核查</td>
+        <td><code>build_soma_contract_parallel.py</code><br><code>evaluate_conditioned_baselines_parallel.py</code><br><code>audit_training_contamination.py</code></td>
+        <td>§6.4–§6.6</td>
+      </tr>
+      <tr>
         <td><b>训练</b></td>
         <td>从零 20k 步；固定验证口径；检查点哈希双向核对</td>
         <td><code>pretrain/train_unreal.py</code></td>
-        <td>§7.1、§7.2</td>
+        <td>§8.1、§8.2</td>
       </tr>
       <tr>
         <td><b>推理</b></td>
         <td>给定 Actor Root 的本地推理入口；同轨与控制器轨迹双口径评估</td>
         <td><code>inference/runtime/motionweaver.py</code></td>
-        <td>§7.3、§7.5、§7.7</td>
+        <td>§8.3、§8.5、§8.7</td>
       </tr>
       <tr>
         <td><b>约束后处理</b></td>
@@ -583,24 +598,30 @@ Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§7.3 报告
   构建过程只读源数据，失败时不写 <code>dataset.json</code>（发布屏障）。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 2</b>：训练视图的实测统计量。数据由本次构建的
-    <code>clips.jsonl</code> 与 <code>rejected.jsonl</code> 直接聚合得到。
-    该构建晚于本稿的测量时点，因此总数小于登记的 73,101 条，属进行中的快照。</p>
+  <p class="caption"><b>表 2</b>：训练视图的最终统计量。数据由本次完成的构建的
+    <code>dataset.json</code> 直接聚合得到，覆盖登记总量 73,101 条中的 72,933 条。</p>
   <table>
     <thead><tr><th>统计项</th><th class="num">数值</th><th>说明</th></tr></thead>
     <tbody>
-      <tr><td>已构建 clip 数</td><td class="num">34,167</td><td>占登记总量 73,101 的 46.7%（快照）</td></tr>
-      <tr><td>累计源帧数</td><td class="num">29,450,215</td><td>单帧即一个 78 节点的局部 TRS 样本</td></tr>
-      <tr><td>片段长度 中位 / p10 / p90</td><td class="num">662 / 333 / 1,394 帧</td><td>最短 21 帧，最长 21,617 帧</td></tr>
-      <tr class="rule"><td>fps120 组</td><td class="num">33,116 条 · 29,321,413 帧</td><td>折合 67.9 小时</td></tr>
-      <tr><td>fps30 组</td><td class="num">1,051 条 · 128,802 帧</td><td>折合 1.2 小时（UE 重定向来源）</td></tr>
-      <tr class="rule"><td>场景 A（常规移动）</td><td class="num">28,233 条 · 25,797,932 帧</td><td>walk / run / jog / idle / turn / strafe</td></tr>
-      <tr><td>场景 B（大姿态转换）</td><td class="num">5,934 条 · 3,652,283 帧</td><td>jump / land / crouch / kneel / lying</td></tr>
-      <tr class="rule"><td>被拒绝条目</td><td class="num">41</td><td>主因「帧数 69 少于 72（窗口 + 历史）」</td></tr>
+      <tr><td>已构建 clip 数</td><td class="num">72,933</td><td>占登记总量 73,101 的 99.77%</td></tr>
+      <tr><td>累计源帧数</td><td class="num">62,525,689</td><td>单帧即一个 78 节点的局部 TRS 样本</td></tr>
+      <tr><td>片段长度 中位 / p10 / p90</td><td class="num">673 / 333 / 1,501 帧</td><td>最短 19 帧，最长 21,617 帧</td></tr>
+      <tr class="rule"><td>fps120 组</td><td class="num">71,127 条 · 62,300,282 帧</td><td>折合 144.2 小时</td></tr>
+      <tr><td>fps30 组</td><td class="num">1,806 条 · 225,407 帧</td><td>折合 2.1 小时（UE 重定向来源）</td></tr>
+      <tr class="rule"><td>场景 A（常规移动）</td><td class="num">28,233 条</td><td>walk / run / jog / idle / turn / strafe</td></tr>
+      <tr><td>场景 B（大姿态转换）</td><td class="num">14,820 条</td><td>jump / land / crouch / kneel / lying</td></tr>
+      <tr><td>场景 C（跑酷攀爬）</td><td class="num">2,743 条</td><td>climb / vault / mantle</td></tr>
+      <tr><td>场景 D（开放交互）</td><td class="num">27,137 条</td><td>手势 / 舞蹈 / 物体操作 / 坐姿</td></tr>
+      <tr class="rule"><td>训练窗口总数</td><td class="num">1,166,446</td><td>fps120 1,151,751 + fps30 14,695</td></tr>
+      <tr><td>被拒绝条目</td><td class="num">168</td><td>占 0.23%，全部为帧数不足的引擎姿势资产</td></tr>
     </tbody>
   </table>
-  <p class="tnotes">注：拒绝条目全部来自同一批 69 帧的短片段。场景 C/D 在本快照中尚未落盘，
-    因此表中不列该项，而不是记为零。</p>
+  <p class="tnotes">注：被拒条目经人工复核，167 条为 7–71 帧的引擎资产
+    （<code>PoseAssets</code>、<code>AimOffset</code>、<code>CurveContainer</code>、<code>Ragdoll</code>
+    短片段），在 Unreal 中作为叠加姿势而非完整可播放动作，不构成训练样本；另有 1 条源数据含非有限值。
+    对全量 72,933 条做路径模式扫描，<code>PoseAssets</code> / <code>AimOffset</code> /
+    <code>CurveContainer</code> / <code>Montage</code> 命中数均为 0，仅 30 条 61–249 帧的
+    <code>Ragdoll</code> 挣扎动画被判定为真实时间序列动作而保留，占 0.041%。</p>
 </div>
 
 <h3 class="sub">4.7&nbsp;&nbsp;处理吞吐：把 I/O 等待当成一等问题</h3>
@@ -669,7 +690,7 @@ Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§7.3 报告
 </ul>
 <p>第三点是本报告所有对照实验的解读前提。凡是标注「配对教师轨迹」的结果，
   都只说明模型在该轨迹下能生成什么，<strong>不说明它在玩家控制下能生成什么</strong>。
-  为此我们另设了一组使用「另录 CMC 轨迹」的探针（§7.5）。</p>
+  为此我们另设了一组使用「另录 CMC 轨迹」的探针（§8.5）。</p>
 
 <h3 class="sub">5.3&nbsp;&nbsp;为什么是 4 帧历史</h3>
 <p>历史长度决定了推理延迟的下界与信息的充分性。本项目早期的轻量基线
@@ -677,7 +698,7 @@ Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§7.3 报告
   MotionWeaver 的 <code>actor_root_history4_compact_v1</code> 只给 4 帧。
   这是一个刻意的取舍：4 帧 @30 FPS 是 133 ms，恰好等于一个重规划步长，
   使「上一窗口的输出立即成为下一窗口的历史」成为可能。
-  代价是模型获得的动力学信息更少，这可能是 §7.3 中 Run 退化的原因之一，
+  代价是模型获得的动力学信息更少，这可能是 §8.3 中 Run 退化的原因之一，
   但那只是假设：本报告没有做「只改历史长度」的受控实验来证明它。</p>
 
 <h3 class="sub">5.4&nbsp;&nbsp;模型与程序化的分工</h3>
@@ -727,9 +748,151 @@ $\Delta=A^{-1}(I-C^{\mathsf{T}}(CA^{-1}C^{\mathsf{T}})^{-1}C)\,(\mathbf{r}^{\sta
   平滑版本明显优于直接覆盖（后者加速度误差恶化到 9.428），却仍不如软输出平滑，
   因此不能声称已消除抽搐。该路径没有速度等式、接触、碰撞或关节限位保证。</p>
 
-<h2 class="sec">6&nbsp;&nbsp;实验设置</h2>
+<h2 class="sec">6&nbsp;&nbsp;训练工程优化</h2>
 
-<h3 class="sub">6.1&nbsp;&nbsp;冻结的评测口径</h3>
+<p>本节记录训练链路上的工程优化。它们<strong>不改变模型定义</strong>，只解决一件事：
+让同一份数据在同样的硬件上更快跑完。之所以单独成章，是因为这些改动各自都有一个
+「看起来更快、其实更慢」的陷阱，而陷阱只有实测能发现。</p>
+
+<div class="callout">
+  <span class="lbl">口径声明</span> —— 本章所有耗时均为本机实测
+  （RTX 4070 Laptop 8 GB、32 逻辑核、Windows、torch 2.14.0+cu130），
+  不是估计值。凡属推算的，文中一律标注「推算」。
+  优化只涉及速度，<strong>不涉及训练效果</strong>；§9 的所有质量指标仍来自
+  A800 上那份未改动的 20k 检查点。
+</div>
+
+<h3 class="sub">6.1&nbsp;&nbsp;第一个阻塞：训练脚本读不了我们的数据</h3>
+<p>优化之前先有一个更根本的问题。数据侧产出的是四键 NPZ
+（<code>positions / rotations / timestamps / root_track</code>），
+而 <code>UnrealMotionDataset</code> 要求的是 UE Schema v1/v2：
+<code>motion.json</code> + <code>arrays.bin</code>，并强制校验
+<code>schema_version</code>、<code>coordinate_system</code> 与
+<code>stats/mean.npy</code>、<code>stats/std.npy</code>。两者不兼容，训练根本进不去。</p>
+<p>常规做法是写一个转换器把 NPZ 展开成 UE Schema。算一下就否掉了：
+每段动画展开成 $[T,942]$ 的稠密数组，全库规模约需 <strong>918 GB</strong>，
+而可用磁盘只有 317 GB。所以这条路不只是慢，是走不通。</p>
+<p>我们改成让训练端<strong>直接读四键 NPZ、在读取时现算特征</strong>
+（<code>soma_realtime_dataset.py</code>）。磁盘零增长，一套格式贯穿评测与训练两段，
+也省掉了一层需要同步维护的中间产物。</p>
+
+<h3 class="sub">6.2&nbsp;&nbsp;关键取舍：特征算在哪里</h3>
+<p>「现算」听起来会把成本转嫁给训练。实测的三版做法给出了反直觉的结论。
+单条动画各环节成本：读 NPZ 100.5 ms、算接触 32.2 ms、算特征 125.6 ms、切片 15.1 ms。
+问题出在那 125.6 ms 上：逐条调用 <code>DualRootGlobalJoints</code> 时，
+绝大部分是<strong>核函数启动开销</strong>，不是算力。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 6</b>：特征计算位置的三种放法与实测结果。同一份数据、同一台机器。</p>
+  <table>
+    <thead><tr><th>做法</th><th class="num">单条/单批成本</th><th>结果</th></tr></thead>
+    <tbody>
+      <tr><td>逐条计算（batch=1 逐次调用）</td><td class="num">125.6 ms/条</td><td>启动开销主导，不可用</td></tr>
+      <tr><td><b>整批一次算</b>（batch=16）</td><td class="num">6.7 ms/批 ≈ 0.4 ms/条</td><td class="good">相对逐条约 <b>16×</b></td></tr>
+      <tr><td>特征留在主进程，worker 只读盘</td><td class="num">主线程阻塞 19.7 ms</td><td class="bad">预取停摆，workers=8 反而比单进程慢 3–5×</td></tr>
+      <tr><td><b>特征在 worker 内整批算</b></td><td class="num">8 进程真正并行</td><td class="good">采用方案</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">第三行是最容易踩的坑：加 <code>num_workers</code> 本是常识，
+    但若特征计算留在主进程，主线程一阻塞，worker 的预取就失去意义，
+    实测比不加还慢。这解释了为什么「先加 worker 再看」会得出错误结论。</p>
+</div>
+
+<p>另外两项微优化同样来自实测：</p>
+<ul>
+  <li><b>四元数换矩阵</b>：自写 Shepperd 四分支法比
+      <code>scipy.spatial.transform.Rotation</code> 快（20 万组 54.3 vs 68.8 ms，1.27×），
+      两者一致性到 $10^{-9}$（比较时对 $q$ 与 $-q$ 取绝对内积）。</li>
+  <li><b>float32 而非 float64</b>：每条转换成本由 280.9 ms 降到 215.1 ms。
+      模型本身以 bf16 训练，float32 输入不构成精度瓶颈。</li>
+</ul>
+
+<h3 class="sub">6.3&nbsp;&nbsp;存储表示：把旋转从矩阵换成四元数</h3>
+<p>单条 clip 的读取耗时拆解为：<code>np.load</code> 打开 1.3 ms、读 positions 10.5 ms、
+读 rotations 24.8 ms、root_track 0.7 ms。<strong>rotations 占 66%</strong>，
+因为它以 float64 的 $3\times3$ 矩阵存储：每关节每帧 $9\times8=72$ 字节，
+而模型用 float32、四元数只需 $4\times4=16$ 字节，两者叠加是 4.5 倍冗余。</p>
+<p>压缩前的无损性先验证再动手：</p>
+<div class="eq"><span class="eqno">(6.1)</span>$\big\|q(\mathbf{R})-q^{\star}\big\|_\infty\le 5.6\times10^{-16}\ (\text{float64 往返}),\qquad
+\varepsilon_{\text{pos}}\approx 1.03\times10^{-7}\times 0.3\ \text{m}\approx 3\times10^{-8}\ \text{m},$</div>
+<p>即 float32 四元数相对原 float64 的位置误差约 $3\times10^{-8}$ m，
+比 float32 自身的表示精度还小，对训练无影响。
+压缩后 <code>dataset.json</code> 增加 <code>rotation_format</code> 字段标明表示方式，
+原视图不动、两套目录并存以便对比。</p>
+
+<div class="callout">
+  <span class="lbl">一个被实测否掉的方案</span> —— 我们也试过对已经压缩过的 NPZ
+  再做一次 <code>savez_compressed</code>。结果只省 9% 体积（30.4 → 27.7 MB），
+  却慢 <strong>36 倍</strong>（168.9 vs 4.6 ms/条）。数据在 float32 + 四元数之后
+  已经足够小，再压缩只是把 CPU 换成一点点磁盘。
+  这一条写在这里，是为了避免以后有人「顺手再加个压缩」。
+</div>
+
+<h3 class="sub">6.4&nbsp;&nbsp;并行度：不是越大越好</h3>
+<p>契约生成与评测原本都是单进程串行，在 32 核机器上只用到 1 个核。
+按窗口分片给多进程后：</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 7</b>：并行化前后对比。契约与评测都已改写为多进程版，
+    契约字段与串行版完全一致，产物可直接给原评测器使用。</p>
+  <table>
+    <thead><tr><th>环节</th><th>串行</th><th>并行（实测）</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>契约生成（72,933 条）</td><td class="num">约 30 分钟</td><td class="num">约 12 分钟（32 进程）</td><td>主进程只做汇总与写盘</td></tr>
+      <tr><td>全量基线评测</td><td class="num">—</td><td class="num">约 16 分钟（16 并发）</td><td>4 场景 × 2 基线 × 121,058 窗口</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">契约的串行版是「逐条读 NPZ 算接触」，30 分钟为设计文档中的估算；
+    评测的 16 分钟为实跑记录。两者口径不同，不做加速比相除。</p>
+</div>
+
+<p>但并发不是越高越好。实测 32 进程同时读盘时，吞吐反而从约
+<b>6,350 条/分钟降到约 1,400 条/分钟</b>——I/O 队列被打满，进程在等盘而非在算。
+16 进程配合每窗口 20 ms 休眠可以全程稳定，且不会把磁盘压到无响应。
+这是本章唯一一条「加资源导致变慢」的实测记录，也是我们最终采用 16 而非 32 的原因。</p>
+
+<h3 class="sub">6.5&nbsp;&nbsp;训练侧的运行时参数</h3>
+<p>在数据适配层就位后，训练脚本新增了四个参数。它们只影响速度，不影响数值：</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 8</b>：新增训练参数。默认值取保守配置，需按机器上调。</p>
+  <table>
+    <thead><tr><th>参数</th><th>作用</th><th>取值依据</th></tr></thead>
+    <tbody>
+      <tr><td><code>--soma_views</code></td><td>直接读四键 NPZ 训练视图，跳过预转换</td><td>§6.1 的 918 GB 约束</td></tr>
+      <tr><td><code>--num_workers</code></td><td>DataLoader 并行读盘进程数</td><td>本机小文件延迟受限，4–8 之后边际收益快速衰减，不建议超过 16</td></tr>
+      <tr><td><code>--soma_window_frames</code></td><td>训练窗口帧数（A 48 / B·C 72）</td><td>由 Token 预算反推，定长便于成批堆叠</td></tr>
+      <tr><td><code>--soma_fps_group</code></td><td>只训指定帧率组</td><td>120 与 30 fps 不可混批（§4.5）</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes"><code>persistent_workers</code> 显式关闭：Windows 的 spawn 语义下
+    重建进程池代价高，常驻 worker 反而与主进程争抢。</p>
+</div>
+
+<h3 class="sub">6.6&nbsp;&nbsp;这一章没做什么</h3>
+<p>为了不让「优化」被误读成「已榨干硬件」，把没做的和其他隐患一并列出：</p>
+<ul>
+  <li><b>没有做 bf16 对照。</b>配置文件默认 <code>precision=32</code>，而本机支持 bf16。
+      切过去预计有收益，但按「不损失效果」的前提，必须先跑同一份数据的
+      FP32 vs bf16 损失曲线对照；这一步<strong>尚未执行</strong>，因此本章不报告 bf16 收益。</li>
+  <li><b>没有启用 <code>torch.compile</code> 与 <code>channels_last</code>。</b>
+      前者估 1.2–1.5×，后者在 Conv1d 场景收益很小，都留待适配层稳定后再评估。</li>
+  <li><b>没有做 clip 级缓存。</b>单条 $(T,942)$ 数组仅窗口部分就被利用约 4%，
+      理论上缓存能省下重复读盘；但这取决于访问模式，属未验证项。</li>
+  <li><b>没有用真实训练跑通全流程。</b>本章的收益都是<strong>各环节实测</strong>，
+      不是端到端训练吞吐。端到端数字要等模型真正在 full-v1 上开训才成立——
+      这也是 §10 把「模型未在 SOMA 全库上训练」列为当前最大缺口的原因。</li>
+</ul>
+
+<p>一条附带的数据卫生检查也在这里落地：被拒绝的 168 条里大量是
+<code>PoseAssets</code>、<code>AimOffset</code>、<code>CurveContainer</code> 之类的引擎姿势资产，
+它们靠「帧数不足」被动过滤；若某个姿势资产恰好够长，就会漏进训练集。
+因此新增 <code>audit_training_contamination.py</code> 按路径模式主动核查，
+输出可疑清单，而不是等它在训练里表现异常再回头查。</p>
+
+<h2 class="sec">7&nbsp;&nbsp;实验设置</h2>
+
+<h3 class="sub">7.1&nbsp;&nbsp;冻结的评测口径</h3>
 <p>为了在多次训练之间做可比，我们固定了三件事：</p>
 <ul>
   <li><b>验证集</b>：48 条片段（Walk / Run / Crouch 各 16 条），共 2,608 个监督 Token，
@@ -741,30 +904,30 @@ $\Delta=A^{-1}(I-C^{\mathsf{T}}(CA^{-1}C^{\mathsf{T}})^{-1}C)\,(\mathbf{r}^{\sta
       因此这是<strong>产品路线对照</strong>，不是「只改架构」的严格消融。</li>
 </ul>
 
-<h3 class="sub">6.2&nbsp;&nbsp;指标定义</h3>
+<h3 class="sub">7.2&nbsp;&nbsp;指标定义</h3>
 
 <p>所有指标写成公式后，"为什么 Run 的 Token CE 降了 15% 而世界误差升了 4.6 cm"这类问题
-  才有明确的讨论对象：式 (6.1) 与式 (6.2) 衡量的根本不是同一个空间。设测试片段集合为
+  才有明确的讨论对象：式 (7.1) 与式 (7.2) 衡量的根本不是同一个空间。设测试片段集合为
   $\mathcal{S}$，每段评估未来 $T=24$ 帧。</p>
 
 <p><b>关节位置误差。</b>按片段等权平均的世界关节 RMSE：</p>
-<div class="eq multi"><span class="eqno">(6.1)</span>\[\mathrm{RMSE}_{\text{pos}}
+<div class="eq multi"><span class="eqno">(7.1)</span>\[\mathrm{RMSE}_{\text{pos}}
 =\frac{1}{|\mathcal{S}|}\sum_{s\in\mathcal{S}}
 \sqrt{\frac{1}{TJ}\sum_{t=1}^{T}\sum_{j=1}^{J}
 \big\|\hat{\mathbf{p}}_{s,t}^{j}-\mathbf{p}_{s,t}^{j}\big\|_2^{2}}\quad[\text{cm}],\]</div>
 <p>其中 $\hat{\mathbf{p}}$ 由身体位姿与<strong>外部轨迹</strong>复合得到：
 $\hat{\mathbf{p}}_t^{j}=\mathbf{q}_t\odot\hat{\mathbf{b}}_t^{j}$。
-因此这个指标同时依赖姿态质量与轨迹条件，换轨迹后不可直接比较（§7.5）。</p>
+因此这个指标同时依赖姿态质量与轨迹条件，换轨迹后不可直接比较（§8.5）。</p>
 
 <p><b>身体朝向误差。</b>只取水平分量，避免把翻滚分量算进来：</p>
-<div class="eq multi"><span class="eqno">(6.2)</span>\[\mathrm{RMSE}_{\text{yaw}}
+<div class="eq multi"><span class="eqno">(7.2)</span>\[\mathrm{RMSE}_{\text{yaw}}
 =\frac{1}{|\mathcal{S}|}\sum_{s}\sqrt{\frac{1}{T}\sum_{t=1}^{T}
 \mathrm{wrap}\!\big(\hat{\psi}_t-\psi_t\big)^{2}}\quad[^\circ],\]</div>
 <p>$\mathrm{wrap}(\cdot)$ 把角差折回 $(-180^\circ,180^\circ]$。
 注意世界朝向大部分由外部 $\mathbf{q}_t$ 决定，因此这个指标上升并不等于模型没学会转向。</p>
 
 <p><b>接触期脚速。</b>只在来源接触标签连续两帧成立时统计：</p>
-<div class="eq multi"><span class="eqno">(6.3)</span>\[v^{\text{foot}}
+<div class="eq multi"><span class="eqno">(7.3)</span>\[v^{\text{foot}}
 =\frac{1}{|\mathcal{P}|}\sum_{(t,t+1)\in\mathcal{P}}
 \Big\|\mathbf{p}_{t+1}^{\text{foot}}-\mathbf{p}_t^{\text{foot}}\Big\|_2\cdot f_{\text{fps}}
 \quad[\text{m/s}],\]</div>
@@ -772,28 +935,28 @@ $\hat{\mathbf{p}}_t^{j}=\mathbf{q}_t\odot\hat{\mathbf{b}}_t^{j}$。
 标签本身是启发式的（§4.4），因此它只用于<strong>相对比较</strong>，且样本量小（5–24 帧对）。</p>
 
 <p><b>接缝速度误差。</b>衡量历史末帧到生成首帧的跳变：</p>
-<div class="eq multi"><span class="eqno">(6.4)</span>\[\varepsilon_{\text{seam}}
+<div class="eq multi"><span class="eqno">(7.4)</span>\[\varepsilon_{\text{seam}}
 =\Big\|\big(\hat{\mathbf{p}}_1-\mathbf{p}_0\big)-\big(\mathbf{p}_0-\mathbf{p}_{-1}\big)\Big\|_2
 \quad[\text{cm/帧}],\]</div>
 <p>右式第二项是历史段的末速。这一项下降说明衔接更平滑，但它<strong>不说明</strong>整体步态正确。</p>
 
 <p><b>Token 交叉熵。</b>即式 (3.4) 在验证集上的取值：</p>
-<div class="eq multi"><span class="eqno">(6.5)</span>\[\mathrm{CE}_{\text{token}}
+<div class="eq multi"><span class="eqno">(7.5)</span>\[\mathrm{CE}_{\text{token}}
 =\frac{1}{|\mathcal{V}|}\sum_{v\in\mathcal{V}}\Big(-\frac{1}{|\mathcal{M}_v|}
 \sum_{t\in\mathcal{M}_v}\log p_\theta\big(z_{v,t}\mid\cdot\big)\Big)\quad[\text{nats}],\]</div>
 <p>$\mathcal{V}$ 为 48 条冻结验证片段，$|\mathcal{M}_v|$ 为该片段的监督 Token 数，合计 2,608。
 这个量只反映"码分类得对不对"，<strong>不含解码误差</strong>——式 (3.1) 的 $D_\psi$
-完全不在这个指标里。式 (6.5) 与式 (6.1) 之间没有单调关系，§7.3 给出了具体反例。</p>
+完全不在这个指标里。式 (7.5) 与式 (7.1) 之间没有单调关系，§8.3 给出了具体反例。</p>
 
 <p><b>加速比。</b>处理吞吐用同一批样本的端到端耗时之比：</p>
-<div class="eq multi"><span class="eqno">(6.6)</span>\[S=\frac{T_{\text{base}}}{T_{\text{opt}}},\qquad
+<div class="eq multi"><span class="eqno">(7.6)</span>\[S=\frac{T_{\text{base}}}{T_{\text{opt}}},\qquad
 T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 +\underbrace{\sum_i t^{\text{cpu}}_i}_{\text{FK 与特征}}
 +\underbrace{\sum_i t^{\text{zip}}_i}_{\text{压缩}}.\]</div>
 <p>profiling 显示 $t^{\text{io}}$ 占 19.87 s 中的 15.86 s，$t^{\text{zip}}$ 仅 0.32 s。
 这就是为什么优化集中在 I/O 而不在压缩（§4.7）。</p>
 <div class="tblwrap">
-  <p class="caption"><b>表 6</b>：指标定义与已知口径限制。</p>
+  <p class="caption"><b>表 9</b>：指标定义与已知口径限制。</p>
   <table>
     <thead><tr><th>指标</th><th>定义</th><th>口径限制</th></tr></thead>
     <tbody>
@@ -807,9 +970,9 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
   </table>
 </div>
 
-<h2 class="sec">7&nbsp;&nbsp;结果</h2>
+<h2 class="sec">8&nbsp;&nbsp;结果</h2>
 
-<h3 class="sub">7.1&nbsp;&nbsp;训练动态</h3>
+<h3 class="sub">8.1&nbsp;&nbsp;训练动态</h3>
 
 <figure>
   <img src="figures/fig2-training-loss.png" alt="20,000 步训练损失曲线，含 200 步滑动平均">
@@ -824,7 +987,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
   2,000 步链式短跑记录到相似的早期下降速度，这被用来确认链路正确，
   而不是用来证明「更长的训练更好」——两者的调度器配置不同。</p>
 
-<h3 class="sub">7.2&nbsp;&nbsp;固定验证口径下的 Token 交叉熵</h3>
+<h3 class="sub">8.2&nbsp;&nbsp;固定验证口径下的 Token 交叉熵</h3>
 
 <figure>
   <img src="figures/fig3-val-token-ce.png" alt="2k 与 20k 在固定验证集上的类别 Token CE 对比">
@@ -834,7 +997,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 7</b>：固定验证集的 Token 交叉熵（nats，越低越好）。
+  <p class="caption"><b>表 10</b>：固定验证集的 Token 交叉熵（nats，越低越好）。
     两次记录使用完全相同的 manifest、sidecar 哈希与索引集合。</p>
   <table>
     <thead><tr><th>类别</th><th class="num">目标 Token</th><th class="num">2k CE</th><th class="num">20k CE</th><th class="num">相对变化</th></tr></thead>
@@ -845,11 +1008,11 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
       <tr class="rule"><td><b>总体</b></td><td class="num">2,608</td><td class="num">1.8620</td><td class="num">1.4536</td><td class="num good">−21.9%</td></tr>
     </tbody>
   </table>
-  <p class="tnotes">注：Run 的改善幅度最小（−15.0%），与 §7.3 中 Run 的世界姿态退化方向一致，
+  <p class="tnotes">注：Run 的改善幅度最小（−15.0%），与 §8.3 中 Run 的世界姿态退化方向一致，
     是「Token 级改善未必传导到世界姿态」的一个具体例子。</p>
 </div>
 
-<h3 class="sub">7.3&nbsp;&nbsp;同轨迹下的世界姿态与接触</h3>
+<h3 class="sub">8.3&nbsp;&nbsp;同轨迹下的世界姿态与接触</h3>
 
 <figure>
   <img src="figures/fig4-trajectory.png" alt="同来源 Actor Root 下的姿态 RMSE 与接触脚速对照">
@@ -859,7 +1022,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 8</b>：同轨迹循环片段的世界姿态与接触指标。
+  <p class="caption"><b>表 11</b>：同轨迹循环片段的世界姿态与接触指标。
     RMSE 与脚速之外的列用于诊断衔接与朝向。</p>
   <table>
     <thead>
@@ -914,7 +1077,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 9</b>：接触停止片段的完整指标。停止片段的接触帧对更多，
+  <p class="caption"><b>表 12</b>：接触停止片段的完整指标。停止片段的接触帧对更多，
     因此接触脚速比循环片段更可信；但样本量仍在 10–24 帧对的量级。</p>
   <table>
     <thead>
@@ -932,7 +1095,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
   </table>
 </div>
 
-<h3 class="sub">7.4&nbsp;&nbsp;为什么 Run/Crouch 会退化：一个可检验的解释</h3>
+<h3 class="sub">8.4&nbsp;&nbsp;为什么 Run/Crouch 会退化：一个可检验的解释</h3>
 <p>数据审计给出了一条线索。记第 $i$ 条片段的 Actor 水平速度为
   $v_t=\|\mathbf{q}_{t+1}[xz]-\mathbf{q}_t[xz]\|_2\cdot f_{\text{fps}}$，
   统计其分位数 $Q_{0.1},\,Q_{0.5},\,Q_{0.9}$（米/秒，按帧汇总，排除补齐帧）：</p>
@@ -944,7 +1107,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 <p>而评估所用 CMC 轨迹的速度是 Walk 1.4、Run 4.0、Crouch 0.8 m/s。
   定义分布偏移量为 CMC 速度在训练分布中的分位位置，
   以 $Q_{0.1}$ 为下界则 Crouch 的偏移可写成</p>
-<div class="eq multi"><span class="eqno">(7.1)</span>\[\kappa=\frac{Q_{0.1}-v^{\text{cmc}}}{Q_{0.1}}
+<div class="eq multi"><span class="eqno">(8.1)</span>\[\kappa=\frac{Q_{0.1}-v^{\text{cmc}}}{Q_{0.1}}
 =\frac{1.453-0.800}{1.453}\approx 0.449,\]</div>
 <p>即 CMC 的蹲伏速度比训练分布的 $p_{10}$ 还低约 <b>45%</b>。相比之下
   Walk 的 $\kappa=(1.291-1.4)/1.291\approx-0.084$（略低于 $p_{10}$ 之下但符号相反，
@@ -954,7 +1117,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
   而且它<strong>也没有显式的 Crouch 状态输入</strong>。
   这是一条解释，不是一条已完成的因果证明：要证明它需要一次只改速度分布的受控实验，我们尚未做。</p>
 
-<h3 class="sub">7.5&nbsp;&nbsp;控制器条件探针：换一条轨迹会发生什么</h3>
+<h3 class="sub">8.5&nbsp;&nbsp;控制器条件探针：换一条轨迹会发生什么</h3>
 
 <figure>
   <img src="figures/fig6-cmc-sensitivity.png" alt="换用另录 CMC 轨迹后局部关节姿态的变化幅度">
@@ -965,17 +1128,17 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 </figure>
 
 <p>敏感度用两个量刻画。第一个是 Actor 局部关节的 RMS 变化：</p>
-<div class="eq multi"><span class="eqno">(7.2)</span>\[\Delta_{\text{local}}
+<div class="eq multi"><span class="eqno">(8.2)</span>\[\Delta_{\text{local}}
 =\sqrt{\frac{1}{TJ}\sum_{t,j}\big\|\hat{\mathbf{b}}^{\text{cmc},j}_t
 -\hat{\mathbf{b}}^{\text{teacher},j}_t\big\|_2^{2}}\quad[\text{cm}],\]</div>
 <p>第二个是离散 Token 的<strong>不一致比例</strong>（而非欧氏距离，因为 Token 是类别量）：</p>
-<div class="eq multi"><span class="eqno">(7.3)</span>\[\rho=\frac{1}{L}\sum_{\ell=1}^{L}
+<div class="eq multi"><span class="eqno">(8.3)</span>\[\rho=\frac{1}{L}\sum_{\ell=1}^{L}
 \mathbb{1}\big[z^{\text{cmc}}_\ell\neq z^{\text{teacher}}_\ell\big]\in[0,1].\]</div>
 <p>若模型真的对轨迹敏感，换一条转向 90° 的轨迹应当显著改变 $\rho$。实测 Crouch 只有
   $\rho=2.1\%$、$\Delta_{\text{local}}=0.50$ cm，这组小数字正是"模型没响应蹲伏状态"的量化证据。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 10</b>：控制器条件探针。局部关节 RMS 变化衡量「模型对轨迹变化的敏感度」；
+  <p class="caption"><b>表 13</b>：控制器条件探针。局部关节 RMS 变化衡量「模型对轨迹变化的敏感度」；
     Actor 转向与生成身体转向的差衡量「世界朝向变化的来源」。</p>
   <table>
     <thead>
@@ -994,20 +1157,20 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
     <b>不能</b>据此宣称模型学会了转弯或蹲伏。</p>
 </div>
 
-<h3 class="sub">7.6&nbsp;&nbsp;上限诊断：解码器缺的是什么</h3>
+<h3 class="sub">8.6&nbsp;&nbsp;上限诊断：解码器缺的是什么</h3>
 <p>为了区分「主干预测错了」与「解码器条件不足」，我们做了一个故意的 oracle 实验。
   固定 Token（$z^{\text{cmc}}_\ell\equiv z^{\text{teacher}}_\ell$）后，
   误差的分解为</p>
-<div class="eq multi"><span class="eqno">(7.4)</span>\[\underbrace{\mathrm{RMSE}(\hat{\mathbf{p}}(\mathbf{c}^{\text{ext}}=\mathbf{0}))}_{\text{零外部}}
+<div class="eq multi"><span class="eqno">(8.4)</span>\[\underbrace{\mathrm{RMSE}(\hat{\mathbf{p}}(\mathbf{c}^{\text{ext}}=\mathbf{0}))}_{\text{零外部}}
 \;-\;\underbrace{\mathrm{RMSE}(\hat{\mathbf{p}}(\mathbf{c}^{\text{ext}}=\mathbf{c}^{\star}))}_{\text{oracle}}
 =\;\underbrace{\Delta_{\text{dec}}}_{\text{解码条件缺失}},\]</div>
 <p>其中 $\mathbf{c}^{\star}$ 是来源未来的 pose-feature Root——<strong>推理期不可得</strong>。
-因此式 (7.4) 右端是上界诊断的量，不是可部署收益。若 $\Delta_{\text{dec}}$ 很小，
+因此式 (8.4) 右端是上界诊断的量，不是可部署收益。若 $\Delta_{\text{dec}}$ 很小，
 说明瓶颈在主干；若很大，说明瓶颈在解码条件。实测 Walk 的
-$\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ cm（§7.6 表 11）。</p>
+$\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ cm（§8.6 表 14）。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 11</b>：解码器 pose-root oracle 诊断。Token 完全相等（已逐项校验），
+  <p class="caption"><b>表 14</b>：解码器 pose-root oracle 诊断。Token 完全相等（已逐项校验），
     唯一变化是解码器的外部 Root 条件。这是<strong>未来真值泄漏的离线上界</strong>，不是可部署效果。</p>
   <table>
     <thead><tr><th>片段</th><th class="num">关节 RMSE (cm)<br>零外部 → oracle</th><th class="num">接触脚速 (m/s)<br>零外部 → oracle</th><th class="num">脚速 RMSE (m/s)<br>零外部 → oracle</th></tr></thead>
@@ -1023,9 +1186,9 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
     因此这组数不能解释全部脚滑，也不能当作「补上这个条件就好了」的证据。</p>
 </div>
 
-<h3 class="sub">7.7&nbsp;&nbsp;推理时延</h3>
+<h3 class="sub">8.7&nbsp;&nbsp;推理时延</h3>
 <div class="tblwrap">
-  <p class="caption"><b>表 12</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
+  <p class="caption"><b>表 15</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
     计 3 条 × 3 次同步前向）。不含数据准备、UE NNE、蒙皮、渲染与线程调度。</p>
   <table>
     <thead><tr><th>条件</th><th class="num">P50 (ms)</th><th class="num">P95 (ms)</th><th class="num">4 帧预算 @30 Hz (ms)</th><th>是否在预算内</th></tr></thead>
@@ -1039,9 +1202,9 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
     两个数字属于不同任务与不同模型，<b>不能相加或互相替代</b>。</p>
 </div>
 
-<h2 class="sec">8&nbsp;&nbsp;讨论、局限与缺陷清单</h2>
+<h2 class="sec">9&nbsp;&nbsp;讨论、局限与缺陷清单</h2>
 
-<h3 class="sub">8.1&nbsp;&nbsp;这份报告能支撑什么</h3>
+<h3 class="sub">9.1&nbsp;&nbsp;这份报告能支撑什么</h3>
 <ul>
   <li>Tokenizer 加 Pose Token 的两段式链路在本仓库跑通：数据、训练、检查点、离线推理、视频导出全链路可复现。</li>
   <li>固定验证口径下，20k 训练相对 2k 显著改善 Token 预测（−21.9%），且该改善在三个类别上方向一致。</li>
@@ -1049,9 +1212,9 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
   <li>时延在 Python 前向层面有约 6 倍余量（P95 21 ms 对 133 ms 预算）。</li>
 </ul>
 
-<h3 class="sub">8.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
+<h3 class="sub">9.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
 <div class="tblwrap">
-  <p class="caption"><b>表 13</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
+  <p class="caption"><b>表 16</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
   <table>
     <thead><tr><th>问题</th><th>当前状态</th></tr></thead>
     <tbody>
@@ -1061,12 +1224,12 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
       <tr><td>Token 改善等于姿态改善吗</td><td class="bad">不等。Run 的 CE 降 15%，世界 RMSE 却由 7.36 升到 12.00 cm。</td></tr>
       <tr><td>两种模型是严格消融吗</td><td>不是。历史长度 24 vs 4 帧、架构不同、参数量不同，属产品路线对照。</td></tr>
       <tr><td>时延满足 UE 实时预算吗</td><td>部分。Python 前向有余量，但 UE 侧全过程未测。</td></tr>
-      <tr><td>SOMA 全库都训了吗</td><td>没有。训练视图快照 34,167 / 73,101，构建未完成；本报告的结果全部来自 1,722 段 UE 数据。</td></tr>
+      <tr><td>SOMA 全库都训了吗</td><td>数据已建成，模型未训。训练视图 72,933 条覆盖登记总量 73,101 条的 99.77%，四场景齐全；但本报告的全部结果仍来自 1,722 段 UE 数据，SOMA 训练尚未开始。</td></tr>
     </tbody>
   </table>
 </div>
 
-<h3 class="sub">8.3&nbsp;&nbsp;方法论上的经验</h3>
+<h3 class="sub">9.3&nbsp;&nbsp;方法论上的经验</h3>
 <p>这次工作中最值得记录的不是某个指标，而是三处「差点把结论写错」的地方：</p>
 <ol>
   <li><b>把 Actor 相对的骨盆特征当成 CMC Root。</b>后果是把「模型跟随控制器」这一命题的验证污染了。
@@ -1078,11 +1241,11 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
 </ol>
 <p>共同点是：<strong>指标本身没错，错的是指标所依附的对象身份</strong>。
   因此本报告把每个数字都附上它所属的条件（教师轨迹 / 控制器轨迹 / oracle），
-  并在表 6 与表 13 中显式列出不可跨越的边界。</p>
+  并在表 9 与表 16 中显式列出不可跨越的边界。</p>
 
-<h2 class="sec">9&nbsp;&nbsp;结论与下一步</h2>
+<h2 class="sec">10&nbsp;&nbsp;结论与下一步</h2>
 <p>MotionWeaver 已经建成一条可追溯的数据与训练链路：两套骨骼数据汇入同一目标骨架，
-  分词器与姿态主干可分离训练与替换，评测口径被冻结并可复现，
+  分词器与姿态主干可分离训练与替换，评测口径被冻结并可复现，训练链路已可直接读取四键 NPZ 训练视图（§6），
   20,000 步训练在 Token 层面给出确定的改善。同时，世界姿态、接触质量与控制器响应三项指标
   明确未达标，我们据此把当前检查点定位为<strong>可复现的基线</strong>，而不是可用产品。</p>
 
@@ -1090,14 +1253,14 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
 <ol>
   <li><b>补齐在线可得条件。</b>把 Crouch / Gait / RotationMode 状态，以及 CMC 实际提供的
       短时轨迹作为显式输入与掩码，替代当前「用来源未来 Root 当条件」的做法。</li>
-  <li><b>修正解码器条件。</b>§7.6 表明 pose-root 条件是部分误差来源；
+  <li><b>修正解码器条件。</b>§8.6 表明 pose-root 条件是部分误差来源；
       需要设计一个<strong>推理期可得</strong>的替代量（例如模型自预测的骨盆高度先验），
       并证明它不是变相的未来泄漏。</li>
   <li><b>把 SOMA 数据真正接进训练。</b>训练视图仍在构建；接入前必须先按来源家族 / 会话 / 镜像组划分，
       再生成窗口，否则会产生跨分区泄漏。</li>
   <li><b>完成 UE 闭环。</b>NNE 导出、AnimGraph 重建、动画线程推理、蒙皮播放，以及
       4 帧步长加播放延迟下的可操控体验，都需要在真实场景里验收。</li>
-  <li><b>用程序化模块兜住确定性约束。</b>按表 5 的分工接入 Warping 与 Foot IK，
+  <li><b>用程序化模块兜住确定性约束。</b>按表 8 的分工接入 Warping 与 Foot IK，
       并实测回退阈值是否合理。</li>
 </ol>
 <p>每一项目标都要同时报告 Token CE、世界姿态、接触脚速与 UE 实测四项，
@@ -1130,7 +1293,7 @@ python -u -m training.pretrain.train_unreal --model pose --dataset ../dataset --
       <tr><td><code>docs/experiments/2026-09-28-motionweaver-a800-actor-root.md</code></td><td>20k 训练与本地验收的完整记录</td></tr>
       <tr><td><code>…/assets/…/metrics.csv</code></td><td>20,119 行逐步训练日志</td></tr>
       <tr><td><code>…/assets/…/val_token_ce_2k.json</code>、<code>…_20k.json</code></td><td>固定验证集的 Token CE 与索引集合</td></tr>
-      <tr><td><code>…/assets/…/motionweaver_20k_acceptance_summary_20260928.json</code></td><td>本报告 §7.3–§7.7 的数值来源</td></tr>
+      <tr><td><code>…/assets/…/motionweaver_20k_acceptance_summary_20260928.json</code></td><td>本报告 §8.3–§8.7 的数值来源</td></tr>
       <tr><td><code>…/assets/…/config.yaml</code></td><td>训练配置（含 VQ 哈希、调度器与条件 profile）</td></tr>
       <tr><td><code>docs/experiments/2026-10-18-soma-processing-speed.md</code></td><td>吞吐优化与 24 次等价核对</td></tr>
       <tr><td><code>docs/soma-training-execution-plan.md</code></td><td>双帧率对齐、场景划分、窗口与 Token 预算</td></tr>
