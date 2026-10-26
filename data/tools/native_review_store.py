@@ -29,17 +29,23 @@ def load_native_review_inputs(index_path, data_root):
     summary = json.loads((index_path.parent / "acceptance.json").read_text(encoding="utf-8"))
     if summary["raw_and_processed_readback_errors"] or summary["source_endpoint_gaps"] or summary.get("recomposition_errors"):
         raise ValueError("该批次的回读审计未通过")
+    # 批次可显式声明要纳入审核的结果状态；待复核队列需要展示失败条目本身。
+    # 未声明时保持历史默认：只纳入 normalized，绝不把失败项混进合格名单。
+    included = summary.get("included_statuses") or ["normalized"]
+    if "normalized" not in included and summary["status_counts"].get("normalized"):
+        raise ValueError("批次声明不纳入 normalized，但仍记录了 normalized 计数")
     records = {}
     for batch in summary["batches"]:
         path = (index_path.parent.parent / batch / "run.json").resolve()
         if not path.is_relative_to(data_root / "reports"):
             raise ValueError("批次报告路径越界")
         report = json.loads(path.read_text(encoding="utf-8"))
-        records.update({r["source_id"]: r for r in report["results"] if r["status"] == "normalized"})
+        records.update({r["source_id"]: r for r in report["results"] if r["status"] in included})
     payload = index_path.read_bytes()
     with index_path.open(encoding="utf-8-sig", newline="") as stream:
         rows = list(csv.DictReader(stream))
-    if not rows or len(rows) != summary["status_counts"]["normalized"]:
+    expected_rows = sum(summary["status_counts"].get(status, 0) for status in included)
+    if not rows or len(rows) != expected_rows:
         raise ValueError("索引数量与验收汇总不一致")
     entries = []
     for row in rows:
@@ -56,7 +62,9 @@ def load_native_review_inputs(index_path, data_root):
                         "reason": f"{row['joints']} 骨骼 · {row['frames']} 帧 · {float(row['duration']):.2f} 秒 · 视觉待审核",
                         "raw": row["raw"], "processed": row["processed"],
                         "raw_sha256": record["raw_sha256"], "processed_sha256": record["processed_sha256"],
-                        "source_sha256": record["processed_sha256"]["arrays.bin"]})
+                        # 待复核条目的二进制品是来源数据，可能没有 arrays.bin；
+                        # 缺失时留空，而不是让整份名单崩溃。
+                        "source_sha256": record["processed_sha256"].get("arrays.bin")})
         if "retarget" in record:
             entries[-1].update(retarget=record["retarget"], source_processed=record["source_processed"],
                                source_processed_sha256=record["source_processed_sha256"],

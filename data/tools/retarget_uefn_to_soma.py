@@ -206,7 +206,9 @@ def prepare_unresolved_review(source_index, retry_report, data_root, run_id):
     for entry in entries:
         if entry["asset"] not in failures:
             continue
-        record = {"status": "normalized", "source_id": entry["asset"], "raw": entry["raw"],
+        # 状态必须如实反映结果：这些条目重试后仍未产出 SOMA 目标，不能计入 normalized，
+        # 否则任何只按 status=="normalized" 过滤的消费者都会把它们当成合格输出。
+        record = {"status": "needs_skeleton_review", "source_id": entry["asset"], "raw": entry["raw"],
                   "processed": entry["processed"], "raw_sha256": entry["raw_sha256"],
                   "processed_sha256": entry["processed_sha256"], "review_flags": ["needs_skeleton_review"],
                   "review_reason": "重试后仍需核对：" + failures[entry["asset"]], "retarget_status": "unresolved"}
@@ -221,8 +223,13 @@ def prepare_unresolved_review(source_index, retry_report, data_root, run_id):
         writer.writeheader()
         writer.writerows(rows)
     (report / "run.json").write_text(json.dumps({"scope": "native_source_review_for_failed_retarget",
-         "retry_report": str(retry_path), "results": records}, ensure_ascii=False, indent=2), encoding="utf-8")
-    (report / "acceptance.json").write_text(json.dumps({"batches": [run_id], "status_counts": {"normalized": len(rows)},
+         "retry_report": str(retry_path), "included_statuses": ["needs_skeleton_review"], "results": records},
+        ensure_ascii=False, indent=2), encoding="utf-8")
+    # 本批次只展示失败条目的来源骨架供人工核对，从未产出 SOMA 结果：
+    # 因此 normalized 计数为 0，并把要纳入审核的状态显式声明出来。
+    (report / "acceptance.json").write_text(json.dumps({
+         "batches": [run_id], "status_counts": {"normalized": 0, "needs_skeleton_review": len(rows)},
+         "included_statuses": ["needs_skeleton_review"],
          "raw_and_processed_readback_errors": [], "source_endpoint_gaps": [], "scope": "native_source_review_only",
          "retargeted_clips": 0}, ensure_ascii=False, indent=2), encoding="utf-8")
     return report / "export-index.csv"
