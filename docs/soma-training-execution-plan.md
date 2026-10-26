@@ -528,10 +528,14 @@ for i in range(down_t):
 | --- | --- |
 | GPU | 本机 RTX 4070 Laptop 8GB（历史实验用）；S5 起需评估是否租用云 GPU |
 | 120fps + 78 骨序列长度 | `tokenizer` 输入为 48 帧（A）/ 72 帧（B/C）× 78 骨 × 特征维，需 S2 实测显存 |
-| 单 tokenizer 训练时长 | **未测**，S2 后补 |
+| 单 tokenizer 训练时长 | **已测**（2026-10-27）：42,792 步 / 3 epoch 约 30 分钟；实测 22–25 it/s、每步 40–45 ms、显存约 3.3 GB（bs=4、FP32、num_workers=4 且 persistent_workers）。数据加载优化见 `docs/soma-training-performance-analysis.md` |
+| 码本初始化方式 | **已做 A/B**（2026-10-27）：`kmeans_init=false` 末段总 loss 0.6138，`=true` 为 0.8250，前者胜出，故保持默认 false。详见 `docs/soma-tokenizer-codebook-init-ab.md` |
 | S2→S10 里程碑日期 | **未定**，需在 S2 完成后排期 |
 
-**这是方案的已知缺口**：在没有实测显存与单步耗时之前，无法给出可信的训练时长与 GPU 需求。
+**这曾是方案的已知缺口，现已补齐单步耗时与显存两项。** 训练端改为直接读四键 NPZ
+并在 DataLoader worker 内实时计算接触与特征后，单步耗时从早期估算的 156.7 ms
+降到 40–45 ms，3 epoch 的量级因此从「数小时」降到约半小时。
+仍然缺的是云端 GPU 的对应实测。
 
 ### 8.5 评测的帧率覆盖
 
