@@ -32,7 +32,7 @@ DEFAULT_HTML = PAPER_DIR / "main.html"
 DEFAULT_PDF = PAPER_DIR / "MotionWeaver-technical-report.pdf"
 
 # Chromium 打印 PDF 时的固定等待：等字体与图片就绪，避免首屏空白。
-VIRTUAL_TIME_BUDGET_MS = 15000
+VIRTUAL_TIME_BUDGET_MS = 30000
 
 
 def _env(name: str) -> str:

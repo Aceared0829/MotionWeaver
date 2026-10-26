@@ -6,6 +6,26 @@
 <title>MotionWeaver：以离散姿态 Token 驱动的角色动画生成技术报告</title>
 <meta name="author" content="赵梓宁 (Zining Zhao)">
 <meta name="description" content="MotionWeaver 技术报告初稿：数据管线、离散姿态 Token 主干、20k 步训练与离线/控制器条件对照证据。">
+<!-- 数学排版：本地随附 MathJax 3（SVG 输出），不依赖 CDN，离线与内网可用。
+     SVG 把字形路径直接写进页面，因此打印成 PDF 时不需要安装 TeX 字体。 -->
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [["$", "$"], ["\\(", "\\)"]],
+    displayMath: [["\\[", "\\]"]],
+    processEscapes: true,
+    tags: "none",
+    macros: {
+      R: "\\mathbb{R}",
+      d: "\\mathrm{d}"
+    }
+  },
+  svg: { fontCache: "local", scale: 1.0, mtextInheritFont: true },
+  options: { enableMenu: false, renderActions: { addMenu: [] } },
+  startup: { typeset: true }
+};
+</script>
+<script id="MathJax-script" async src="vendor/tex-svg-full.js"></script>
 <style>
 /* ============================================================
    arXiv 风格排版：单栏、Times 系衬线、booktabs 表格、
@@ -101,6 +121,45 @@ pre{
   page-break-inside:avoid;
 }
 pre code{background:none;padding:0;font-size:1em}
+
+/* ---------- 公式 ---------- */
+/* 公式块：overflow:hidden 建立 BFC，令内部 SVG 高度参与流式布局。
+   若对含 SVG 的块使用 break-inside:avoid，浏览器会把整块推到下一页而产生整页空白
+   （实测第 4 页被推成近乎空白）。故只有单行公式才禁断。 */
+.eq{
+  margin:14px 0;position:relative;overflow:hidden;
+  padding-right:3.6em;text-align:center;
+}
+.eq:not(.multi){break-inside:avoid;page-break-inside:avoid}
+.eq mjx-container[display="true"]{
+  display:block;margin:0 auto !important;max-width:100% !important;
+}
+.eq mjx-container[display="true"] svg{max-width:100%;height:auto}
+.eq .eqno{
+  position:absolute;right:0;top:50%;transform:translateY(-50%);
+  font-size:.86rem;color:var(--ink-soft);
+}
+mjx-container{color:var(--ink) !important}
+p mjx-container:not([display="true"]){margin:0 .1em !important}
+/* 符号表：用表格保证「符号—含义」两列对齐，且行内公式保持行内 */
+.terms{
+  margin:16px 0;font-size:.85rem;line-height:1.75;
+  border-top:.7px solid var(--rule);border-bottom:.7px solid var(--rule);
+  page-break-inside:avoid;break-inside:avoid;
+}
+.terms table{width:100%;border-collapse:collapse}
+.terms td{padding:2px 6px;vertical-align:top;border:0}
+.terms td.sym{width:7.2em;white-space:nowrap;text-align:left}
+.terms td.txt{color:var(--ink-soft)}
+.terms tr.grp td{
+  font-weight:700;color:var(--ink);padding-top:7px;
+  border-top:.5px dotted var(--rule);
+}
+.terms tr.grp:first-child td{border-top:0;padding-top:1px}
+.terms mjx-container:not([display="true"]){margin:0 .05em !important}
+@media print{
+  mjx-container[display="true"]{break-inside:avoid}
+}
 figure{margin:22px 0;text-align:center;page-break-inside:avoid;break-inside:avoid}
 figure img{max-width:100%;height:auto;display:block;margin:0 auto 9px}
 figcaption{
@@ -122,7 +181,7 @@ thead th{
   font-weight:700;text-align:left;padding:6px 7px;border-top:1.4px solid var(--rule-strong);
   border-bottom:.7px solid var(--rule-strong);vertical-align:bottom;
 }
-tbody td{padding:5px 7px;border:0;vertical-align:top;overflow-wrap:anywhere}
+tbody td{padding:5px 7px;border:0;vertical-align:top;overflow-wrap:break-word}
 tbody tr:last-child td{border-bottom:1.4px solid var(--rule-strong)}
 tbody td.num,thead th.num{text-align:right;font-variant-numeric:tabular-nums}
 tr.rule td{border-top:.7px solid var(--rule)}
@@ -208,6 +267,10 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   the source motion; and replacing the trajectory with a recorded CMC capture changes local joint poses by
   only 0.50 cm under a 90 degree turn, with crouch state unobserved. We therefore state the capability
   boundary explicitly rather than inferring playable quality from a falling token loss.</p>
+  <p>形式上，本报告把它定义为一个<strong>以离散姿态码为目标的掩码条件预测问题</strong>（§3）：
+  给定 $h$ 帧历史姿态与一条外部 Actor 轨迹，最大化未来姿态码的对数似然（式 3.7）。
+  损失函数、评测指标与硬约束投影都写成可复核的显式定义，
+  使每个数字都能追溯到它对应的数学对象（§5、§6）。</p>
   <p class="keywords"><b>关键词</b>：动作生成 · 离散姿态 Token · VQ-VAE · 角色动画 · Unreal Engine · 数据管线</p>
 </section>
 
@@ -228,21 +291,21 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 <p>技术路线上我们沿用 NVIDIA GR00T-WholeBodyControl 仓库中 MotionBricks 的做法：先把动作离散化为
   姿态 Token，再在 Token 空间做序列预测。离散化的好处是模型只需预测有限码本上的索引，误差不会像
   逐关节回归那样直接累积到厘米级的关节位置上；代价是量化误差与解码器条件的耦合，这一点在
-  §6.6 的 oracle 诊断里被量化了。</p>
+  §7.6 的 oracle 诊断里被量化了。</p>
 
 <p>本报告的三点贡献是：</p>
 <ul>
   <li><b>一条可追溯的双来源数据管线。</b>UE 导出与 SOMA 通用动作在统一的 78 节点目标骨架上汇合，
       每条 clip 带内容哈希、帧率分组与显式边界声明（§3）。</li>
   <li><b>一组可复现的固定口径评测。</b>冻结验证集、冻结划分、冻结随机种子，同时报告
-      Token 级指标、世界姿态指标、接触指标与控制器条件探针（§5、§6）。</li>
+      Token 级指标、世界姿态指标、接触指标与控制器条件探针（§6、§7）。</li>
   <li><b>一份如实的能力边界陈述。</b>我们把退化案例、缺失条件以及「哪些数字不能当成在线能力」
-      逐条写进报告与附录（§7）。</li>
+      逐条写进报告与附录（§8）。</li>
 </ul>
 
 <div class="callout">
   <span class="lbl">阅读方式</span> —— 本报告刻意把「训练指标改善」与「产品可用」分成两件事陈述。
-  §6.1–§6.2 是学习信号，§6.3–§6.5 是离线质量，§6.6 是上限诊断，§7 是缺陷清单。
+  §7.1–§7.2 是学习信号，§7.3–§7.5 是离线质量，§7.6 是上限诊断，§8 是缺陷清单。
   任何一节单独拿出来都不足以支撑「模型可用」的结论。
 </div>
 
@@ -266,7 +329,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   Robust Motion In-betweening 用带噪插值策略学习关键帧之间的补间<span class="mono">[13]</span>，
   扩散式方法进一步放宽了关键帧的约束形式<span class="mono">[14]</span>。</p>
 <p>MotionWeaver 的位置介于两支之间：它借用学习式生成来表达资产库之外的姿态，
-  但把确定性约束（步幅、朝向、脚部贴地）交给 Warping 与 IK 这类程序化模块（§4.4），
+  但把确定性约束（步幅、朝向、脚部贴地）交给 Warping 与 IK 这类程序化模块（§5.4），
   并用阈值化的回退路径保证失败可控。</p>
 
 <h3 class="sub">2.3&nbsp;&nbsp;与上游项目的关系</h3>
@@ -275,7 +338,79 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   独立 Actor Root sidecar、玩家状态条件接口，以及 Windows 本地推理与导出工具。
   上游权重与本仓库训练权重严格区分，报告中的任何指标都来自本仓库自己的检查点。</p>
 
-<h2 class="sec">3&nbsp;&nbsp;数据管线</h2>
+<h2 class="sec">3&nbsp;&nbsp;问题形式化</h2>
+
+<p>本节把「由玩家控制状态生成全身姿态」写成显式优化问题。公式里出现的每个符号都在下表定义，
+后续所有损失、指标与约束只用这些符号。这样做不是因为偏好形式化，而是为了修掉我们在 §8.3
+记录的三次误判——它们的共同点是<strong>同一个符号在不同章节指代了不同对象</strong>。</p>
+
+<div class="terms">
+  <table>
+    <tbody>
+    <tr class="grp"><td class="sym"></td><td class="txt">时间与索引</td></tr>
+    <tr><td class="sym">$T,\;h$</td><td class="txt">窗口帧数与历史帧数。本系统 $T=24$，$h=4$（30 FPS 下 $h$ 恰为 133 ms）。</td></tr>
+    <tr><td class="sym">$t,\ \ell$</td><td class="txt">帧索引 $t\in\{1,\dots,T\}$；Token 索引 $\ell\in\{1,\dots,L\}$。</td></tr>
+    <tr class="grp"><td class="sym"></td><td class="txt">骨架与位姿</td></tr>
+    <tr><td class="sym">$J$</td><td class="txt">关节数。UE 侧 $J=79$（骨），SOMA 侧 $J=78$（节点）。</td></tr>
+    <tr><td class="sym">$\mathbf{p}_t^{j}\in\R^{3}$</td><td class="txt">第 $t$ 帧第 $j$ 关节的<b>世界</b>位置，米制。</td></tr>
+    <tr><td class="sym">$\mathbf{R}_t^{j}\in SO(3)$</td><td class="txt">第 $t$ 帧第 $j$ 关节的世界旋转（单位四元数或 $3\times3$ 正交阵）。</td></tr>
+    <tr><td class="sym">$\mathbf{q}_t\in\R^{7}$</td><td class="txt">第 $t$ 帧 Actor 世界轨迹位姿 $(x,y,z,\,q_x,q_y,q_z,q_w)$，Y 轴向上。</td></tr>
+    <tr><td class="sym">$\mathbf{b}_t^{j}$</td><td class="txt">Actor 相对的<b>身体</b>位姿，$\mathbf{b}_t^{j}=\mathbf{q}_t^{-1}\odot(\mathbf{p}_t^{j},\mathbf{R}_t^{j})$。</td></tr>
+    <tr class="grp"><td class="sym"></td><td class="txt">离散码本</td></tr>
+    <tr><td class="sym">$K$</td><td class="txt">码本大小（Token 词表规模）。</td></tr>
+    <tr><td class="sym">$\mathcal{C}=\{\mathbf{e}_k\}_{k=1}^{K}$</td><td class="txt">码本，$\mathbf{e}_k\in\R^{d}$。</td></tr>
+    <tr><td class="sym">$Z=\{z_t\}_{t=1}^{T}$</td><td class="txt">姿态 Token 序列，$z_t\in\{1,\dots,K\}$。</td></tr>
+    <tr class="grp"><td class="sym"></td><td class="txt">损失与阈值</td></tr>
+    <tr><td class="sym">$\mathcal{M}$</td><td class="txt">被遮住的位置集合，$|\mathcal{M}|=\lceil rT\rceil$，本系统 $r=0.8$。</td></tr>
+    <tr><td class="sym">$\epsilon$</td><td class="txt">接触期容许脚速，来源动作实测 0.03–0.07 m/s。</td></tr>
+    <tr><td class="sym">$\lambda$</td><td class="txt">硬约束投影中的平滑权重。</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3 class="sub">3.1&nbsp;&nbsp;姿态的离散化</h3>
+<p>编码器 $E_\phi$ 把一段身体位姿压成 $L$ 个潜向量，解码器 $D_\psi$ 在外部条件下还原：</p>
+<div class="eq multi"><span class="eqno">(3.1)</span>\[\mathbf{u}_{1:L}=E_\phi\big(\mathbf{b}_{1:T}\big),\qquad
+\hat{\mathbf{b}}_{1:T}=D_\psi\big(\hat{\mathbf{u}}_{1:L},\ \mathbf{c}^{\text{ext}}\big).\]</div>
+<p>量化器把每个 $\mathbf{u}_\ell$ 吸附到码本中最近的一项：</p>
+<div class="eq multi"><span class="eqno">(3.2)</span>\[z_\ell=\arg\min_{k\in\{1,\dots,K\}}\big\|\mathbf{u}_\ell-\mathbf{e}_k\big\|_2,
+\qquad \hat{\mathbf{u}}_\ell=\mathbf{e}_{z_\ell}.\]</div>
+<p>码本由多头 EMA 更新而非梯度优化。因此主干训练时量化步是<strong>冻结</strong>的：
+主干看到的 $z_\ell$ 是常量标签，学习问题退化为干净的多类分类（§5.2）。
+这一点很关键——它使「Token 交叉熵」可以被单独报告，而不与重建误差混为一谈。</p>
+
+<h3 class="sub">3.2&nbsp;&nbsp;条件预测任务</h3>
+<p>给定 $h$ 帧历史身体姿态与未来 $T$ 帧外部 Actor 轨迹，预测未来姿态码：</p>
+<div class="eq multi"><span class="eqno">(3.3)</span>\[p_\theta\big(Z\mid\mathbf{b}_{1:h},\mathbf{q}_{h+1:h+T}\big)
+=\prod_{t=1}^{T}p_\theta\big(z_t\mid\mathbf{b}_{1:h},\ \mathbf{q}_{h+1:h+T},\ z_{\lt t}\big).\]</div>
+<p>条件里<strong>不含</strong> $\mathbf{b}_{h+1:h+T}$：未来真实姿态只作为监督目标。
+另一条更隐蔽的约束是 $\mathbf{q}_{h+1:h+T}$ 在推理期不可得——游戏里它只能来自 CMC/Mover
+或规划器，不可能等于真值。因此凡是使用 $\mathbf{q}^{\text{true}}$ 的数字都只在
+「配对教师轨迹」口径下成立，这一点在 §5.2 与 §8.2 各强调一次。</p>
+
+<h3 class="sub">3.3&nbsp;&nbsp;训练目标</h3>
+<p>采用掩码建模目标：随机遮住比例 $r$ 的姿态码，只对被遮住的位置计损失，</p>
+<div class="eq multi"><span class="eqno">(3.4)</span>\[\mathcal{L}_{\text{token}}(\theta)
+=-\frac{1}{|\mathcal{M}|}\sum_{t\in\mathcal{M}}
+\log p_\theta\big(z_t\mid\mathbf{b}_{1:h},\ \mathbf{q}_{h+1:h+T},\ Z_{\setminus\mathcal{M}}\big).\]</div>
+<p>单位是 nats（自然对数），这也是全文所有「Token CE」的口径。
+VQ-VAE 一侧的损失（本报告中被冻结，不参与主干训练）为</p>
+<div class="eq multi"><span class="eqno">(3.5)</span>\[\mathcal{L}_{\text{vq}}
+=\big\|\mathbf{b}_{1:T}-\hat{\mathbf{b}}_{1:T}\big\|_2^{2}
++\big\|\mathrm{sg}[\mathbf{u}]-\hat{\mathbf{u}}\big\|_2^{2}
++\beta\big\|\mathbf{u}-\mathrm{sg}[\hat{\mathbf{u}}]\big\|_2^{2},\]</div>
+<p>三项依次是重建、码本与承诺，$\mathrm{sg}[\cdot]$ 为停止梯度算子。
+它们的分工是：重建管解码质量，码本管码本更新，承诺管编码器不要频繁跳到别的码。</p>
+
+<h3 class="sub">3.4&nbsp;&nbsp;接触约束与它的去向</h3>
+<p>若记脚部接触指示为 $c_t^{\text{foot}}\in\{0,1\}$，接触期的理想约束是</p>
+<div class="eq multi"><span class="eqno">(3.6)</span>\[\Big\|\tfrac{\d}{\d t}\mathbf{p}_t^{\text{foot}}\Big\|_2\le\epsilon
+\qquad\text{当}\quad c_t^{\text{foot}}=1.\]</div>
+<p>式 (3.6) <strong>不进入</strong> $\mathcal{L}_{\text{token}}$。我们把脚部约束交给输出端的
+Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§7.3 报告的 0.78–0.88 m/s
+就是式 (3.6) 未被满足的量化形式。</p>
+
+<h2 class="sec">4&nbsp;&nbsp;数据管线</h2>
 
 <figure>
   <img src="figures/fig1-architecture.png" alt="MotionWeaver 系统总览：离线数据、训练、证据与诊断、在线执行四条泳道">
@@ -285,7 +420,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
     完整生成脚本见 <code>paper/generate_figures.py</code>。</figcaption>
 </figure>
 
-<h3 class="sub">3.1&nbsp;&nbsp;两个来源，一套目标骨架</h3>
+<h3 class="sub">4.1&nbsp;&nbsp;两个来源，一套目标骨架</h3>
 <p>训练数据来自两条互不相同的管道。第一条是<strong>项目自有 UE 动画</strong>：从
   <code>AnimSequence</code> 导出骨架与逐帧姿态，得到 1,722 段 79 骨、30 FPS、954 维的动作，
   划分 train 1,355 / validation 189 / test 178，三个分区的动作家族（asset family）两两交集为 0。
@@ -301,18 +436,114 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   并以内容哈希绑定；回读校验的门槛是 Root/身体重合成误差不超过 <code>1e-9 m</code>，
   实测四轮试点的最大误差为 <code>8.88e-15 m</code>。</p>
 
-<h3 class="sub">3.2&nbsp;&nbsp;Root 的离线表示：代理而非真值</h3>
+<h3 class="sub">4.2&nbsp;&nbsp;全链路：我们改了什么</h3>
+<p>本仓库不是纯粹的上游复刻。为免读者把上游能力与本项目改动混为一谈，下表逐层列出
+<strong>本项目实际修改或新增</strong>的模块，以及它在本报告中的证据位置。未列出的部分沿用上游实现。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 1</b>：全链路改动清单。"层"按数据流动方向排列；
+    "证据"指本报告中给出结果的章节，或仓库内对应的实现文件。</p>
+  <table class="dense">
+    <colgroup><col style="width:8%"><col style="width:42%"><col style="width:34%"><col style="width:16%"></colgroup>
+    <thead><tr><th>层</th><th>本项目改动</th><th>关键文件</th><th>证据</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>导出</b></td>
+        <td>UE 编辑器插件新增逐片段 SHA-1 内容身份、引擎/插件版本与导出时间戳；
+          记录 <code>clip_identity</code> 而不破坏既有 <code>clips</code> 契约</td>
+        <td><code>AILocomotionDatasetEditorModule.cpp</code></td>
+        <td>§4.1</td>
+      </tr>
+      <tr>
+        <td><b>校验</b></td>
+        <td>导入前强制核验导出清单的内容身份，不匹配即中止，不留半成品目录</td>
+        <td><code>prepare_unreal_dataset.py</code></td>
+        <td>§4.1</td>
+      </tr>
+      <tr>
+        <td><b>状态诚实性</b></td>
+        <td>重定向未解决的条目从 <code>normalized</code> 改为 <code>needs_skeleton_review</code>；
+          审核侧支持批次显式声明纳入状态</td>
+        <td><code>retarget_uefn_to_soma.py</code><br><code>native_review_store.py</code></td>
+        <td>§4.3</td>
+      </tr>
+      <tr>
+        <td><b>训练视图</b></td>
+        <td>从 Hips 合成可逆 Root 代理；四键 NPZ；按场景 × 帧率分组，绝不混批</td>
+        <td><code>soma_train_dataset.py</code></td>
+        <td>§4.2、§4.4、§4.5</td>
+      </tr>
+      <tr>
+        <td><b>批处理</b></td>
+        <td>复用世界坐标、直接算文件字节 SHA、每进程缓存骨架与目录、1 MiB 写缓冲</td>
+        <td><code>process_soma_dataset.py</code></td>
+        <td>§4.7</td>
+      </tr>
+      <tr>
+        <td><b>契约与评测</b></td>
+        <td>把训练视图封装成既有评测器可读的条件契约；一条命令跑完契约→评测→汇总</td>
+        <td><code>build_soma_contract.py</code><br><code>run_soma_eval.py</code></td>
+        <td>§6.1</td>
+      </tr>
+      <tr>
+        <td><b>模型</b></td>
+        <td>Actor Root 条件 profile（4 帧历史）；Pose Token 主干 8.28 M 可训练参数，VQ 冻结</td>
+        <td><code>motionweaver_pose_model.py</code></td>
+        <td>§5.1、§5.2</td>
+      </tr>
+      <tr>
+        <td><b>训练</b></td>
+        <td>从零 20k 步；固定验证口径；检查点哈希双向核对</td>
+        <td><code>pretrain/train_unreal.py</code></td>
+        <td>§7.1、§7.2</td>
+      </tr>
+      <tr>
+        <td><b>推理</b></td>
+        <td>给定 Actor Root 的本地推理入口；同轨与控制器轨迹双口径评估</td>
+        <td><code>inference/runtime/motionweaver.py</code></td>
+        <td>§7.3、§7.5、§7.7</td>
+      </tr>
+      <tr>
+        <td><b>约束后处理</b></td>
+        <td>硬参考姿态的等式约束投影（最小范数 + 二阶差分平滑）</td>
+        <td><code>hard_pose_constraints.py</code></td>
+        <td>§5.5</td>
+      </tr>
+      <tr>
+        <td><b>回归</b></td>
+        <td>索引重建、片段身份、未解决状态三组测试</td>
+        <td><code>tests/test_*.py</code></td>
+        <td>附录 A</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="tnotes">未列入的层（VQ-VAE 分词器结构、Pose Backbone 主干、评测器内部实现）
+    沿用上游 MotionBricks 与本项目早期版本，其来源与许可见仓库
+    <code>引用与许可说明.md</code>。表中"改动"均已有对应提交或工作树变更，
+    不是规划项。</p>
+</div>
+
+<h3 class="sub">4.3&nbsp;&nbsp;Root 的离线表示：代理而非真值</h3>
 <p>SOMA 的 <code>Root</code> 节点在多数片段中是静止的，真实运动合并在 <code>Hips</code> 上。
   因此训练用的 <code>root_track</code> 是一条<b>从 Hips 派生的代理轨迹</b>：水平位置与朝向取自 Hips，
   垂直高度全部保留在身体姿态里。该代理可逆（回读可完全恢复录制位置），
   但它不是场景中观测到的 Actor Root，输出中显式标注
   <code>root_status = offline_proxy_not_observed_actor_root</code>。</p>
+<p>形式化地，记 Hips 世界位置为 $\mathbf{h}_t=(h_x,h_y,h_z)$，则代理 Root 与身体位姿定义为</p>
+<div class="eq multi"><span class="eqno">(4.3)</span>\[\mathbf{q}_t^{\text{proxy}}=\big(h_x,\,0,\,h_z,\ \psi_t\big),\qquad
+\tilde{\mathbf{b}}_t^{j}=R_y(\psi_t)^{-1}\big(\mathbf{p}_t^{j}-(h_x,0,h_z)\big),\]</div>
+<p>其中 $\psi_t$ 为左右髋形成的前向偏航角。注意竖直分量 $h_y$ <strong>留在身体位姿里</strong>，
+因此回读可精确恢复录制位置：</p>
+<div class="eq multi"><span class="eqno">(4.4)</span>\[\mathbf{p}_t^{j}=R_y(\psi_t)\,\tilde{\mathbf{b}}_t^{j}+(h_x,0,h_z),
+\qquad \max_{j,t}\big\|\hat{\mathbf{p}}_t^{j}-\mathbf{p}_t^{j}\big\|_\infty\le 10^{-9}\ \text{m}.\]</div>
+<p>实测四轮试点的最大重合成误差为 $8.88\times10^{-15}$ m，比门槛低五个数量级。
+但必须先说清：这是<strong>离线代理</strong>，不是场景观测到的 Actor Root。</p>
 <p>这个区分不是学术洁癖。2026-09-28 的实验中，早期把
   <code>motion_*.npy</code> 里的 5 维 root（实为 Actor 相对的骨盆特征）误当作 CMC Root 使用，
   会直接污染「模型能否跟随控制器轨迹」的结论；发现问题后改为逐片段重建 sidecar，
   并用「复跑所得 1,722 个文件与上传内容逐字节一致」来确认修复。</p>
 
-<h3 class="sub">3.3&nbsp;&nbsp;接触候选：区分「未知」与「非接触」</h3>
+<h3 class="sub">4.4&nbsp;&nbsp;接触候选：区分「未知」与「非接触」</h3>
 <p>脚部接触是逐帧四值状态：<code>-1 unknown</code>、<code>0 noncontact_candidate</code>、
   <code>1 contact_candidate</code>，另有手部始终为未知。规则是几何与运动学的联合判据：
   脚使用踝/趾代理点在完整录制空间的速度（不是骨盆相对速度），
@@ -322,10 +553,16 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   <strong>不表示人工确认或传感器真值</strong>。本报告中的所有「接触脚速」指标都建立在
   这层启发式标签上，用来做相对比较，不作为绝对物理量。</p>
 
-<h3 class="sub">3.4&nbsp;&nbsp;双帧率：用 Token 时间粒度对齐，而不是用帧数</h3>
+<h3 class="sub">4.5&nbsp;&nbsp;双帧率：用 Token 时间粒度对齐，而不是用帧数</h3>
 <p>UE 来源是 30 FPS，SOMA 主库是 120.0048 FPS。直接把两者混进同一个 batch 会破坏 Token 的时间语义：
   同一个 <code>down_t</code> 在 120 FPS 下是 133 ms，在 30 FPS 下却变成 533 ms。
-  我们的做法是让<strong>每个 Token 覆盖的时间一致</strong>：</p>
+  我们的做法是让<strong>每个 Token 覆盖的时间一致</strong>。设基准帧率 $f_0=120.0048$、
+  编码器降采样层数 $\delta$（即 <code>down_t</code>），则单个 Token 覆盖</p>
+<div class="eq"><span class="eqno">(4.1)</span>\[\tau(f,\delta)=\frac{2^{\delta}}{f}\quad\text{秒},\]</div>
+<p>要让两种帧率语义等价，只需 $\tau(f_1,\delta_1)=\tau(f_0,\delta_0)$，即</p>
+<div class="eq multi"><span class="eqno">(4.2)</span>\[\delta(f)=\delta_0-\log_2\frac{f_0}{f}
+=\delta_0-\mathrm{round}\!\Big(\log_2\tfrac{f_0}{f}\Big).\]</div>
+<p>代入 $f_0=120.0048$、$f=30$ 得 $\delta(f)=\delta_0-2$。具体取值：</p>
 <pre><code>down_t(fps) = down_t(base) - round(log2(base_fps / fps))      base_fps = 120.0048
 
 场景 A（常规移动，窗口 0.4 s）
@@ -340,13 +577,13 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   层数不同意味着<strong>权重不可共享</strong>，因此每个（场景 × 帧率）组合需要独立训练分词器。
   这一条我们在早期方案里判断错了，后来按源码 <code>encdec.py:26-32</code> 纠正。</p>
 
-<h3 class="sub">3.5&nbsp;&nbsp;训练视图与当前构建进度</h3>
+<h3 class="sub">4.6&nbsp;&nbsp;训练视图与当前构建进度</h3>
 <p>训练视图是一个派生层：每条 clip 输出四键 NPZ（<code>positions / rotations / timestamps / root_track</code>），
   带 <code>fps</code> 与 <code>fps_group</code>，按组写入不同子目录，绝不混批。
   构建过程只读源数据，失败时不写 <code>dataset.json</code>（发布屏障）。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 1</b>：训练视图的实测统计量。数据由本次构建的
+  <p class="caption"><b>表 2</b>：训练视图的实测统计量。数据由本次构建的
     <code>clips.jsonl</code> 与 <code>rejected.jsonl</code> 直接聚合得到。
     该构建晚于本稿的测量时点，因此总数小于登记的 73,101 条，属进行中的快照。</p>
   <table>
@@ -366,7 +603,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
     因此表中不列该项，而不是记为零。</p>
 </div>
 
-<h3 class="sub">3.6&nbsp;&nbsp;处理吞吐：把 I/O 等待当成一等问题</h3>
+<h3 class="sub">4.7&nbsp;&nbsp;处理吞吐：把 I/O 等待当成一等问题</h3>
 <p>全库处理最初的瓶颈不在计算而在文件系统。对一条 3,769 帧动作做 profile，
   单条耗时 19.870 s，其中文件打开累计 6.912 s、目录创建 5.015 s、<code>stat</code> 2.084 s、
   替换 1.851 s，而真正的压缩只占约 0.320 s。优化保持数学过程不变，只做四件事：
@@ -374,7 +611,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   把写缓冲从默认值提到 1 MiB。没有任何回读校验被删减，精度没有降低，也没有降采样。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 2</b>：同一 8 条样本、顺序运行的端到端计时（含工作进程启动与落盘回读）。
+  <p class="caption"><b>表 3</b>：同一 8 条样本、顺序运行的端到端计时（含工作进程启动与落盘回读）。
     每轮输出到独立 run ID；OS 缓存未清空，因此只作同条件对照，不能外推为全库完成时间。</p>
   <table>
     <thead><tr><th>版本</th><th class="num">并发</th><th class="num">端到端秒数</th><th>比较</th></tr></thead>
@@ -393,9 +630,9 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
     加速比只对本样本集成立，全库平均加速未验证。</p>
 </div>
 
-<h2 class="sec">4&nbsp;&nbsp;模型</h2>
+<h2 class="sec">5&nbsp;&nbsp;模型</h2>
 
-<h3 class="sub">4.1&nbsp;&nbsp;两段式：分词器 + 姿态主干</h3>
+<h3 class="sub">5.1&nbsp;&nbsp;两段式：分词器 + 姿态主干</h3>
 <p>系统由两个可分离的网络组成。左侧是 <strong>VQ-VAE 分词器</strong>：编码器把一段窗口内的
   逐帧局部 TRS 压到潜空间，再经多头 EMA 码本量化成离散索引；解码器把索引还原为姿态特征。
   右侧是 <strong>Pose Token 主干</strong>：一个 6 层、8 头、宽度 256 的 Transformer，
@@ -403,7 +640,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   因此主干的训练目标是一个干净的「预测哪些码」的分类问题。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 3</b>：两次训练的关键配置。两轮使用同一 VQ 检查点、同一随机种子，
+  <p class="caption"><b>表 4</b>：两次训练的关键配置。两轮使用同一 VQ 检查点、同一随机种子，
     但调度器总步数不同（2,000 vs 20,000），因此<strong>不能</strong>当作「只改步数」的消融。</p>
   <table>
     <thead><tr><th>项目</th><th>2k 链式短跑</th><th>20k 正式训练</th></tr></thead>
@@ -422,7 +659,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   </table>
 </div>
 
-<h3 class="sub">4.2&nbsp;&nbsp;条件与监督的边界</h3>
+<h3 class="sub">5.2&nbsp;&nbsp;条件与监督的边界</h3>
 <p>一个训练样本包含三类信息，其可见性被严格区分：</p>
 <ul>
   <li><b>可见条件</b>：前 4 帧真实姿态（作为历史），以及由外部提供的未来 Actor 轨迹。</li>
@@ -432,22 +669,22 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 </ul>
 <p>第三点是本报告所有对照实验的解读前提。凡是标注「配对教师轨迹」的结果，
   都只说明模型在该轨迹下能生成什么，<strong>不说明它在玩家控制下能生成什么</strong>。
-  为此我们另设了一组使用「另录 CMC 轨迹」的探针（§6.5）。</p>
+  为此我们另设了一组使用「另录 CMC 轨迹」的探针（§7.5）。</p>
 
-<h3 class="sub">4.3&nbsp;&nbsp;为什么是 4 帧历史</h3>
+<h3 class="sub">5.3&nbsp;&nbsp;为什么是 4 帧历史</h3>
 <p>历史长度决定了推理延迟的下界与信息的充分性。本项目早期的轻量基线
   <code>ReferenceGuidedPose</code>（约 310 万参数，GRU 历史编码加 3 层 Transformer）使用 24 帧历史；
   MotionWeaver 的 <code>actor_root_history4_compact_v1</code> 只给 4 帧。
   这是一个刻意的取舍：4 帧 @30 FPS 是 133 ms，恰好等于一个重规划步长，
   使「上一窗口的输出立即成为下一窗口的历史」成为可能。
-  代价是模型获得的动力学信息更少，这可能是 §6.3 中 Run 退化的原因之一，
+  代价是模型获得的动力学信息更少，这可能是 §7.3 中 Run 退化的原因之一，
   但那只是假设：本报告没有做「只改历史长度」的受控实验来证明它。</p>
 
-<h3 class="sub">4.4&nbsp;&nbsp;模型与程序化的分工</h3>
+<h3 class="sub">5.4&nbsp;&nbsp;模型与程序化的分工</h3>
 <p>我们不要求模型学会「脚必须贴地」。分工如下：</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 4</b>：职责划分。最后一列的阈值是初始值，需在实测后调整；
+  <p class="caption"><b>表 5</b>：职责划分。最后一列的阈值是初始值，需在实测后调整；
     这些阈值尚未进入任何已验收的闭环，属于设计约定而非实测结论。</p>
   <table>
     <thead><tr><th>层</th><th>负责方</th><th>理由</th></tr></thead>
@@ -463,19 +700,36 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   </table>
 </div>
 
-<h3 class="sub">4.5&nbsp;&nbsp;硬参考姿态的等式约束投影</h3>
+<h3 class="sub">5.5&nbsp;&nbsp;硬参考姿态的等式约束投影</h3>
 <p>除纯生成路径外，系统还支持「给定若干时刻的硬参考姿态」这一条件形式。
-  做法是在窗口融合之后，对局部平移与旋转残差求解一个最小范数加二阶差分平滑的等式约束问题：
-  参考帧被精确投影回源局部变换，距离所有参考 8 帧以上的帧修正为零，非参考帧的真实姿态不参与求解。</p>
+  设生成输出为 $\{\mathbf{o}_t\}_{t=1}^{T}$（局部平移或旋转向量），
+  参考帧集合 $\mathcal{K}$ 上给定目标 $\mathbf{r}_k^{\star}$。我们求一个修正量 $\{\Delta_t\}$：</p>
+<div class="eq multi"><span class="eqno">(5.1)</span>\[\min_{\{\Delta_t\}}\;
+\sum_{t=1}^{T}\|\Delta_t\|_2^{2}
++\lambda\sum_{t=2}^{T-1}\big\|\Delta_{t+1}-2\Delta_t+\Delta_{t-1}\big\|_2^{2}
+\quad\text{s.t.}\quad
+\mathbf{o}_k+\Delta_k=\mathbf{r}_k^{\star},\ \ \forall k\in\mathcal{K}.\]</div>
+<p>第一项是最小范数（改动尽量小），第二项是二阶差分（改动尽量平滑，抑制抽搐），
+等式约束保证参考帧<strong>精确</strong>到位。这是一个带等式约束的二次规划，
+用拉格朗日乘子求解，规模为 $|\mathcal{K}|$ 个乘子：</p>
+<div class="eq multi"><span class="eqno">(5.2)</span>\[\begin{bmatrix} A &amp; C^{\mathsf{T}}\\ C &amp; 0\end{bmatrix}
+\begin{bmatrix}\Delta\\ \boldsymbol{\mu}\end{bmatrix}
+=\begin{bmatrix}\mathbf{0}\\ \mathbf{r}^{\star}-\mathbf{o}\end{bmatrix},\]</div>
+<p>其中 $A=I+\lambda D^{\mathsf{T}}D$，$D$ 为二阶差分矩阵，$C$ 为在 $\mathcal{K}$ 上取值的指示矩阵
+（故 $C\Delta=\mathbf{r}^{\star}-\mathbf{o}$）。解出后
+$\Delta=A^{-1}(I-C^{\mathsf{T}}(CA^{-1}C^{\mathsf{T}})^{-1}C)\,(\mathbf{r}^{\star}-\mathbf{o})$，
+与参考相距 8 帧以上的位置 $\Delta_t$ 自然为零——这是 $D^{\mathsf{T}}D$ 的局部支撑带来的，
+不是额外加的阈值。旋转侧对 $SO(3)$ 使用主值旋转向量再以四元数组合回位姿，
+避免在 $\pi$ 附近出现分支跳变。</p>
 <p>在一个用户手选 6 帧的跑酷翻越片段上（源帧 32/34/44/52/56/59），平均关节误差由
   11.322 cm 降至 6.903 cm，加速度误差由 4.008 升至 4.186 cm/帧²。参考帧位置误差为数值零
   （最大局部旋转误差小于 0.000003°），<strong>但这是约束构造的结果，不是模型预测精度</strong>。
   平滑版本明显优于直接覆盖（后者加速度误差恶化到 9.428），却仍不如软输出平滑，
   因此不能声称已消除抽搐。该路径没有速度等式、接触、碰撞或关节限位保证。</p>
 
-<h2 class="sec">5&nbsp;&nbsp;实验设置</h2>
+<h2 class="sec">6&nbsp;&nbsp;实验设置</h2>
 
-<h3 class="sub">5.1&nbsp;&nbsp;冻结的评测口径</h3>
+<h3 class="sub">6.1&nbsp;&nbsp;冻结的评测口径</h3>
 <p>为了在多次训练之间做可比，我们固定了三件事：</p>
 <ul>
   <li><b>验证集</b>：48 条片段（Walk / Run / Crouch 各 16 条），共 2,608 个监督 Token，
@@ -487,9 +741,59 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
       因此这是<strong>产品路线对照</strong>，不是「只改架构」的严格消融。</li>
 </ul>
 
-<h3 class="sub">5.2&nbsp;&nbsp;指标定义</h3>
+<h3 class="sub">6.2&nbsp;&nbsp;指标定义</h3>
+
+<p>所有指标写成公式后，"为什么 Run 的 Token CE 降了 15% 而世界误差升了 4.6 cm"这类问题
+  才有明确的讨论对象：式 (6.1) 与式 (6.2) 衡量的根本不是同一个空间。设测试片段集合为
+  $\mathcal{S}$，每段评估未来 $T=24$ 帧。</p>
+
+<p><b>关节位置误差。</b>按片段等权平均的世界关节 RMSE：</p>
+<div class="eq multi"><span class="eqno">(6.1)</span>\[\mathrm{RMSE}_{\text{pos}}
+=\frac{1}{|\mathcal{S}|}\sum_{s\in\mathcal{S}}
+\sqrt{\frac{1}{TJ}\sum_{t=1}^{T}\sum_{j=1}^{J}
+\big\|\hat{\mathbf{p}}_{s,t}^{j}-\mathbf{p}_{s,t}^{j}\big\|_2^{2}}\quad[\text{cm}],\]</div>
+<p>其中 $\hat{\mathbf{p}}$ 由身体位姿与<strong>外部轨迹</strong>复合得到：
+$\hat{\mathbf{p}}_t^{j}=\mathbf{q}_t\odot\hat{\mathbf{b}}_t^{j}$。
+因此这个指标同时依赖姿态质量与轨迹条件，换轨迹后不可直接比较（§7.5）。</p>
+
+<p><b>身体朝向误差。</b>只取水平分量，避免把翻滚分量算进来：</p>
+<div class="eq multi"><span class="eqno">(6.2)</span>\[\mathrm{RMSE}_{\text{yaw}}
+=\frac{1}{|\mathcal{S}|}\sum_{s}\sqrt{\frac{1}{T}\sum_{t=1}^{T}
+\mathrm{wrap}\!\big(\hat{\psi}_t-\psi_t\big)^{2}}\quad[^\circ],\]</div>
+<p>$\mathrm{wrap}(\cdot)$ 把角差折回 $(-180^\circ,180^\circ]$。
+注意世界朝向大部分由外部 $\mathbf{q}_t$ 决定，因此这个指标上升并不等于模型没学会转向。</p>
+
+<p><b>接触期脚速。</b>只在来源接触标签连续两帧成立时统计：</p>
+<div class="eq multi"><span class="eqno">(6.3)</span>\[v^{\text{foot}}
+=\frac{1}{|\mathcal{P}|}\sum_{(t,t+1)\in\mathcal{P}}
+\Big\|\mathbf{p}_{t+1}^{\text{foot}}-\mathbf{p}_t^{\text{foot}}\Big\|_2\cdot f_{\text{fps}}
+\quad[\text{m/s}],\]</div>
+<p>$\mathcal{P}$ 是连续接触帧对集合，$f_{\text{fps}}=30$ Hz。这是式 (3.6) 左侧的离散实现，
+标签本身是启发式的（§4.4），因此它只用于<strong>相对比较</strong>，且样本量小（5–24 帧对）。</p>
+
+<p><b>接缝速度误差。</b>衡量历史末帧到生成首帧的跳变：</p>
+<div class="eq multi"><span class="eqno">(6.4)</span>\[\varepsilon_{\text{seam}}
+=\Big\|\big(\hat{\mathbf{p}}_1-\mathbf{p}_0\big)-\big(\mathbf{p}_0-\mathbf{p}_{-1}\big)\Big\|_2
+\quad[\text{cm/帧}],\]</div>
+<p>右式第二项是历史段的末速。这一项下降说明衔接更平滑，但它<strong>不说明</strong>整体步态正确。</p>
+
+<p><b>Token 交叉熵。</b>即式 (3.4) 在验证集上的取值：</p>
+<div class="eq multi"><span class="eqno">(6.5)</span>\[\mathrm{CE}_{\text{token}}
+=\frac{1}{|\mathcal{V}|}\sum_{v\in\mathcal{V}}\Big(-\frac{1}{|\mathcal{M}_v|}
+\sum_{t\in\mathcal{M}_v}\log p_\theta\big(z_{v,t}\mid\cdot\big)\Big)\quad[\text{nats}],\]</div>
+<p>$\mathcal{V}$ 为 48 条冻结验证片段，$|\mathcal{M}_v|$ 为该片段的监督 Token 数，合计 2,608。
+这个量只反映"码分类得对不对"，<strong>不含解码误差</strong>——式 (3.1) 的 $D_\psi$
+完全不在这个指标里。式 (6.5) 与式 (6.1) 之间没有单调关系，§7.3 给出了具体反例。</p>
+
+<p><b>加速比。</b>处理吞吐用同一批样本的端到端耗时之比：</p>
+<div class="eq multi"><span class="eqno">(6.6)</span>\[S=\frac{T_{\text{base}}}{T_{\text{opt}}},\qquad
+T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
++\underbrace{\sum_i t^{\text{cpu}}_i}_{\text{FK 与特征}}
++\underbrace{\sum_i t^{\text{zip}}_i}_{\text{压缩}}.\]</div>
+<p>profiling 显示 $t^{\text{io}}$ 占 19.87 s 中的 15.86 s，$t^{\text{zip}}$ 仅 0.32 s。
+这就是为什么优化集中在 I/O 而不在压缩（§4.7）。</p>
 <div class="tblwrap">
-  <p class="caption"><b>表 5</b>：指标定义与已知口径限制。</p>
+  <p class="caption"><b>表 6</b>：指标定义与已知口径限制。</p>
   <table>
     <thead><tr><th>指标</th><th>定义</th><th>口径限制</th></tr></thead>
     <tbody>
@@ -503,9 +807,9 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   </table>
 </div>
 
-<h2 class="sec">6&nbsp;&nbsp;结果</h2>
+<h2 class="sec">7&nbsp;&nbsp;结果</h2>
 
-<h3 class="sub">6.1&nbsp;&nbsp;训练动态</h3>
+<h3 class="sub">7.1&nbsp;&nbsp;训练动态</h3>
 
 <figure>
   <img src="figures/fig2-training-loss.png" alt="20,000 步训练损失曲线，含 200 步滑动平均">
@@ -520,7 +824,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   2,000 步链式短跑记录到相似的早期下降速度，这被用来确认链路正确，
   而不是用来证明「更长的训练更好」——两者的调度器配置不同。</p>
 
-<h3 class="sub">6.2&nbsp;&nbsp;固定验证口径下的 Token 交叉熵</h3>
+<h3 class="sub">7.2&nbsp;&nbsp;固定验证口径下的 Token 交叉熵</h3>
 
 <figure>
   <img src="figures/fig3-val-token-ce.png" alt="2k 与 20k 在固定验证集上的类别 Token CE 对比">
@@ -530,7 +834,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 6</b>：固定验证集的 Token 交叉熵（nats，越低越好）。
+  <p class="caption"><b>表 7</b>：固定验证集的 Token 交叉熵（nats，越低越好）。
     两次记录使用完全相同的 manifest、sidecar 哈希与索引集合。</p>
   <table>
     <thead><tr><th>类别</th><th class="num">目标 Token</th><th class="num">2k CE</th><th class="num">20k CE</th><th class="num">相对变化</th></tr></thead>
@@ -541,11 +845,11 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
       <tr class="rule"><td><b>总体</b></td><td class="num">2,608</td><td class="num">1.8620</td><td class="num">1.4536</td><td class="num good">−21.9%</td></tr>
     </tbody>
   </table>
-  <p class="tnotes">注：Run 的改善幅度最小（−15.0%），与 §6.3 中 Run 的世界姿态退化方向一致，
+  <p class="tnotes">注：Run 的改善幅度最小（−15.0%），与 §7.3 中 Run 的世界姿态退化方向一致，
     是「Token 级改善未必传导到世界姿态」的一个具体例子。</p>
 </div>
 
-<h3 class="sub">6.3&nbsp;&nbsp;同轨迹下的世界姿态与接触</h3>
+<h3 class="sub">7.3&nbsp;&nbsp;同轨迹下的世界姿态与接触</h3>
 
 <figure>
   <img src="figures/fig4-trajectory.png" alt="同来源 Actor Root 下的姿态 RMSE 与接触脚速对照">
@@ -555,7 +859,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 7</b>：同轨迹循环片段的世界姿态与接触指标。
+  <p class="caption"><b>表 8</b>：同轨迹循环片段的世界姿态与接触指标。
     RMSE 与脚速之外的列用于诊断衔接与朝向。</p>
   <table>
     <thead>
@@ -610,7 +914,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 8</b>：接触停止片段的完整指标。停止片段的接触帧对更多，
+  <p class="caption"><b>表 9</b>：接触停止片段的完整指标。停止片段的接触帧对更多，
     因此接触脚速比循环片段更可信；但样本量仍在 10–24 帧对的量级。</p>
   <table>
     <thead>
@@ -628,20 +932,29 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   </table>
 </div>
 
-<h3 class="sub">6.4&nbsp;&nbsp;为什么 Run/Crouch 会退化：一个可检验的解释</h3>
-<p>数据审计给出了一条线索。独立 Actor Root 的水平速度分布（米/秒，按帧汇总，排除补齐帧）：</p>
+<h3 class="sub">7.4&nbsp;&nbsp;为什么 Run/Crouch 会退化：一个可检验的解释</h3>
+<p>数据审计给出了一条线索。记第 $i$ 条片段的 Actor 水平速度为
+  $v_t=\|\mathbf{q}_{t+1}[xz]-\mathbf{q}_t[xz]\|_2\cdot f_{\text{fps}}$，
+  统计其分位数 $Q_{0.1},\,Q_{0.5},\,Q_{0.9}$（米/秒，按帧汇总，排除补齐帧）：</p>
 <ul>
   <li>Walk（48,443 帧差）：p10 / p50 / p90 = <b>1.291 / 1.650 / 2.000</b></li>
   <li>Run（33,734 帧差）：<b>1.247 / 3.750 / 5.000</b></li>
   <li>Crouch（40,112 帧差）：<b>1.453 / 1.650 / 2.250</b></li>
 </ul>
 <p>而评估所用 CMC 轨迹的速度是 Walk 1.4、Run 4.0、Crouch 0.8 m/s。
+  定义分布偏移量为 CMC 速度在训练分布中的分位位置，
+  以 $Q_{0.1}$ 为下界则 Crouch 的偏移可写成</p>
+<div class="eq multi"><span class="eqno">(7.1)</span>\[\kappa=\frac{Q_{0.1}-v^{\text{cmc}}}{Q_{0.1}}
+=\frac{1.453-0.800}{1.453}\approx 0.449,\]</div>
+<p>即 CMC 的蹲伏速度比训练分布的 $p_{10}$ 还低约 <b>45%</b>。相比之下
+  Walk 的 $\kappa=(1.291-1.4)/1.291\approx-0.084$（略低于 $p_{10}$ 之下但符号相反，
+  说明仍在分布边缘），Run 的 4.0 落在 $[1.247,\,5.000]$ 内、$\kappa\lt 0$。
   也就是说：Walk 落在训练分布低端、Run 在分布内、<b>Crouch 0.8 明显低于训练的 p10</b>。
   这解释了 Crouch 退化的一部分——模型没有见过这么慢的蹲伏位移，
   而且它<strong>也没有显式的 Crouch 状态输入</strong>。
   这是一条解释，不是一条已完成的因果证明：要证明它需要一次只改速度分布的受控实验，我们尚未做。</p>
 
-<h3 class="sub">6.5&nbsp;&nbsp;控制器条件探针：换一条轨迹会发生什么</h3>
+<h3 class="sub">7.5&nbsp;&nbsp;控制器条件探针：换一条轨迹会发生什么</h3>
 
 <figure>
   <img src="figures/fig6-cmc-sensitivity.png" alt="换用另录 CMC 轨迹后局部关节姿态的变化幅度">
@@ -651,8 +964,18 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
     但该状态<strong>没有</strong>输入模型。</figcaption>
 </figure>
 
+<p>敏感度用两个量刻画。第一个是 Actor 局部关节的 RMS 变化：</p>
+<div class="eq multi"><span class="eqno">(7.2)</span>\[\Delta_{\text{local}}
+=\sqrt{\frac{1}{TJ}\sum_{t,j}\big\|\hat{\mathbf{b}}^{\text{cmc},j}_t
+-\hat{\mathbf{b}}^{\text{teacher},j}_t\big\|_2^{2}}\quad[\text{cm}],\]</div>
+<p>第二个是离散 Token 的<strong>不一致比例</strong>（而非欧氏距离，因为 Token 是类别量）：</p>
+<div class="eq multi"><span class="eqno">(7.3)</span>\[\rho=\frac{1}{L}\sum_{\ell=1}^{L}
+\mathbb{1}\big[z^{\text{cmc}}_\ell\neq z^{\text{teacher}}_\ell\big]\in[0,1].\]</div>
+<p>若模型真的对轨迹敏感，换一条转向 90° 的轨迹应当显著改变 $\rho$。实测 Crouch 只有
+  $\rho=2.1\%$、$\Delta_{\text{local}}=0.50$ cm，这组小数字正是"模型没响应蹲伏状态"的量化证据。</p>
+
 <div class="tblwrap">
-  <p class="caption"><b>表 9</b>：控制器条件探针。局部关节 RMS 变化衡量「模型对轨迹变化的敏感度」；
+  <p class="caption"><b>表 10</b>：控制器条件探针。局部关节 RMS 变化衡量「模型对轨迹变化的敏感度」；
     Actor 转向与生成身体转向的差衡量「世界朝向变化的来源」。</p>
   <table>
     <thead>
@@ -671,12 +994,20 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
     <b>不能</b>据此宣称模型学会了转弯或蹲伏。</p>
 </div>
 
-<h3 class="sub">6.6&nbsp;&nbsp;上限诊断：解码器缺的是什么</h3>
-<p>为了区分「主干预测错了」与「解码器条件不足」，我们做了一个故意的 oracle 实验：
-  保持 Pose Token <strong>完全相同</strong>，只在解码阶段喂入来源未来的 pose-feature Root。</p>
+<h3 class="sub">7.6&nbsp;&nbsp;上限诊断：解码器缺的是什么</h3>
+<p>为了区分「主干预测错了」与「解码器条件不足」，我们做了一个故意的 oracle 实验。
+  固定 Token（$z^{\text{cmc}}_\ell\equiv z^{\text{teacher}}_\ell$）后，
+  误差的分解为</p>
+<div class="eq multi"><span class="eqno">(7.4)</span>\[\underbrace{\mathrm{RMSE}(\hat{\mathbf{p}}(\mathbf{c}^{\text{ext}}=\mathbf{0}))}_{\text{零外部}}
+\;-\;\underbrace{\mathrm{RMSE}(\hat{\mathbf{p}}(\mathbf{c}^{\text{ext}}=\mathbf{c}^{\star}))}_{\text{oracle}}
+=\;\underbrace{\Delta_{\text{dec}}}_{\text{解码条件缺失}},\]</div>
+<p>其中 $\mathbf{c}^{\star}$ 是来源未来的 pose-feature Root——<strong>推理期不可得</strong>。
+因此式 (7.4) 右端是上界诊断的量，不是可部署收益。若 $\Delta_{\text{dec}}$ 很小，
+说明瓶颈在主干；若很大，说明瓶颈在解码条件。实测 Walk 的
+$\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ cm（§7.6 表 11）。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 10</b>：解码器 pose-root oracle 诊断。Token 完全相等（已逐项校验），
+  <p class="caption"><b>表 11</b>：解码器 pose-root oracle 诊断。Token 完全相等（已逐项校验），
     唯一变化是解码器的外部 Root 条件。这是<strong>未来真值泄漏的离线上界</strong>，不是可部署效果。</p>
   <table>
     <thead><tr><th>片段</th><th class="num">关节 RMSE (cm)<br>零外部 → oracle</th><th class="num">接触脚速 (m/s)<br>零外部 → oracle</th><th class="num">脚速 RMSE (m/s)<br>零外部 → oracle</th></tr></thead>
@@ -692,9 +1023,9 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
     因此这组数不能解释全部脚滑，也不能当作「补上这个条件就好了」的证据。</p>
 </div>
 
-<h3 class="sub">6.7&nbsp;&nbsp;推理时延</h3>
+<h3 class="sub">7.7&nbsp;&nbsp;推理时延</h3>
 <div class="tblwrap">
-  <p class="caption"><b>表 11</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
+  <p class="caption"><b>表 12</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
     计 3 条 × 3 次同步前向）。不含数据准备、UE NNE、蒙皮、渲染与线程调度。</p>
   <table>
     <thead><tr><th>条件</th><th class="num">P50 (ms)</th><th class="num">P95 (ms)</th><th class="num">4 帧预算 @30 Hz (ms)</th><th>是否在预算内</th></tr></thead>
@@ -708,9 +1039,9 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
     两个数字属于不同任务与不同模型，<b>不能相加或互相替代</b>。</p>
 </div>
 
-<h2 class="sec">7&nbsp;&nbsp;讨论、局限与缺陷清单</h2>
+<h2 class="sec">8&nbsp;&nbsp;讨论、局限与缺陷清单</h2>
 
-<h3 class="sub">7.1&nbsp;&nbsp;这份报告能支撑什么</h3>
+<h3 class="sub">8.1&nbsp;&nbsp;这份报告能支撑什么</h3>
 <ul>
   <li>Tokenizer 加 Pose Token 的两段式链路在本仓库跑通：数据、训练、检查点、离线推理、视频导出全链路可复现。</li>
   <li>固定验证口径下，20k 训练相对 2k 显著改善 Token 预测（−21.9%），且该改善在三个类别上方向一致。</li>
@@ -718,9 +1049,9 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   <li>时延在 Python 前向层面有约 6 倍余量（P95 21 ms 对 133 ms 预算）。</li>
 </ul>
 
-<h3 class="sub">7.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
+<h3 class="sub">8.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
 <div class="tblwrap">
-  <p class="caption"><b>表 12</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
+  <p class="caption"><b>表 13</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
   <table>
     <thead><tr><th>问题</th><th>当前状态</th></tr></thead>
     <tbody>
@@ -735,7 +1066,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   </table>
 </div>
 
-<h3 class="sub">7.3&nbsp;&nbsp;方法论上的经验</h3>
+<h3 class="sub">8.3&nbsp;&nbsp;方法论上的经验</h3>
 <p>这次工作中最值得记录的不是某个指标，而是三处「差点把结论写错」的地方：</p>
 <ol>
   <li><b>把 Actor 相对的骨盆特征当成 CMC Root。</b>后果是把「模型跟随控制器」这一命题的验证污染了。
@@ -747,9 +1078,9 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 </ol>
 <p>共同点是：<strong>指标本身没错，错的是指标所依附的对象身份</strong>。
   因此本报告把每个数字都附上它所属的条件（教师轨迹 / 控制器轨迹 / oracle），
-  并在表 5 与表 12 中显式列出不可跨越的边界。</p>
+  并在表 6 与表 13 中显式列出不可跨越的边界。</p>
 
-<h2 class="sec">8&nbsp;&nbsp;结论与下一步</h2>
+<h2 class="sec">9&nbsp;&nbsp;结论与下一步</h2>
 <p>MotionWeaver 已经建成一条可追溯的数据与训练链路：两套骨骼数据汇入同一目标骨架，
   分词器与姿态主干可分离训练与替换，评测口径被冻结并可复现，
   20,000 步训练在 Token 层面给出确定的改善。同时，世界姿态、接触质量与控制器响应三项指标
@@ -759,14 +1090,14 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
 <ol>
   <li><b>补齐在线可得条件。</b>把 Crouch / Gait / RotationMode 状态，以及 CMC 实际提供的
       短时轨迹作为显式输入与掩码，替代当前「用来源未来 Root 当条件」的做法。</li>
-  <li><b>修正解码器条件。</b>§6.6 表明 pose-root 条件是部分误差来源；
+  <li><b>修正解码器条件。</b>§7.6 表明 pose-root 条件是部分误差来源；
       需要设计一个<strong>推理期可得</strong>的替代量（例如模型自预测的骨盆高度先验），
       并证明它不是变相的未来泄漏。</li>
   <li><b>把 SOMA 数据真正接进训练。</b>训练视图仍在构建；接入前必须先按来源家族 / 会话 / 镜像组划分，
       再生成窗口，否则会产生跨分区泄漏。</li>
   <li><b>完成 UE 闭环。</b>NNE 导出、AnimGraph 重建、动画线程推理、蒙皮播放，以及
       4 帧步长加播放延迟下的可操控体验，都需要在真实场景里验收。</li>
-  <li><b>用程序化模块兜住确定性约束。</b>按表 4 的分工接入 Warping 与 Foot IK，
+  <li><b>用程序化模块兜住确定性约束。</b>按表 5 的分工接入 Warping 与 Foot IK，
       并实测回退阈值是否合理。</li>
 </ol>
 <p>每一项目标都要同时报告 Token CE、世界姿态、接触脚速与 UE 实测四项，
@@ -799,7 +1130,7 @@ python -u -m training.pretrain.train_unreal --model pose --dataset ../dataset --
       <tr><td><code>docs/experiments/2026-09-28-motionweaver-a800-actor-root.md</code></td><td>20k 训练与本地验收的完整记录</td></tr>
       <tr><td><code>…/assets/…/metrics.csv</code></td><td>20,119 行逐步训练日志</td></tr>
       <tr><td><code>…/assets/…/val_token_ce_2k.json</code>、<code>…_20k.json</code></td><td>固定验证集的 Token CE 与索引集合</td></tr>
-      <tr><td><code>…/assets/…/motionweaver_20k_acceptance_summary_20260928.json</code></td><td>本报告 §6.3–§6.7 的数值来源</td></tr>
+      <tr><td><code>…/assets/…/motionweaver_20k_acceptance_summary_20260928.json</code></td><td>本报告 §7.3–§7.7 的数值来源</td></tr>
       <tr><td><code>…/assets/…/config.yaml</code></td><td>训练配置（含 VQ 哈希、调度器与条件 profile）</td></tr>
       <tr><td><code>docs/experiments/2026-10-18-soma-processing-speed.md</code></td><td>吞吐优化与 24 次等价核对</td></tr>
       <tr><td><code>docs/soma-training-execution-plan.md</code></td><td>双帧率对齐、场景划分、窗口与 Token 预算</td></tr>
