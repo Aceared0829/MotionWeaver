@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 PAPER_DIR = Path(__file__).resolve().parent
@@ -33,6 +34,8 @@ DEFAULT_PDF = PAPER_DIR / "MotionWeaver-technical-report.pdf"
 
 # Chromium 打印 PDF 时的固定等待：等字体与图片就绪，避免首屏空白。
 VIRTUAL_TIME_BUDGET_MS = 30000
+# 轮询 PDF 产物上限；超时后仍会校验已有文件。
+PRINT_TIMEOUT_S = 120
 
 
 def _env(name: str) -> str:
@@ -103,6 +106,7 @@ def build(html_path: Path, pdf_path: Path, browser: Path) -> dict:
         pdf_path.unlink()
 
     profile_dir = Path(tempfile.mkdtemp(prefix="mw-paper-pdf-"))
+    process = None
     try:
         file_url = html_path.as_uri()
         command = [
@@ -126,17 +130,43 @@ def build(html_path: Path, pdf_path: Path, browser: Path) -> dict:
         print(f"浏览器    : {browser}")
         print(f"输入 HTML : {html_path}")
         print(f"输出 PDF  : {pdf_path}")
-        # 浏览器在打印完成后退出；stderr 里的扩展注册告警不影响产物，因此只提示不中断。
-        completed = subprocess.run(
-            command, capture_output=True, text=True, timeout=180, errors="replace"
+
+        # 不能等浏览器退出：在部分 Windows 环境下 headless Chromium 写完 PDF 后
+        # 会一直留在后台（实测等待 40 s 乃至 180 s 都不退出）。因此轮询产物：
+        # 文件出现且大小连续两次相同，即认为打印完成，然后主动结束进程。
+        process = subprocess.Popen(
+            command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
         )
-        if completed.returncode != 0:
+        deadline = time.monotonic() + PRINT_TIMEOUT_S
+        last_size = -1
+        stable = 0
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                break
+            if pdf_path.is_file():
+                size = pdf_path.stat().st_size
+                if size == last_size and size > 0:
+                    stable += 1
+                    if stable >= 2:
+                        break
+                else:
+                    stable = 0
+                    last_size = size
+            time.sleep(0.5)
+        else:
             print(
-                f"[提示] 浏览器退出码 {completed.returncode}；Chromium 打印 PDF 时"
-                "常返回非零，仍会生成文件，故继续校验产物。",
+                f"[提示] 等待 {PRINT_TIMEOUT_S} 秒仍未得到稳定的 PDF，继续校验产物。",
                 file=sys.stderr,
             )
     finally:
+        # 无论成功失败都要收回浏览器与临时配置目录，否则残留的 headless 进程
+        # 会占满进程表，使后续任何一次打印都表现为「无响应」。
+        if process is not None and process.poll() is None:
+            process.kill()
+            try:
+                process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                pass
         shutil.rmtree(profile_dir, ignore_errors=True)
 
     if not pdf_path.is_file():

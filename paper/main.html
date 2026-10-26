@@ -530,11 +530,11 @@ Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§7.3 报告
   但它不是场景中观测到的 Actor Root，输出中显式标注
   <code>root_status = offline_proxy_not_observed_actor_root</code>。</p>
 <p>形式化地，记 Hips 世界位置为 $\mathbf{h}_t=(h_x,h_y,h_z)$，则代理 Root 与身体位姿定义为</p>
-<div class="eq multi"><span class="eqno">(4.3)</span>\[\mathbf{q}_t^{\text{proxy}}=\big(h_x,\,0,\,h_z,\ \psi_t\big),\qquad
+<div class="eq multi"><span class="eqno">(4.1)</span>\[\mathbf{q}_t^{\text{proxy}}=\big(h_x,\,0,\,h_z,\ \psi_t\big),\qquad
 \tilde{\mathbf{b}}_t^{j}=R_y(\psi_t)^{-1}\big(\mathbf{p}_t^{j}-(h_x,0,h_z)\big),\]</div>
 <p>其中 $\psi_t$ 为左右髋形成的前向偏航角。注意竖直分量 $h_y$ <strong>留在身体位姿里</strong>，
 因此回读可精确恢复录制位置：</p>
-<div class="eq multi"><span class="eqno">(4.4)</span>\[\mathbf{p}_t^{j}=R_y(\psi_t)\,\tilde{\mathbf{b}}_t^{j}+(h_x,0,h_z),
+<div class="eq multi"><span class="eqno">(4.2)</span>\[\mathbf{p}_t^{j}=R_y(\psi_t)\,\tilde{\mathbf{b}}_t^{j}+(h_x,0,h_z),
 \qquad \max_{j,t}\big\|\hat{\mathbf{p}}_t^{j}-\mathbf{p}_t^{j}\big\|_\infty\le 10^{-9}\ \text{m}.\]</div>
 <p>实测四轮试点的最大重合成误差为 $8.88\times10^{-15}$ m，比门槛低五个数量级。
 但必须先说清：这是<strong>离线代理</strong>，不是场景观测到的 Actor Root。</p>
@@ -558,9 +558,9 @@ Foot Lock 与 Foot IK（§5.4），模型只负责姿态合理性。§7.3 报告
   同一个 <code>down_t</code> 在 120 FPS 下是 133 ms，在 30 FPS 下却变成 533 ms。
   我们的做法是让<strong>每个 Token 覆盖的时间一致</strong>。设基准帧率 $f_0=120.0048$、
   编码器降采样层数 $\delta$（即 <code>down_t</code>），则单个 Token 覆盖</p>
-<div class="eq"><span class="eqno">(4.1)</span>\[\tau(f,\delta)=\frac{2^{\delta}}{f}\quad\text{秒},\]</div>
+<div class="eq"><span class="eqno">(4.3)</span>\[\tau(f,\delta)=\frac{2^{\delta}}{f}\quad\text{秒},\]</div>
 <p>要让两种帧率语义等价，只需 $\tau(f_1,\delta_1)=\tau(f_0,\delta_0)$，即</p>
-<div class="eq multi"><span class="eqno">(4.2)</span>\[\delta(f)=\delta_0-\log_2\frac{f_0}{f}
+<div class="eq multi"><span class="eqno">(4.4)</span>\[\delta(f)=\delta_0-\log_2\frac{f_0}{f}
 =\delta_0-\mathrm{round}\!\Big(\log_2\tfrac{f_0}{f}\Big).\]</div>
 <p>代入 $f_0=120.0048$、$f=30$ 得 $\delta(f)=\delta_0-2$。具体取值：</p>
 <pre><code>down_t(fps) = down_t(base) - round(log2(base_fps / fps))      base_fps = 120.0048
