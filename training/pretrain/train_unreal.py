@@ -122,6 +122,11 @@ def build_config(args, dataset):
                          "folder": skeleton_dir}
         conf.motion_rep.name = "unreal_dual_root_global_joints"
         conf.motion_rep.stats.folder = str(data_root / "stats")
+        if getattr(args, "kmeans_init", None) is not None:
+            # 码本初始化方式：0 用随机初始化，1 用首批数据做 kmeans 初始化。
+            # 默认值由 YAML 决定（当前 false）；只在显式传参时覆盖，
+            # 这样能做 A/B 对照而不必改动共享配置文件。
+            conf.model.pose_vqvae_network.kmeans_init = bool(args.kmeans_init)
         conf.fps = dataset.manifest["fps"]
         conf.id, conf.run_dir, conf.out_dir = "unreal", str(Path(args.output).resolve()), str(Path(args.output).resolve())
         conf.trainer.max_steps = args.max_steps
@@ -312,4 +317,6 @@ if __name__ == "__main__":
                         help="只训该帧率组；120fps 与 30fps 不可混批")
     parser.add_argument("--num_workers", type=int, default=0,
                         help="DataLoader 并行读盘进程数；实测 8 约 6 倍加速（仅影响速度，不影响数值）")
+    parser.add_argument("--kmeans_init", type=int, choices=(0, 1), default=None,
+                        help="覆盖码本初始化：1=kmeans 初始化，0=随机初始化；不传则用 YAML 默认值")
     train(parser.parse_args())
