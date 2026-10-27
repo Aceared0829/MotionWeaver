@@ -250,8 +250,12 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   训练侧在单卡 A800 上从零训练 20,000 步，固定验证口径下的掩码姿态 Token 交叉熵由 2,000 步的
   1.862 nats 降至 1.454 nats（−21.9%）。
   训练工程侧，我们让训练端直接读取四键 NPZ 并在 worker 内整批计算特征，
-  单条特征成本由 125.6 ms 降至 0.4 ms（约 16×）；契约生成与全量评测改为多进程后分别约 12 分钟与 16 分钟，
+  单条特征成本由 125.6 ms 降至 0.4 ms（约 16×），并把旋转从 float64 的 $3\times3$ 矩阵
+  改为 float32 四元数，使单条读取由 96.8 ms 降至 18.4 ms（5.25×）、体积压缩 2.12 倍；
+  契约生成与全量评测改为多进程后分别约 12 分钟与 16 分钟，
   并实测出「32 进程反而把吞吐从 6,350 降到 1,400 条/分钟」这一并发上限（§6）。
+  在此基础上，分词器首次在 full-v1 全库 fps120 组上训满 3 个 epoch（42,791 步），
+  并以 A/B 对照确定码本初始化应保持随机初始化：总损失中位数 0.4026 对 0.5165（§8.7）。
   <strong>但本报告同样记录失败</strong>：在 3 条同轨迹对照片段中，Walk 的世界关节 RMSE 由基线 6.72 cm 改善至 6.03 cm，
   而 Run（7.36 → 12.00 cm）与 Crouch（5.87 → 8.25 cm）明显退化；接触期脚滑整体仍显著高于来源动作；
   换用另录的 CMC 轨迹后，90° 转向只改变 Actor 局部关节姿态 0.50 cm，且蹲伏状态未被模型响应。
@@ -865,24 +869,48 @@ $\Delta=A^{-1}(I-C^{\mathsf{T}}(CA^{-1}C^{\mathsf{T}})^{-1}C)\,(\mathbf{r}^{\sta
       <tr><td><code>--soma_fps_group</code></td><td>只训指定帧率组</td><td>120 与 30 fps 不可混批（§4.5）</td></tr>
     </tbody>
   </table>
-  <p class="tnotes"><code>persistent_workers</code> 显式关闭：Windows 的 spawn 语义下
-    重建进程池代价高，常驻 worker 反而与主进程争抢。</p>
+  <p class="tnotes"><code>persistent_workers</code> <b>必须开启</b>。这条是反直觉的：
+    在 Windows 的 spawn 语义下，直觉会认为常驻 worker 与主进程争抢、应该关掉。
+    实测相反——关闭时每个 epoch 都要销毁重建进程池，每次付 1–2 秒的
+    torch JIT 初始化（日志里每个 worker 一条 <code>triton not found</code>）。
+    200 条数据跑 5 个 epoch：关闭 57 秒，开启 24.9 秒（<b>2.3×</b>），
+    且开启后首轮之后每轮只要 3.7 秒。关闭时的累积开销会让长训练
+    <b>看起来像卡死</b>——我们确实一度观察到 119 步后长时间无进展。</p>
 </div>
 
-<h3 class="sub">6.6&nbsp;&nbsp;这一章没做什么</h3>
-<p>为了不让「优化」被误读成「已榨干硬件」，把没做的和其他隐患一并列出：</p>
-<ul>
-  <li><b>没有做 bf16 对照。</b>配置文件默认 <code>precision=32</code>，而本机支持 bf16。
-      切过去预计有收益，但按「不损失效果」的前提，必须先跑同一份数据的
-      FP32 vs bf16 损失曲线对照；这一步<strong>尚未执行</strong>，因此本章不报告 bf16 收益。</li>
-  <li><b>没有启用 <code>torch.compile</code> 与 <code>channels_last</code>。</b>
-      前者估 1.2–1.5×，后者在 Conv1d 场景收益很小，都留待适配层稳定后再评估。</li>
-  <li><b>没有做 clip 级缓存。</b>单条 $(T,942)$ 数组仅窗口部分就被利用约 4%，
-      理论上缓存能省下重复读盘；但这取决于访问模式，属未验证项。</li>
-  <li><b>没有用真实训练跑通全流程。</b>本章的收益都是<strong>各环节实测</strong>，
-      不是端到端训练吞吐。端到端数字要等模型真正在 full-v1 上开训才成立——
-      这也是 §10 把「模型未在 SOMA 全库上训练」列为当前最大缺口的原因。</li>
-</ul>
+<h3 class="sub">6.6&nbsp;&nbsp;三项被实测否掉的「优化」</h3>
+<p>「优化」不等于「有效」。下面三项按常规经验都该做，实测后全部放弃，
+理由都在表里。把它们写出来，是为了避免后来者重走一遍。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 9</b>：三项被实测否掉的优化。前两项各跑了同数据的完整对照，
+  第三项算清了内存与命中率后放弃。</p>
+  <table>
+    <thead><tr><th>方案</th><th>预期</th><th>实测</th><th>处置</th></tr></thead>
+    <tbody>
+      <tr><td><b>bf16-mixed</b></td><td>Tensor Core 加速 1.5–2×</td>
+          <td class="num">73.2 s vs FP32 71.3 s（<b>无加速</b>），
+              末段 loss 1.9093 vs 1.5901（<b>差 20%</b>）</td>
+          <td class="bad">不采用</td></tr>
+      <tr><td><b>clip 级 LRU 缓存</b></td><td>省下重复读盘</td>
+          <td class="num">80,000 次取样只覆盖 48,022 条唯一 clip，
+              平均每条仅 1.67 次；缓存 30 条需 0.38 GB/worker</td>
+          <td class="bad">不采用</td></tr>
+      <tr><td><b>二次压缩</b>（<code>savez_compressed</code>）</td>
+          <td>进一步缩小体积</td>
+          <td class="num">只省 9% 体积（30.4→27.7 MB），却慢 <b>36 倍</b></td>
+          <td class="bad">不采用</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">bf16 的两个数字都指向「不划算」：既没提速，又损失精度。
+    原因是本链路的 GPU 并非瓶颈（此时读盘与特征计算已占主导），
+    而 VQ-VAE 的 EMA 码本更新对半精度敏感。这项对照同时说明：
+    <b>「GPU 利用率低」不等于「切成半精度就能快」</b>——瓶颈可能根本不在 GPU。</p>
+</div>
+
+<p>仍未做的是 <code>torch.compile</code> 与 <code>channels_last</code>。
+前者在 6.2 之后已不是主要瓶颈（GPU 不是限制项），后者在 Conv1d 上收益很小，
+两者都留待主干训练阶段再评估。因此本章不报告它们的收益。</p>
 
 <p>一条附带的数据卫生检查也在这里落地：被拒绝的 168 条里大量是
 <code>PoseAssets</code>、<code>AimOffset</code>、<code>CurveContainer</code> 之类的引擎姿势资产，
@@ -1186,7 +1214,68 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
     因此这组数不能解释全部脚滑，也不能当作「补上这个条件就好了」的证据。</p>
 </div>
 
-<h3 class="sub">8.7&nbsp;&nbsp;推理时延</h3>
+<h3 class="sub">8.7&nbsp;&nbsp;分词器码本初始化的 A/B 对照</h3>
+<p>分词器是整条链路的第一环，它的质量决定后续主干能拿到什么。这里对照一个
+只影响初始化、其余全部锁死的变量：码本用<strong>随机初始化</strong>还是用首批数据的
+<strong>k-means 中心</strong>初始化（<code>kmeans_init</code>）。两臂各训满 3 个 epoch
+（42,791 步、48 帧窗口、batch 4、FP32、fps120 组 57,058 条训练样本）。
+两臂均以 <code>Trainer.fit stopped: max_steps=42792 reached</code> 正常结束。</p>
+
+<p>需要先说清口径：本节谈的是<strong>分词器</strong>，与 §8.1–§8.6 的
+<strong>姿态主干</strong>是两回事。§8.1 起的所有质量指标仍来自此前在 A800 上训练的
+20k 检查点；分词器这次是在本机 full-v1 全库上第一次训满 3 个 epoch，
+它属于数据链路已验证、主干尚未接收的那一环（§10 第 3 条）。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 15</b>：码本初始化 A/B。末段指最后 10% 的 4,279 步，
+  同时给均值与中位数——原始逐步数据含 40+ 的尖峰，只看均值会被离群点抬高。</p>
+  <table>
+    <thead><tr><th>指标（末段）</th><th class="num">A 随机初始化</th><th class="num">B k-means 初始化</th><th>差异</th></tr></thead>
+    <tbody>
+      <tr><td><b>总 loss</b>（中位数）</td><td class="num">0.4026</td><td class="num">0.5165</td><td class="good">A 低 28.3%</td></tr>
+      <tr><td>重建损失（均值）</td><td class="num">0.1811</td><td class="num">0.1815</td><td>持平（+0.2%）</td></tr>
+      <tr><td>码本 perplexity（均值）</td><td class="num">5.2925</td><td class="num">5.1851</td><td>A 高 2.0%</td></tr>
+      <tr><td>commit 损失（中位数）</td><td class="num">0.3559</td><td class="num">0.2247</td><td>B 低 36.9%</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">结论是<b>保持随机初始化</b>。总 loss 差 28% 而两臂分布大幅重叠，
+    因此这是「统计上成立、幅度中等」的结论，不是压倒性优势。</p>
+</div>
+
+<p><strong>一个只看数字会读错的地方。</strong>B 的 commit 损失低 37%，看起来更好；
+但 commit 损失衡量的是「编码器输出与所选码字的距离」——它低也可能意味着
+<strong>码本根本没被用起来</strong>。perplexity 曲线证实了后者：
+A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步才开始上升。
+换言之，B 早期那个「极低的 commit 损失」不是学得好，而是量化器近似退化的副产物。
+这条提醒对所有以「损失更低」为唯一判据的实验都成立。</p>
+
+<figure>
+  <img src="figures/fig7-codebook-init-ab.png" alt="码本初始化 A/B 四指标的分桶中位数曲线">
+  <figcaption><b>图 7</b>：四个指标按步对齐的曲线。每点取约 700 个连续步的中位数——
+    逐步原始数据的尖峰可达 40+，直接画只能看到噪声。
+    绿色区间是末段 10%，即表 15 的统计窗口。
+    perplexity 面板最能说明问题：A（蓝）在第 10k 步已达 4.5，B（红）直到 25k 步才起步。</figcaption>
+</figure>
+
+<figure>
+  <img src="figures/fig8-codebook-ab-tail.png" alt="末段 10% 的三项指标分布箱线图">
+  <figcaption><b>图 8</b>：末段 10%（step ≥ 38,512，4,279 步）的分布对比。
+    两个箱体大幅重叠，这正是本文只主张「A 更优、幅度中等」而不称压倒性优势的依据。</figcaption>
+</figure>
+
+<div class="callout">
+  <span class="lbl">perplexity 5.3 不是码本塌缩</span> —— 配置
+  <code>nb_code=1e8</code>、<code>num_heads=8</code>，代码按
+  $\text{nb-code-per-head}=\text{round}(2^{\log_2(\text{nb\_code})/\text{heads}})=10$ 计算；
+  且 <code>calculate_per_head_perplexity: true</code>，日志里是<b>单 head</b> 的 perplexity，
+  上限即 10。因此 5.3 是 53% 的单头利用率，不是「2048 个码字只用 5 个」。
+  真正的表达力来自 8 个 head 的<strong>乘积量化</strong>：
+  <code>from_mh_indices_to_overall_indices</code> 用 $10^{i}$ 加权求和，组合数 $10^8$。
+  这条同时解释了为什么「调大 nb_code_per_head」不是显然的改进——
+  码字越多，每个码字被采样越少，EMA 更新越慢，越容易出现死码。
+</div>
+
+<h3 class="sub">8.8&nbsp;&nbsp;推理时延</h3>
 <div class="tblwrap">
   <p class="caption"><b>表 15</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
     计 3 条 × 3 次同步前向）。不含数据准备、UE NNE、蒙皮、渲染与线程调度。</p>
@@ -1256,8 +1345,10 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
   <li><b>修正解码器条件。</b>§8.6 表明 pose-root 条件是部分误差来源；
       需要设计一个<strong>推理期可得</strong>的替代量（例如模型自预测的骨盆高度先验），
       并证明它不是变相的未来泄漏。</li>
-  <li><b>把 SOMA 数据真正接进训练。</b>训练视图仍在构建；接入前必须先按来源家族 / 会话 / 镜像组划分，
-      再生成窗口，否则会产生跨分区泄漏。</li>
+  <li><b>把 SOMA 数据接进主干训练。</b>数据侧已完成（72,933 条、99.77%），
+      分词器已在全库 fps120 组上训满 3 个 epoch（42,791 步，
+      §8.7 给出码本初始化的 A/B 结论）；但<strong>姿态主干尚未在 full-v1 上开训</strong>，
+      §9 的质量指标仍来自此前 20k 检查点。这是当前最大的缺口。</li>
   <li><b>完成 UE 闭环。</b>NNE 导出、AnimGraph 重建、动画线程推理、蒙皮播放，以及
       4 帧步长加播放延迟下的可操控体验，都需要在真实场景里验收。</li>
   <li><b>用程序化模块兜住确定性约束。</b>按表 8 的分工接入 Warping 与 Foot IK，
