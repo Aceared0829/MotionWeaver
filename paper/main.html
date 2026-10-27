@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -984,7 +984,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 <p>profiling 显示 $t^{\text{io}}$ 占 19.87 s 中的 15.86 s，$t^{\text{zip}}$ 仅 0.32 s。
 这就是为什么优化集中在 I/O 而不在压缩（§4.7）。</p>
 <div class="tblwrap">
-  <p class="caption"><b>表 9</b>：指标定义与已知口径限制。</p>
+  <p class="caption"><b>表 10</b>：指标定义与已知口径限制。</p>
   <table>
     <thead><tr><th>指标</th><th>定义</th><th>口径限制</th></tr></thead>
     <tbody>
@@ -1025,7 +1025,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 10</b>：固定验证集的 Token 交叉熵（nats，越低越好）。
+  <p class="caption"><b>表 11</b>：固定验证集的 Token 交叉熵（nats，越低越好）。
     两次记录使用完全相同的 manifest、sidecar 哈希与索引集合。</p>
   <table>
     <thead><tr><th>类别</th><th class="num">目标 Token</th><th class="num">2k CE</th><th class="num">20k CE</th><th class="num">相对变化</th></tr></thead>
@@ -1050,7 +1050,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 11</b>：同轨迹循环片段的世界姿态与接触指标。
+  <p class="caption"><b>表 12</b>：同轨迹循环片段的世界姿态与接触指标。
     RMSE 与脚速之外的列用于诊断衔接与朝向。</p>
   <table>
     <thead>
@@ -1105,7 +1105,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 </figure>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 12</b>：接触停止片段的完整指标。停止片段的接触帧对更多，
+  <p class="caption"><b>表 13</b>：接触停止片段的完整指标。停止片段的接触帧对更多，
     因此接触脚速比循环片段更可信；但样本量仍在 10–24 帧对的量级。</p>
   <table>
     <thead>
@@ -1166,7 +1166,7 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
   $\rho=2.1\%$、$\Delta_{\text{local}}=0.50$ cm，这组小数字正是"模型没响应蹲伏状态"的量化证据。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 13</b>：控制器条件探针。局部关节 RMS 变化衡量「模型对轨迹变化的敏感度」；
+  <p class="caption"><b>表 14</b>：控制器条件探针。局部关节 RMS 变化衡量「模型对轨迹变化的敏感度」；
     Actor 转向与生成身体转向的差衡量「世界朝向变化的来源」。</p>
   <table>
     <thead>
@@ -1195,10 +1195,10 @@ T=\underbrace{\sum_{i}t^{\text{io}}_i}_{\text{文件打开/stat/目录}}
 <p>其中 $\mathbf{c}^{\star}$ 是来源未来的 pose-feature Root——<strong>推理期不可得</strong>。
 因此式 (8.4) 右端是上界诊断的量，不是可部署收益。若 $\Delta_{\text{dec}}$ 很小，
 说明瓶颈在主干；若很大，说明瓶颈在解码条件。实测 Walk 的
-$\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ cm（§8.6 表 14）。</p>
+$\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ cm（§8.6 表 15）。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 14</b>：解码器 pose-root oracle 诊断。Token 完全相等（已逐项校验），
+  <p class="caption"><b>表 15</b>：解码器 pose-root oracle 诊断。Token 完全相等（已逐项校验），
     唯一变化是解码器的外部 Root 条件。这是<strong>未来真值泄漏的离线上界</strong>，不是可部署效果。</p>
   <table>
     <thead><tr><th>片段</th><th class="num">关节 RMSE (cm)<br>零外部 → oracle</th><th class="num">接触脚速 (m/s)<br>零外部 → oracle</th><th class="num">脚速 RMSE (m/s)<br>零外部 → oracle</th></tr></thead>
@@ -1227,7 +1227,7 @@ $\Delta_{\text{dec}}=6.03-4.86=1.17$ cm，Run 为 $0.93$ cm，Crouch 为 $1.77$ 
 它属于数据链路已验证、主干尚未接收的那一环（§10 第 3 条）。</p>
 
 <div class="tblwrap">
-  <p class="caption"><b>表 15</b>：码本初始化 A/B。末段指最后 10% 的 4,279 步，
+  <p class="caption"><b>表 16</b>：码本初始化 A/B。末段指最后 10% 的 4,279 步，
   同时给均值与中位数——原始逐步数据含 40+ 的尖峰，只看均值会被离群点抬高。</p>
   <table>
     <thead><tr><th>指标（末段）</th><th class="num">A 随机初始化</th><th class="num">B k-means 初始化</th><th>差异</th></tr></thead>
@@ -1253,13 +1253,13 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
   <img src="figures/fig7-codebook-init-ab.png" alt="码本初始化 A/B 四指标的分桶中位数曲线">
   <figcaption><b>图 7</b>：四个指标按步对齐的曲线。每点取约 700 个连续步的中位数——
     逐步原始数据的尖峰可达 40+，直接画只能看到噪声。
-    绿色区间是末段 10%，即表 15 的统计窗口。
+    绿色区间是末段 10%，即表 16 的统计窗口。
     perplexity 面板最能说明问题：A（蓝）在第 10k 步已达 4.5，B（红）直到 25k 步才起步。</figcaption>
 </figure>
 
 <figure>
   <img src="figures/fig8-codebook-ab-tail.png" alt="末段 10% 的三项指标分布箱线图">
-  <figcaption><b>图 8</b>：末段 10%（step ≥ 38,512，4,279 步）的分布对比。
+  <figcaption><b>图 8</b>：末段 10%（step ≥ 38,513，4,279 步）的分布对比。
     两个箱体大幅重叠，这正是本文只主张「A 更优、幅度中等」而不称压倒性优势的依据。</figcaption>
 </figure>
 
@@ -1277,7 +1277,7 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
 
 <h3 class="sub">8.8&nbsp;&nbsp;推理时延</h3>
 <div class="tblwrap">
-  <p class="caption"><b>表 15</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
+  <p class="caption"><b>表 17</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
     计 3 条 × 3 次同步前向）。不含数据准备、UE NNE、蒙皮、渲染与线程调度。</p>
   <table>
     <thead><tr><th>条件</th><th class="num">P50 (ms)</th><th class="num">P95 (ms)</th><th class="num">4 帧预算 @30 Hz (ms)</th><th>是否在预算内</th></tr></thead>
@@ -1303,7 +1303,7 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
 
 <h3 class="sub">9.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
 <div class="tblwrap">
-  <p class="caption"><b>表 16</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
+  <p class="caption"><b>表 18</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
   <table>
     <thead><tr><th>问题</th><th>当前状态</th></tr></thead>
     <tbody>
@@ -1330,7 +1330,7 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
 </ol>
 <p>共同点是：<strong>指标本身没错，错的是指标所依附的对象身份</strong>。
   因此本报告把每个数字都附上它所属的条件（教师轨迹 / 控制器轨迹 / oracle），
-  并在表 9 与表 16 中显式列出不可跨越的边界。</p>
+  并在表 10 与表 18 中显式列出不可跨越的边界。</p>
 
 <h2 class="sec">10&nbsp;&nbsp;结论与下一步</h2>
 <p>MotionWeaver 已经建成一条可追溯的数据与训练链路：两套骨骼数据汇入同一目标骨架，
@@ -1422,3 +1422,4 @@ python -u -m training.pretrain.train_unreal --model pose --dataset ../dataset --
 </div>
 </body>
 </html>
+

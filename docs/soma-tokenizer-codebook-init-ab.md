@@ -1,4 +1,4 @@
-# SOMA tokenizer 码本初始化 A/B 对照
+﻿# SOMA tokenizer 码本初始化 A/B 对照
 
 ## 结论
 
@@ -23,7 +23,7 @@ k-means 初始化的 commit 损失中位数低 36.9%，但那是**码本未被�
 
 配置通过 `--kmeans_init 0/1` 覆盖，不复制 YAML，见提交 `24a8017`。
 
-## 末段 10%（step ≥ 38,512，4,279 步）
+## 末段 10%（step ≥ 38,513，4,279 步）
 
 同时给均值与中位数：原始逐步数据含 40+ 的尖峰，只看均值会被离群点抬高。
 
@@ -110,3 +110,4 @@ python -m training.pretrain.train_unreal --model vqvae `
 ## 环境
 
 RTX 4070 Laptop 8GB、torch 2.14.0+cu130、32 逻辑核、D 盘 NVMe。
+
