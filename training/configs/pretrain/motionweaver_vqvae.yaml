@@ -65,6 +65,13 @@ model:
     floor_estimation_window_time: 1.0
     skate_contact_loss_coeff: 0.01
     joint_vel_loss_coeff: 2.0
+    # 关节位置损失系数（方案 A）。0 = 关闭，保持原有行为。
+    # 直接对「还原后的米制关节位置」算 SmoothL1，与验收指标同口径。
+    # 实测该 checkpoint：平均关节距离 171.71 cm、位置 RMSE 103.51 cm，
+    # 其中根速度积分漂移 193.39 cm、ric_data 约 116 cm。
+    # 这些在 941 维归一化平均里被摊平，靠加步数压不下去。
+    # 建议从 0.1 起；数值参考：关节项 SmoothL1 实测均值约 0.49。
+    joint_pos_loss_coeff: 0.0
   optimizer:
     _target_: adam_atan2_pytorch.AdamAtan2
     _partial_: true

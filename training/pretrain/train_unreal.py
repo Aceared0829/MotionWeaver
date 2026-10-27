@@ -151,6 +151,10 @@ def build_config(args, dataset):
             # 码字使用熵正则系数：>0 时损失里加 -coeff * entropy，
             # 推动码本被均匀使用，抑制「所有 token 用同一个码字」的塌缩。
             conf.model.args.usage_entropy_coeff = float(args.usage_entropy_coeff)
+        if getattr(args, "joint_pos_loss_coeff", None) is not None:
+            # 关节位置损失系数（方案 A）：直接罚米制关节误差，
+            # 使训练目标与评测口径一致。
+            conf.model.args.joint_pos_loss_coeff = float(args.joint_pos_loss_coeff)
         conf.fps = dataset.manifest["fps"]
         conf.id, conf.run_dir, conf.out_dir = "unreal", str(Path(args.output).resolve()), str(Path(args.output).resolve())
         conf.trainer.max_steps = args.max_steps
@@ -354,4 +358,7 @@ if __name__ == "__main__":
     parser.add_argument("--usage_entropy_coeff", type=float, default=None,
                         help="码字使用熵正则系数；>0 时加 -coeff*entropy 到损失，推动码字均匀使用。"
                              "0=关闭（官方原行为）。建议从 0.1 起试")
+    parser.add_argument("--joint_pos_loss_coeff", type=float, default=None,
+                        help="关节位置损失系数（方案 A）；>0 时对还原后的米制关节位置算"
+                             "SmoothL1，与验收指标同口径。0=关闭。建议从 0.1 起试")
     train(parser.parse_args())
