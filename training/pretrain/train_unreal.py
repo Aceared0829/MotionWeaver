@@ -127,6 +127,18 @@ def build_config(args, dataset):
             # 默认值由 YAML 决定（当前 false）；只在显式传参时覆盖，
             # 这样能做 A/B 对照而不必改动共享配置文件。
             conf.model.pose_vqvae_network.kmeans_init = bool(args.kmeans_init)
+        if getattr(args, "down_t", None) is not None:
+            # 下采样层数决定 frames_per_token = 2**down_t，进而决定一段窗口
+            # 切成多少个 token。必须同时满足 min_tokens <= 窗口/2**down_t <= max_tokens，
+            # 否则要么 token 过多超出主干上限、要么少到信息不足。
+            # YAML 默认 2，对 48 帧是 12 token、对 72 帧是 18 token（超过 max=16），
+            # 因此按场景选窗口时必须同时覆盖这个值。
+            conf.model.pose_vqvae_network.down_t = int(args.down_t)
+            # model.args 下还有一份 down_t，它参与 token 预算与关键帧调度计算。
+            # 两份不一致会让编码器按一个层数下采样、而调度按另一个算 token 数，
+            # 因此必须同步覆盖。
+            if "down_t" in conf.model.args:
+                conf.model.args.down_t = int(args.down_t)
         conf.fps = dataset.manifest["fps"]
         conf.id, conf.run_dir, conf.out_dir = "unreal", str(Path(args.output).resolve()), str(Path(args.output).resolve())
         conf.trainer.max_steps = args.max_steps
@@ -322,4 +334,6 @@ if __name__ == "__main__":
                         help="DataLoader 并行读盘进程数；实测 8 约 6 倍加速（仅影响速度，不影响数值）")
     parser.add_argument("--kmeans_init", type=int, choices=(0, 1), default=None,
                         help="覆盖码本初始化：1=kmeans 初始化，0=随机初始化；不传则用 YAML 默认值")
+    parser.add_argument("--down_t", type=int, choices=(2, 3, 4), default=None,
+                        help="覆盖下采样层数；frames_per_token=2**down_t。48帧配2=12token，配3=6token；72帧配2=18token(超上限)，配3=9token")
     train(parser.parse_args())
