@@ -1,0 +1,52 @@
+{
+  "pilots": [
+    {
+      "run_id": "20261018-soma-full-pilot-v1",
+      "selected": 32,
+      "status_counts": {
+        "normalized": 32
+      },
+      "frames": 41414,
+      "max_recomposition_error_m": 8.881784197001252e-15,
+      "run_sha256": "e3b6f1f5a0b9ed898ae6713efb107d0ee19a3e5b24a98291c2677ac7c0aa2283"
+    },
+    {
+      "run_id": "20261018-soma-full-pilot-v2",
+      "selected": 16,
+      "status_counts": {
+        "normalized": 16
+      },
+      "frames": 24243,
+      "max_recomposition_error_m": 8.881784197001252e-15,
+      "run_sha256": "91ec2a588c30ab87f5957d4b50f3ed1e041cd8a31e729929fe0d718b9d543a3d"
+    },
+    {
+      "run_id": "20261018-soma-full-pilot-v3",
+      "selected": 8,
+      "status_counts": {
+        "normalized": 8
+      },
+      "frames": 14926,
+      "max_recomposition_error_m": 8.881784197001252e-15,
+      "run_sha256": "4e83c9dda235dc737f0cf6c03dd4aa4f8186fb371a88d8641f26e123cbdf5657"
+    },
+    {
+      "run_id": "20261018-soma-full-pilot-v4",
+      "selected": 4,
+      "status_counts": {
+        "normalized": 4
+      },
+      "frames": 12682,
+      "max_recomposition_error_m": 8.881784197001252e-15,
+      "run_sha256": "ba27794fa9aca9c8b8e07b1a1b7ae27453f20548270a90d3b306188f6d1accab"
+    }
+  ],
+  "current_version_resume": "four outputs revalidated and preserved",
+  "review_adapter": {
+    "clips": 4,
+    "fixed_nodes": 78,
+    "npz_sidecars": "passed",
+    "hand_contact": "unknown",
+    "user_approvals_recorded": 0
+  }
+}

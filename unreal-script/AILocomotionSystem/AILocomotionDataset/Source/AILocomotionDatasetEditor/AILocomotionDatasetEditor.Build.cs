@@ -8,6 +8,6 @@ public class AILocomotionDatasetEditor : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "DeveloperSettings" });
-		PrivateDependencyModuleNames.AddRange(new[] { "UnrealEd", "AnimationBlueprintLibrary", "ContentBrowser", "AssetRegistry", "ToolMenus", "Slate", "SlateCore", "Json" });
+		PrivateDependencyModuleNames.AddRange(new[] { "UnrealEd", "AnimationBlueprintLibrary", "ContentBrowser", "AssetRegistry", "ToolMenus", "Slate", "SlateCore", "Json", "Projects" });
 	}
 }

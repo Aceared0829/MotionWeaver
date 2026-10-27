@@ -59,6 +59,49 @@ def load_split_plan(path):
     return plan, hashlib.sha256(plan_path.read_bytes()).hexdigest()
 
 
+def verify_clip_identity(source, manifest, clip_loader=None):
+    """导出清单若声明了逐片段内容身份，则强制校验磁盘文件。
+
+    旧批次（插件升级前）没有 `clip_identity`，保持可用；
+    一旦声明了身份却不匹配，必须中止，而不是静默接受被替换的内容。
+    """
+    identities = manifest.get("clip_identity")
+    if identities is None:
+        return {"verified": 0, "declared": False}
+    if not isinstance(identities, list):
+        raise ValueError("clip_identity 必须是列表")
+    algorithm = manifest.get("hash_algorithm")
+    if algorithm != "sha1":
+        raise ValueError(f"不支持的导出内容摘要算法：{algorithm!r}")
+    files = {str(item) for item in manifest["clips"]}
+    declared = {}
+    for entry in identities:
+        name, digest = entry.get("file"), entry.get("sha1")
+        if name not in files:
+            raise ValueError(f"内容身份引用了清单外的片段：{name}")
+        if name in declared:
+            raise ValueError(f"片段内容身份重复：{name}")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{40}", digest):
+            raise ValueError(f"片段内容摘要格式无效：{name}")
+        declared[name] = digest
+    if set(declared) != files:
+        missing = sorted(files - set(declared))
+        raise ValueError(f"清单片段缺少内容身份：{missing[:3]}")
+    verified = 0
+    for name in manifest["clips"]:
+        # 通过 loader 读取时无法直接哈希字节，此时只能在可直接读盘的分支校验。
+        if clip_loader is not None:
+            continue
+        path = contained_file(source, name)
+        actual = hashlib.sha1(path.read_bytes()).hexdigest()
+        if actual != declared[name]:
+            raise ValueError(f"片段内容与导出清单不一致：{name}")
+        verified += 1
+    return {"verified": verified, "declared": True, "algorithm": algorithm,
+            "engine_version": manifest.get("engine_version"),
+            "plugin_version": manifest.get("plugin_version")}
+
+
 def prepare(
     source,
     output,
@@ -82,6 +125,8 @@ def prepare(
     manifest_version = manifest.get("schema_version")
     if manifest_version not in (1, 2) or not manifest.get("clips"):
         raise ValueError("导出批次缺少有效清单")
+    # 先验内容身份，再开始建目录：被替换的批次不留任何半成品。
+    identity = verify_clip_identity(source, manifest, clip_loader)
     pose_only = (
         manifest_version == 2
         and manifest.get("training_contract") == "pose_only_root_authoritative"
@@ -320,6 +365,8 @@ def prepare(
         "training_contract": (
             "pose_only_root_authoritative" if pose_only else "legacy_root_in_pose"
         ),
+        # 批次来源身份：旧批次没有这些字段时为 None，不伪造。
+        "source_identity": identity,
     }
     (output / "dataset.json").write_text(
         json.dumps(dataset, ensure_ascii=False, indent=2), encoding="utf-8"

@@ -1,0 +1,11 @@
+# 生成物与本地缓存
+.mplcache/
+.preview/
+*.aux
+*.log
+
+# 分析产物：由 paper/analysis/contact_pose_analysis.py 生成，可随时重跑
+analysis/out/
+
+# 生成的 PDF 默认提交（技术报告需要可直接分发）；若不想入库，取消下一行注释
+# MotionWeaver-technical-report.pdf

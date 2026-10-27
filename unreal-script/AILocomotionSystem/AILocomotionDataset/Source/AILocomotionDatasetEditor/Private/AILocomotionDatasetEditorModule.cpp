@@ -11,15 +11,19 @@
 #include "ContentBrowserModule.h"
 #include "Containers/Ticker.h"
 #include "IContentBrowserSingleton.h"
+#include "Interfaces/IPluginManager.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
+#include "Misc/DateTime.h"
+#include "Misc/EngineVersion.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/MessageDialog.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopedSlowTask.h"
+#include "Misc/SecureHash.h"
 #include "Modules/ModuleManager.h"
 #include "Serialization/JsonSerializer.h"
 #include "ToolMenus.h"
@@ -44,7 +48,35 @@ namespace
 		return FJsonSerializer::Serialize(Object, TJsonWriterFactory<>::Create(&Text)) && FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 	}
 
-	bool ExportClip(UAnimSequence* Animation, const FString& Path, FScopedSlowTask& Progress, FString& Error)
+	/**
+	 * 内容身份：对已写出的文件计算 SHA-1，返回十六进制字符串。
+	 *
+	 * UE 5.8 的 FPlatformMisc::GetSHA256Signature 只有通用基类的占位实现
+	 * （GenericPlatformMisc.cpp 中 checkf(false)），Windows 未实现，调用会断言崩溃，
+	 * 因此这里使用 Core 始终可用的 FSHA1，并在清单中显式记录算法名，
+	 * 避免下游把该摘要误当成 SHA-256。算法为 sha1，用于批次取证与篡改检测。
+	 */
+	bool HashFile(const FString& Path, FString& OutHex, FString& OutError)
+	{
+		TArray<uint8> Bytes;
+		if (!FFileHelper::LoadFileToArray(Bytes, *Path))
+		{
+			OutError = FString::Printf(TEXT("无法读取待哈希文件：%s"), *Path);
+			return false;
+		}
+		const FSHAHash Digest = FSHA1::HashBuffer(Bytes.GetData(), Bytes.Num());
+		OutHex = Digest.ToString().ToLower();
+		return true;
+	}
+
+	/** 导出插件版本来自 uplugin 描述符；缺失时留空而不是编造。 */
+	FString PluginVersion()
+	{
+		const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("AILocomotionDataset"));
+		return Plugin.IsValid() ? Plugin->GetDescriptor().VersionName : FString();
+	}
+
+	bool ExportClip(UAnimSequence* Animation, const FString& Path, FScopedSlowTask& Progress, FString& Error, FString& OutSha1)
 	{
 		const UAILocomotionDatasetSettings* Settings = GetDefault<UAILocomotionDatasetSettings>();
 		USkeleton* Skeleton = Animation->GetSkeleton();
@@ -255,6 +287,11 @@ namespace
 			Error = LOCTEXT("WriteFailed", "无法写入动画数据文件，请检查输出目录和磁盘空间。").ToString();
 			return false;
 		}
+		// 写出后立即回读计算摘要：清单记录的是磁盘上的真实字节，不是预期内容。
+		if (!HashFile(Path, OutSha1, Error))
+		{
+			return false;
+		}
 		return true;
 	}
 
@@ -269,13 +306,15 @@ namespace
 		}
 
 		TArray<TSharedPtr<FJsonValue>> Files;
+		TArray<TSharedPtr<FJsonValue>> Clips;
 		TArray<TSharedPtr<FJsonValue>> Failures;
 		for (int32 Index = 0; Index < Assets.Num(); ++Index)
 		{
 			UAnimSequence* Animation = Cast<UAnimSequence>(Assets[Index].GetAsset());
 			const FString Filename = FString::Printf(TEXT("clip_%05d.json"), Files.Num());
 			FString Error;
-			if (!Animation || !ExportClip(Animation, OutDirectory / Filename, Progress, Error))
+			FString Sha1;
+			if (!Animation || !ExportClip(Animation, OutDirectory / Filename, Progress, Error, Sha1))
 			{
 				if (!Animation)
 				{
@@ -294,6 +333,12 @@ namespace
 				continue;
 			}
 			Files.Add(MakeShared<FJsonValueString>(Filename));
+			// 逐片段内容身份：文件摘要绑定来源资产，使磁盘文件可被取证与比对。
+			TSharedRef<FJsonObject> Clip = MakeShared<FJsonObject>();
+			Clip->SetStringField(TEXT("file"), Filename);
+			Clip->SetStringField(TEXT("asset"), Assets[Index].GetObjectPathString());
+			Clip->SetStringField(TEXT("sha1"), Sha1);
+			Clips.Add(MakeShared<FJsonValueObject>(Clip));
 		}
 
 		if (Files.IsEmpty())
@@ -305,7 +350,15 @@ namespace
 		TSharedRef<FJsonObject> Manifest = MakeShared<FJsonObject>();
 		Manifest->SetNumberField(TEXT("schema_version"), 2);
 		Manifest->SetStringField(TEXT("training_contract"), TEXT("pose_only_root_authoritative"));
+		// clips 保持既有字符串列表契约，追加 clip_identity 记录内容身份，不破坏既有消费者。
 		Manifest->SetArrayField(TEXT("clips"), Files);
+		Manifest->SetArrayField(TEXT("clip_identity"), Clips);
+		// 批次身份：此前只有随机 GUID 目录名，无法判断批次由哪个引擎/插件产出。
+		Manifest->SetStringField(TEXT("engine_version"), FEngineVersion::Current().ToString(EVersionComponent::Patch));
+		Manifest->SetStringField(TEXT("plugin_name"), TEXT("AILocomotionDataset"));
+		Manifest->SetStringField(TEXT("plugin_version"), PluginVersion());
+		Manifest->SetStringField(TEXT("hash_algorithm"), TEXT("sha1"));
+		Manifest->SetStringField(TEXT("exported_at"), FDateTime::UtcNow().ToIso8601());
 		TSharedRef<FJsonObject> Report = MakeShared<FJsonObject>();
 		Report->SetNumberField(TEXT("candidate_anim_sequences"), Assets.Num());
 		Report->SetNumberField(TEXT("exported_clips"), Files.Num());

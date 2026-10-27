@@ -96,8 +96,9 @@ def intervals(mask, fps, minimum_seconds=0.1):
             if stop - start >= int(np.ceil(minimum_seconds * fps))]
 
 
-def observe(motion, row, group, roles):
-    world = world_positions(motion)
+def observe(motion, row, group, roles, *, world=None):
+    if world is None:
+        world = world_positions(motion)
     names = motion.skeleton.names
     joint = {role: names.index(name) for role, name in roles.items()}
     fps = motion.fps

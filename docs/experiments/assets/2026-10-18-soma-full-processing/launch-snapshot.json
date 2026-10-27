@@ -1,0 +1,58 @@
+{
+  "snapshot": {
+    "state": "running",
+    "selected": 71132,
+    "completed": 200,
+    "status_counts": {
+      "normalized": 200
+    },
+    "updated_at": "2026-10-17T18:12:59.941142+00:00",
+    "pid": 56240,
+    "workers": 8,
+    "elapsed_this_session_seconds": 283.8
+  },
+  "manifest": {
+    "run_id": "20261018-soma-full-v1",
+    "selected": 71132,
+    "frames": 62301201,
+    "metadata_sha256": "71d09422034946d17dbb0db027d569408c486545bdb12f7979d55e6ffd9bbc39",
+    "target_sha256": "8edb69bd085f0ba2a117fec901607a15b4644ac783ec0f5d1feadb78c6d7aa41",
+    "policy": {
+      "version": "soma_processing_v1",
+      "time": "declared_source_seconds_no_retime",
+      "root": "hips_xz_y_zero_anatomical_yaw",
+      "vertical": "all_recorded_height_in_body",
+      "invalid_heading": "identity_rotation_with_invalid_mask",
+      "root_status": "offline_proxy_not_observed_actor_root",
+      "contact_status": "heuristic_candidates_not_ground_truth",
+      "contact_states": {
+        "unknown": -1,
+        "noncontact_candidate": 0,
+        "contact_candidate": 1
+      },
+      "slow_enter_m_s": 0.12,
+      "slow_leave_m_s": 0.25,
+      "minimum_stable_seconds": 0.1,
+      "maximum_stable_height_range_m": 0.025,
+      "height_cluster_tolerance_m": 0.04,
+      "swing_speed_m_s": 0.5,
+      "swing_vertical_speed_m_s": 0.15,
+      "swing_height_margin_m": 0.06
+    },
+    "code_sha256": {
+      "tools/process_soma_dataset.py": "75d82acadcd1a65a5070f19609c72f67aa6f92b707479d39b8e399fe1c3179d4",
+      "runtime/motion_processing.py": "a378bcebb927e1c123d5114347ea76338aa355e3940aacf03a1097d11e990867",
+      "runtime/motion_features.py": "b52140129b1418d7891841aff561091ed45160f957e505ca4410a4491b7ff412",
+      "runtime/native_motion.py": "558a3387e35b84701c086d807f166c67f6b9275b1eec3158162e9566875c9a78",
+      "runtime/native_motion_io.py": "0889255ef09172c80d940aa8b09662b316adcc977db98c0aca5b9acdb68a102c",
+      "runtime/bvh_reader.py": "3e641f8de20c020c710a59cf6f5245ce0211e6b738875bcf4818d18b81377a17",
+      "runtime/importers/bvh.py": "ee8b49a5dd3afbed071cf73b57f246b661feb39c4e4ae3a6ce67213a052088f7",
+      "runtime/normalize_motion.py": "70bc45c9fe5e73fc74789c4146728a07c7d7b137af42df6ea9acde788d24c76e",
+      "runtime/motion_kinematics.py": "3277d16444a34ac1550052d22f4ae94cba0a3a44622d839ddcee331f4d552d15",
+      "tools/soma_observation.py": "d35ebf26f73e9f9d2297cbbbc0a933cfa0cd4ea998b08d7e6f16f4913f7ec142"
+    },
+    "limit": null,
+    "scope": "all_nonmirror_soma_uniform_fixed_reference_and_candidates"
+  },
+  "state_is_a_snapshot_not_final_result": true
+}

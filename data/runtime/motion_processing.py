@@ -95,10 +95,11 @@ def contact_candidates(world, times, names, roles):
     return arrays, summaries
 
 
-def process_motion(motion, roles):
+def process_motion(motion, roles, *, world=None):
     """保存可逆的离线位置表示；未来 Root 与接触候选均不能冒充在线输入。"""
-    world = world_positions(motion)
-    features = extract_features(motion, roles)
+    if world is None:
+        world = world_positions(motion)
+    features = extract_features(motion, roles, world=world)
     pelvis = world[:, motion.skeleton.names.index(roles["pelvis"])]
     root_position = pelvis.copy()
     root_position[:, 1] = 0

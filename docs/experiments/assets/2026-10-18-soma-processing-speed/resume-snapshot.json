@@ -1,0 +1,21 @@
+{
+  "observed_at": "2026-10-17T18:28:42.098835+00:00",
+  "optimization_commit": "0183075",
+  "verified_previous_records": 518,
+  "progress": {
+    "state": "running",
+    "selected": 71132,
+    "completed": 700,
+    "status_counts": {
+      "normalized": 700
+    },
+    "updated_at": "2026-10-17T18:28:40.466549+00:00",
+    "pid": 60660,
+    "workers": 8,
+    "elapsed_this_session_seconds": 81.0
+  },
+  "stderr_bytes": 0,
+  "stdout": "E:\\MotionWeaverData\\reports\\soma_uniform\\20261018-soma-full-v1-launch\\optimized-stdout.log",
+  "source_data_preserved": true,
+  "complete": false
+}

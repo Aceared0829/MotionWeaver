@@ -53,7 +53,7 @@ def _write_motion(folder, motion, skeleton_store=None):
             (shared / "skeleton.json").write_text(json.dumps(fields, ensure_ascii=False, indent=2), encoding="utf-8")
         elif not (shared / "skeleton.json").is_file():
             raise ValueError("共享骨架未完整写入")
-    with (folder / "arrays.bin").open("wb") as stream:
+    with (folder / "arrays.bin").open("wb", buffering=1024 * 1024) as stream:
         def array(values, dtype="<f8"):
             values = np.asarray(values, dtype=dtype)
             descriptor = {"offset": stream.tell(), "shape": list(values.shape), "dtype": values.dtype.str}
@@ -101,20 +101,25 @@ def write_sampled_motion(folder, motion: SampledMotion, skeleton_store=None) -> 
 
 
 @overload
-def _read_motion(folder, kind: Literal["native"]) -> NativeMotion: ...
+def _read_motion(folder, kind: Literal["native"], file_hashes=None) -> NativeMotion: ...
 
 
 @overload
-def _read_motion(folder, kind: Literal["sampled"]) -> SampledMotion: ...
+def _read_motion(folder, kind: Literal["sampled"], file_hashes=None) -> SampledMotion: ...
 
 
-def _read_motion(folder, kind: Literal["native", "sampled"]) -> NativeMotion | SampledMotion:
+def _read_motion(folder, kind: Literal["native", "sampled"], file_hashes=None) -> NativeMotion | SampledMotion:
     folder = Path(folder)
-    document = json.loads((folder / "motion.json").read_text(encoding="utf-8"))
+    metadata = (folder / "motion.json").read_bytes()
+    document = json.loads(metadata.decode("utf-8"))
     if (document.get("schema"), document.get("version"), document.get("kind")) != (SCHEMA, VERSION, kind):
         raise ValueError("不支持的运动交换契约")
     binary = folder / "arrays.bin"
     buffers = {binary: binary.read_bytes()}
+    # 回执使用实际回读的字节，避免调用者再次打开大文件计算同一哈希。
+    if file_hashes is not None:
+        file_hashes.update({"motion.json": hashlib.sha256(metadata).hexdigest(),
+                            "arrays.bin": hashlib.sha256(buffers[binary]).hexdigest()})
 
     def array(descriptor, data_file=binary):
         if descriptor["dtype"] not in ("<f8", "<i8", "|b1"):
@@ -170,9 +175,9 @@ def _read_motion(folder, kind: Literal["native", "sampled"]) -> NativeMotion | S
     return motion
 
 
-def read_native_motion(folder) -> NativeMotion:
-    return _read_motion(folder, "native")
+def read_native_motion(folder, *, file_hashes=None) -> NativeMotion:
+    return _read_motion(folder, "native", file_hashes)
 
 
-def read_sampled_motion(folder) -> SampledMotion:
-    return _read_motion(folder, "sampled")
+def read_sampled_motion(folder, *, file_hashes=None) -> SampledMotion:
+    return _read_motion(folder, "sampled", file_hashes)
