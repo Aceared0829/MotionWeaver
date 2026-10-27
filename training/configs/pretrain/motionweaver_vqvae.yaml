@@ -14,7 +14,10 @@ model:
     - joint_positions_and_rotations_and_hip_height
     - root_without_hip_height_without_heading
     quantizer_strategy: multihead_ema_reset
-    quantizer_mu: 0.99
+    # EMA 衰减。官方默认 0.8；此处曾用 0.99，配合已关闭的死码重置
+    # （threshold_ema_dead_code=0）仍会让码本适应过慢。
+    # 调到 0.9 让 center 每步吸收 10% 的新批次均值，码本能跟上数据分布。
+    quantizer_mu: 0.9
     nb_code: 100000000
     code_dim: 256
     output_emb_width: 256
@@ -41,6 +44,12 @@ model:
     max_tokens: 16
     down_t: 2
     commit_loss_coeff: 0.02
+    # 码字使用熵正则系数。0 = 关闭（官方原行为）。
+    # 实测：不开时 full_400k 跑 40,356 步后，per_head=32 的 perplexity
+    # 塌缩到 1.29（4% 容量）、最小 1.00，而 recons 仍从 0.52 降到 0.24——
+    # 模型在用极少数码字压低重建误差。开启后 -coeff*entropy 推动码字均匀使用。
+    # 建议从 0.1 起试。
+    usage_entropy_coeff: 0.0
     batchsize_mul_factor: 2
     root_vqvae_max_num_keyframes: 5
     root_vqvae_no_keyframe_prob: 0.25

@@ -344,11 +344,29 @@ class MotionVQVAEModel(LightningModule):
         losses["l_skate_contact"] = mean_vel
         skate_contact_loss_coeff = self._args.get("skate_contact_loss_coeff", 0.0)
 
+        # 码字使用熵正则：鼓励码本被均匀使用，抑制塌缩。
+        #
+        # 动机（实测 full_400k，40,356 步）：per_head=32 时 perplexity 均值
+        # 只有 1.29（4% 容量），最小值 1.00（整批 token 用同一个码字），
+        # 而同期 recons 从 0.52 降到 0.24。也就是说模型发现「少用码字」
+        # 能更好地压低重建误差，官方 loss 里没有任何项反对这个方向。
+        #
+        # 这里用 -coeff * entropy：entropy 越大（码字越均匀）损失越小，
+        # 因此梯度推动模型提高多样性。coeff 由配置提供，默认 0（保持原行为）。
+        usage_entropy_coeff = self._args.get("usage_entropy_coeff", 0.0)
+        if usage_entropy_coeff > 0.0 and "usage_entropy" in pose_net_output:
+            losses["l_usage_entropy"] = pose_net_output["usage_entropy"]
+            usage_entropy_term = -usage_entropy_coeff * losses["l_usage_entropy"]
+        else:
+            losses["l_usage_entropy"] = 0.0
+            usage_entropy_term = 0.0
+
         losses["loss"] = (
             pose_recons_loss
             + self._args["commit_loss_coeff"] * losses["l_commit_pose"]
             + skate_contact_loss_coeff * losses["l_skate_contact"]
             + joint_vel_loss_coeff * losses["l_joint_vel"]
+            + usage_entropy_term
         )
         return losses
 
