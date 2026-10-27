@@ -203,6 +203,7 @@ def train(args):
             window_frames=getattr(args, "soma_window_frames", 48),
             history_frames=getattr(args, "soma_history_frames", 0),
             fps_group=getattr(args, "soma_fps_group", None),
+            scenes=getattr(args, "soma_scenes", None),
         )
     else:
         dataset = (MotionWeaverUnrealDataset(args.dataset, args.actor_root_sidecar)
@@ -315,6 +316,8 @@ if __name__ == "__main__":
     parser.add_argument("--soma_history_frames", type=int, default=0, help="窗口前的历史帧数，通常为 0")
     parser.add_argument("--soma_fps_group", choices=("fps120", "fps30"),
                         help="只训该帧率组；120fps 与 30fps 不可混批")
+    parser.add_argument("--soma_scenes", nargs="+", choices=("A", "B", "C", "D"),
+                        help="只训指定场景；B/C 共用 72 帧窗口与 down_t=3，A/D 用 48 帧与 down_t=4")
     parser.add_argument("--num_workers", type=int, default=0,
                         help="DataLoader 并行读盘进程数；实测 8 约 6 倍加速（仅影响速度，不影响数值）")
     parser.add_argument("--kmeans_init", type=int, choices=(0, 1), default=None,

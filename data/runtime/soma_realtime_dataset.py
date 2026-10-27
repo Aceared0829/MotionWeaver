@@ -92,9 +92,10 @@ class SomaRealtimeDataset(Dataset):
     """
 
     def __init__(self, folder, *, window_frames=48, history_frames=0, min_frames=None,
-                 indices=None, fps_group=None, deterministic_window=False):
+                 indices=None, fps_group=None, scenes=None, deterministic_window=False):
         self.folder = Path(folder).resolve()
         self.fps_group = fps_group
+        self.scenes = tuple(scenes) if scenes else None
         # 对照实验/复现需要固定窗口起点：随机起点在不同 worker 进程里各用各的
         # RNG 状态，无法逐元素比对。训练默认保持随机（不同 epoch 覆盖不同片段）。
         self.deterministic_window = bool(deterministic_window)
@@ -110,6 +111,15 @@ class SomaRealtimeDataset(Dataset):
                 available = sorted({c.get("fps_group") for c in self.clips})
                 raise ValueError(
                     f"帧率组 {fps_group} 下没有 clip；可选：{available}")
+            self.clips = filtered
+        # 按场景过滤：A/B/C/D 的动作类型差异大，且 B/C 的窗口与 down_t
+        # 都和 A/D 不同，混在一起训会让单一码本同时迁就两种时间粒度。
+        if self.scenes:
+            filtered = [c for c in self.clips if c.get("scene") in self.scenes]
+            if not filtered:
+                available = sorted({c.get("scene") for c in self.clips})
+                raise ValueError(
+                    f"场景 {self.scenes} 下没有 clip；可选：{available}")
             self.clips = filtered
 
         self.window_frames = int(window_frames)
@@ -394,55 +404,6 @@ class SomaRealtimeCollate:
             "motion": picked.float(),
             "motion_len": torch.tensor([frames] * len(batch)),
             "motion_pad_mask": torch.zeros((len(batch), frames), dtype=torch.bool),
-            "batch_size": len(batch),
-        }
-
-    def __init__(self, representation, indices, *, device="cuda"):
-        self.representation = representation
-        self.indices = torch.as_tensor(np.asarray(indices), dtype=torch.long)
-        self.device = device
-        prepared = representation
-        if device == "cuda" and torch.cuda.is_available():
-            prepared = prepared.cuda()
-        else:
-            self.device = "cpu"
-        self._prepared = prepared
-        self._indices_device = self.indices.to(self.device)
-
-    def __call__(self, batch):
-        # 同一批内窗口长度一致（Dataset 已固定 span），可直接堆叠
-        lengths = [item["frames"] for item in batch]
-        if len(set(lengths)) != 1:
-            raise ValueError(f"同批窗口长度不一致 {lengths}，不符合定长训练假设")
-        frames = lengths[0]
-
-        positions = torch.from_numpy(
-            np.stack([item["positions"].numpy() for item in batch])).to(self.device)
-        rotations = torch.from_numpy(
-            np.stack([item["rotations"].numpy() for item in batch])).to(self.device)
-        contacts = torch.from_numpy(
-            np.stack([item["contacts"].numpy() for item in batch])).to(self.device)
-
-        with torch.no_grad():
-            features = self._prepared(
-                {
-                    "posed_joints": positions,
-                    "global_joint_rots": rotations,
-                    "foot_contacts": contacts,
-                },
-                to_normalize=False,
-                lengths=torch.tensor([frames] * len(batch)),
-            )
-        # features: [B, T, motion_rep_dim]，只取 global_rep 需要的列
-        if features.ndim == 4:
-            features = features.squeeze(1)
-        picked = features[..., self._indices_device]
-
-        return {
-            "motion": picked.float(),
-            "motion_len": torch.tensor([frames] * len(batch)),
-            "motion_pad_mask": torch.zeros(
-                (len(batch), frames), dtype=torch.bool),
             "batch_size": len(batch),
         }
 

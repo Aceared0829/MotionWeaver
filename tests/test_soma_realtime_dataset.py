@@ -20,7 +20,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from data.runtime.soma_realtime_dataset import (  # noqa: E402
+from data.runtime.soma_realtime_dataset import (
     SomaRealtimeCollate,
     SomaRealtimeDataset,
     compute_stats,
@@ -92,6 +92,42 @@ def _write_views(root, *, fps_list=(120.0048, 120.0048), frames_list=(120, 140))
 
 
 class FrameRateIsolationTests(unittest.TestCase):
+    def test_scene_filter_keeps_only_requested_scenes(self):
+        """按场景过滤必须真的剔除其它场景。
+
+        这条用例是为一个真实缺陷补的：场景过滤加进来后，
+        变异检查发现把 `if self.scenes:` 改成 `if False:` 时既有测试全绿，
+        说明过滤逻辑没有任何测试覆盖——A/D 会静默混进 B/C 的训练集。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            # 四条都必须长于 WINDOW，否则会被 min_frames 剔除，
+            # 导致某个场景缺失、断言看不出过滤是否生效。
+            views = _write_views(Path(tmp) / "views",
+                                 frames_list=(120, 140, 160, 180),
+                                 fps_list=(120.0048,) * 4)
+            # 逐条改写 scene 字段，造出 A/B/C/D 各一条
+            manifest_path = views / "dataset.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for clip, scene in zip(manifest["clips"], ["A", "B", "C", "D"]):
+                clip["scene"] = scene
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+            dataset = SomaRealtimeDataset(views, window_frames=WINDOW,
+                                          scenes=["B", "C"])
+            scenes = {clip["scene"] for clip in dataset.clips}
+            self.assertEqual(scenes, {"B", "C"},
+                             "场景过滤失效，其它场景混了进来")
+            self.assertEqual(len(dataset.clips), 2)
+
+    def test_unknown_scene_lists_available(self):
+        """请求不存在的场景时报错要列出可用项。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            views = _write_views(Path(tmp) / "views")
+            with self.assertRaises(ValueError) as ctx:
+                SomaRealtimeDataset(views, window_frames=WINDOW, scenes=["Z"])
+            self.assertIn("A", str(ctx.exception))
+
     def test_mixed_frame_rates_are_rejected(self):
         """含多种帧率且未指定分组时必须报错，而不是静默混批。"""
         with tempfile.TemporaryDirectory() as tmp:
@@ -180,7 +216,7 @@ class CollateTests(unittest.TestCase):
 
     def test_feature_dim_is_942(self):
         """collate 输出的特征维度必须是 12*bones+6。"""
-        collate = SomaRealtimeCollate(self.representation, self.indices, device="cpu")
+        collate = SomaRealtimeCollate(self.representation, self.indices)
         batch = [self.dataset[i] for i in range(2)]
         out = collate(batch)
         self.assertEqual(out["motion"].shape[-1], 12 * BONES + 6)
@@ -188,7 +224,7 @@ class CollateTests(unittest.TestCase):
 
     def test_batched_equals_single_clip(self):
         """批量结果必须与逐条计算一致——优化不能改变数值。"""
-        collate = SomaRealtimeCollate(self.representation, self.indices, device="cpu")
+        collate = SomaRealtimeCollate(self.representation, self.indices)
         batch = [self.dataset[i] for i in range(3)]
         batched = collate(batch)["motion"]
 
@@ -206,7 +242,7 @@ class CollateTests(unittest.TestCase):
         也会抛 ValueError——于是变异体照样「通过」，测试完全无效。
         现在改为断言错误信息里必须出现我们自己的说明文字，才能证明是那条检查在生效。
         """
-        collate = SomaRealtimeCollate(self.representation, self.indices, device="cpu")
+        collate = SomaRealtimeCollate(self.representation, self.indices)
         item = self.dataset[0]
         shortened = dict(item)
         shortened["positions"] = item["positions"][: WINDOW - 5]
@@ -220,7 +256,7 @@ class CollateTests(unittest.TestCase):
 
     def test_output_has_finite_values(self):
         """输出不能含 NaN/Inf。"""
-        collate = SomaRealtimeCollate(self.representation, self.indices, device="cpu")
+        collate = SomaRealtimeCollate(self.representation, self.indices)
         out = collate([self.dataset[i] for i in range(2)])
         self.assertTrue(torch.isfinite(out["motion"]).all())
 
