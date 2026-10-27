@@ -1,0 +1,62 @@
+{
+  "checkpoint": "D:\\MotionWeaverData\\training_runs\\tok_BC120_3ep\\checkpoints\\final.ckpt",
+  "global_step": 10128,
+  "down_t": 3,
+  "joint_positions_from": "ric_data",
+  "scenes": [
+    "B",
+    "C"
+  ],
+  "rows": [
+    {
+      "tokens": 6,
+      "frames": 48,
+      "feature_l1": 0.7260765631993612,
+      "joint_rmse_cm": 111.55276298522949,
+      "self_check_m": 2.3291239870104619e-07,
+      "clips": 6
+    },
+    {
+      "tokens": 8,
+      "frames": 64,
+      "feature_l1": 0.7243328392505646,
+      "joint_rmse_cm": 111.38070623079936,
+      "self_check_m": 2.1230682989425986e-07,
+      "clips": 6
+    },
+    {
+      "tokens": 10,
+      "frames": 80,
+      "feature_l1": 0.7252823710441589,
+      "joint_rmse_cm": 111.36164665222168,
+      "self_check_m": 9.813005164005517e-08,
+      "clips": 6
+    },
+    {
+      "tokens": 12,
+      "frames": 96,
+      "feature_l1": 0.7262562016646067,
+      "joint_rmse_cm": 111.05908056100209,
+      "self_check_m": 2.529093308112351e-07,
+      "clips": 6
+    },
+    {
+      "tokens": 14,
+      "frames": 112,
+      "feature_l1": 0.7292311092217764,
+      "joint_rmse_cm": 110.24336218833923,
+      "self_check_m": 1.8253061284667638e-07,
+      "clips": 6
+    },
+    {
+      "tokens": 16,
+      "frames": 128,
+      "feature_l1": 0.7248075405756632,
+      "joint_rmse_cm": 109.68532462914784,
+      "self_check_m": 1.0944022932335429e-07,
+      "clips": 6
+    }
+  ],
+  "mean_feature_l1": 0.7259977708260218,
+  "mean_joint_rmse_cm": 110.88048054112329
+}

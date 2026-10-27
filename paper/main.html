@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -1275,9 +1275,106 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
   码字越多，每个码字被采样越少，EMA 更新越慢，越容易出现死码。
 </div>
 
-<h3 class="sub">8.8&nbsp;&nbsp;推理时延</h3>
+<h3 class="sub">8.8&nbsp;&nbsp;分词器评测：统一 benchmark 与四臂结果</h3>
+<p>评测代码原先散在三处（<code>training/evaluation/</code>、<code>data/tools/</code>、
+<code>paper/analysis/</code>），同一指标在不同脚本里统计口径不一致——有的取均值、
+有的取中位、有的取 p90，导致数字无法互相比较。我们把它们收进
+<code>benchmark/</code>，并定下一条原则：<strong>官方已有的不重写，我们只做补集，
+但对外是一份报告。</strong></p>
+
 <div class="tblwrap">
-  <p class="caption"><b>表 17</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
+  <p class="caption"><b>表 17</b>：评测体系的三组分工。指标原语（<code>metric()</code>/
+  <code>rms()</code>）直接 import 官方的
+  <code>inference.profiling.evaluate_unreal_streaming</code>，不重新实现。</p>
+  <table>
+    <thead><tr><th>组</th><th>内容</th><th>来源</th></tr></thead>
+    <tbody>
+      <tr><td><b>A 组</b></td><td>10 个训练指标（perplexity / commit / recons* /
+          joint_vel / skate_contact / loss）</td>
+          <td>官方 <code>motion_vqvae.py:336–352</code> 训练时写入 <code>metrics.csv</code>，
+              本报告只读不算</td></tr>
+      <tr><td><b>B 组</b></td><td>关节 RMSE（厘米）、feature L1、自校验误差</td>
+          <td class="good">我们的补集：官方脚本只吃 UE Schema，
+              SOMA 四键 NPZ 需另写</td></tr>
+      <tr><td><b>C 组</b></td><td>Hold / Lerp 零成本基线</td>
+          <td>引用已冻结的基线报告，不重算</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 18</b>：四臂的 A 组指标（训练集口径，末段 10% 均值）。
+  <code>l_recons_pose_global</code> 与两条 <code>l_recons_root_*</code> 在四臂上
+  恒为 0.0000——根运动与全局姿态的重建完全精确，误差集中在局部姿态。</p>
+  <table>
+    <thead><tr><th>指标</th><th class="num">BC120<br>(B+C, dt3)</th>
+      <th class="num">A120<br>(A, dt2)</th><th class="num">B120<br>(kmeans, dt2)</th></tr></thead>
+    <tbody>
+      <tr><td><code>l_recons_pose</code></td><td class="num">0.3032</td>
+          <td class="num good">0.1811</td><td class="num">0.1815</td></tr>
+      <tr><td><code>l_commit_pose</code></td><td class="num good">0.0050</td>
+          <td class="num">0.5844</td><td class="num">0.5519</td></tr>
+      <tr><td><code>l_joint_vel</code></td><td class="num good">0.1798</td>
+          <td class="num">0.2397</td><td class="num">0.3329</td></tr>
+      <tr><td><b><code>l_skate_contact</code> (m/s)</b></td>
+          <td class="num good">0.3911</td><td class="num">1.1499</td>
+          <td class="num">1.1103</td></tr>
+      <tr><td><code>perplexity_pose</code></td><td class="num good">5.6350</td>
+          <td class="num">5.2925</td><td class="num">5.1851</td></tr>
+      <tr><td><code>loss</code></td><td class="num good">0.6668</td>
+          <td class="num">0.6838</td><td class="num">0.8694</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p><strong>一个必须写明的陷阱：<code>l_recons_pose</code> 不可跨 <code>down_t</code>
+比较。</strong>把 A 组与 B 组并排看会得到一个矛盾：A120(dt2) 的
+<code>l_recons_pose</code> 最低（0.1811），关节误差却高达 208.98 cm；
+BC120 的 loss 较高（0.3032），关节误差反而最小（105.33 cm）。
+原因是该损失在<strong>归一化特征空间</strong>里计算，而归一化用的
+<code>mean/std</code> 随 <code>frames_per_token</code> 变化。
+因此 loss 只能在同一个 <code>down_t</code> 内比较：A120(dt2) 0.1811 与
+B120(dt2) 0.1815 几乎相等，这与 §8.7 得出的「kmeans_init 无优势」一致。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 19</b>：B 组（我们的补集）。自校验是官方
+  <code>motionweaver_preview.py:416</code> 的门槛——逆变换必须能把原始输入
+  还原到 0.03 m 以内，否则重建指标无意义。</p>
+  <table>
+    <thead><tr><th>模型</th><th class="num">feature L1</th>
+      <th class="num">关节 RMSE (cm)</th><th class="num">自校验 (m)</th></tr></thead>
+    <tbody>
+      <tr><td>BC120 (B+C, dt3)</td><td class="num">0.7233</td>
+          <td class="num good">105.33</td><td class="num">0.000000</td></tr>
+      <tr><td>A120 (A, dt2)</td><td class="num">0.7152</td>
+          <td class="num">208.98</td><td class="num">0.000000</td></tr>
+      <tr><td>A120 (A, dt3)</td><td class="num good">0.6572</td>
+          <td class="num">121.04</td><td class="num">0.000000</td></tr>
+      <tr><td>B120 (A, kmeans, dt2)</td><td class="num">0.7824</td>
+          <td class="num bad">308.09</td><td class="num">0.000000</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">自校验全部为 0.000000 m，说明「特征 → 关节位置」的转换链路
+    完全自洽，表中的差异来自模型本身而非评测代码。但关节 RMSE 绝对值很大
+    （105–308 cm），说明即使特征级损失已经较低，还原到关节位置后误差仍不可接受。</p>
+</div>
+
+<p><strong>脚滑是唯一可直接与基线对比的指标</strong>，因为
+<code>l_skate_contact</code> 的单位是 m/s。BC120 的 0.3911 m/s
+已优于 Lerp 基线的 0.545 m/s（21× 源动作）。但两者口径不同：基线是
+<strong>补间生成</strong>的结果，这里是 <strong>tokenizer 重建</strong>的结果，
+不能据此声称「模型补间能力超过 Lerp」。</p>
+
+<figure>
+  <img src="figures/fig9-benchmark-arms.png" alt="四臂的 A 组与 B 组指标对比">
+  <figcaption><b>图 9</b>：四臂在 A 组（训练指标，左）与 B 组（重建误差，右）上的对比。
+    A 组的 <code>l_recons_pose</code> 不可跨 <code>down_t</code> 排序（见正文），
+    因此左图只用于同 <code>down_t</code> 内的比较。</figcaption>
+</figure>
+
+
+<div class="tblwrap">
+  <p class="caption"><b>表 20</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
     计 3 条 × 3 次同步前向）。不含数据准备、UE NNE、蒙皮、渲染与线程调度。</p>
   <table>
     <thead><tr><th>条件</th><th class="num">P50 (ms)</th><th class="num">P95 (ms)</th><th class="num">4 帧预算 @30 Hz (ms)</th><th>是否在预算内</th></tr></thead>
@@ -1303,7 +1400,7 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
 
 <h3 class="sub">9.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
 <div class="tblwrap">
-  <p class="caption"><b>表 18</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
+  <p class="caption"><b>表 21</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
   <table>
     <thead><tr><th>问题</th><th>当前状态</th></tr></thead>
     <tbody>
@@ -1330,7 +1427,7 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
 </ol>
 <p>共同点是：<strong>指标本身没错，错的是指标所依附的对象身份</strong>。
   因此本报告把每个数字都附上它所属的条件（教师轨迹 / 控制器轨迹 / oracle），
-  并在表 10 与表 18 中显式列出不可跨越的边界。</p>
+  并在表 10 与表 21 中显式列出不可跨越的边界。</p>
 
 <h2 class="sec">10&nbsp;&nbsp;结论与下一步</h2>
 <p>MotionWeaver 已经建成一条可追溯的数据与训练链路：两套骨骼数据汇入同一目标骨架，

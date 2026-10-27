@@ -273,17 +273,43 @@ class StatsAndSignatureTests(unittest.TestCase):
             self.assertEqual(mean.shape, (dataset.representation.motion_rep_dim,))
             self.assertEqual(result["mean_shape"], [dataset.representation.motion_rep_dim])
 
-    def test_training_signature_changes_with_window(self):
-        """窗口参数不同必须产生不同签名，防止续训时静默换窗口。"""
+    def test_training_signature_ignores_window_size(self):
+        """签名只覆盖数据（骨架+统计量），不随窗口参数变化。
+
+        这条是为一个真实缺陷改的：最初把窗口帧数也算进签名，结果用 72 帧
+        训出的 checkpoint 在 48 帧窗口下加载就报「骨架或统计量已改变」，
+        而模型其实完全兼容——窗口只影响输入切法，不改模型。
+        签名一旦绑定超参，就会把合法复用误判成数据不一致。
+        """
         with tempfile.TemporaryDirectory() as tmp:
             views = _write_views(Path(tmp) / "views")
             stats = views / "stats"
             stats.mkdir(exist_ok=True)
             np.save(stats / "mean.npy", np.zeros(946, dtype=np.float32))
             np.save(stats / "std.npy", np.ones(946, dtype=np.float32))
-            first = training_signature(views, window_frames=48)
-            second = training_signature(views, window_frames=72)
-            self.assertNotEqual(first, second)
+
+            # 先构造一次 Dataset，让它把 neutral_joints 补进 skeleton.json
+            # （这是就地补全，会改变文件内容，因此必须在取基准签名之前完成）
+            narrow = SomaRealtimeDataset(views, window_frames=WINDOW).training_signature
+            # 之后无论窗口怎么换，签名都不该变
+            wide = SomaRealtimeDataset(views, window_frames=WINDOW + 24).training_signature
+            base = training_signature(views)
+            self.assertEqual(base, narrow)
+            self.assertEqual(narrow, wide,
+                             "签名不该因窗口大小而改变")
+
+    def test_training_signature_changes_with_stats(self):
+        """统计量变了签名必须变，否则不同归一化的权重会被误用。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            views = _write_views(Path(tmp) / "views")
+            stats = views / "stats"
+            stats.mkdir(exist_ok=True)
+            np.save(stats / "mean.npy", np.zeros(946, dtype=np.float32))
+            np.save(stats / "std.npy", np.ones(946, dtype=np.float32))
+            before = training_signature(views)
+            np.save(stats / "mean.npy", np.full(946, 0.5, dtype=np.float32))
+            after = training_signature(views)
+            self.assertNotEqual(before, after)
 
     def test_training_signature_requires_stats(self):
         """缺统计量时必须报错，而不是悄悄用未归一化的数据训练。"""

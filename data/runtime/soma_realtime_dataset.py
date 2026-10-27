@@ -39,11 +39,13 @@ from motionweaver.representation.core.motion_reps.dual_root_global_joints import
 )
 
 
-def training_signature(views_root, *, window_frames=48, history_frames=0):
-    """绑定骨架与统计量，等价于 unreal_dataset.training_signature 的用途。
+def training_signature(views_root):
+    """绑定骨架与归一化统计量，与 unreal_dataset.training_signature 同口径。
 
-    训练脚本用它防止「同拓扑但不同统计量」的权重被误用，
-    因此这里也把 skeleton.json 与 stats/mean|std.npy 一起纳入摘要。
+    签名只覆盖**数据本身**：骨架定义 + mean/std。窗口帧数与历史帧数是训练超参，
+    刻意不纳入——一旦纳入，用 72 帧训出的 checkpoint 在 48 帧窗口下就加载失败，
+    而模型其实完全兼容（窗口只影响输入切法）。训练侧若担心续训时静默换窗口，
+    应由调用方显式比对配置，而不是让加载器拒收。
     """
     root = Path(views_root)
     digest = hashlib.sha256()
@@ -52,8 +54,6 @@ def training_signature(views_root, *, window_frames=48, history_frames=0):
         if not path.is_file():
             raise FileNotFoundError(f"缺少 {relative}；请先运行 compute_stats")
         digest.update(path.read_bytes())
-    # 窗口参数会改变训练样本的切法，一并纳入，避免续训时静默换窗口
-    digest.update(f"{int(window_frames)}x{int(history_frames)}".encode())
     return digest.hexdigest()
 
 
@@ -185,15 +185,13 @@ class SomaRealtimeDataset(Dataset):
 
     @property
     def training_signature(self):
-        """骨架 + 统计量 + 窗口参数的摘要，供训练脚本做契约校验。
+        """骨架 + 统计量的摘要，供训练脚本做契约校验。
 
         按需计算：构造 Dataset 时可能还没有 stats（先有数据再算统计量），
         过早要求 stats 会把「还没算统计量」误报成「数据集损坏」。
         """
         if self._training_signature is None:
-            self._training_signature = training_signature(
-                self.folder, window_frames=self.window_frames,
-                history_frames=self.history_frames)
+            self._training_signature = training_signature(self.folder)
         return self._training_signature
 
     def _bone_count(self):
@@ -210,30 +208,24 @@ class SomaRealtimeDataset(Dataset):
         if "neutral_joints" in source and "fps" in source:
             return self.folder
 
-        import tempfile
-
-        cache = Path(tempfile.gettempdir()) / "motionweaver_skeleton_view"
-        cache.mkdir(parents=True, exist_ok=True)
-        # 以骨架内容哈希做文件名，避免不同数据集互相污染
-        import hashlib
-
-        digest = hashlib.sha256(
-            (self.folder / "skeleton.json").read_bytes()).hexdigest()[:16]
-        target_dir = cache / digest
-        target = target_dir / "skeleton.json"
-        if target.is_file():
-            return target_dir
-
-        target_dir.mkdir(parents=True, exist_ok=True)
+        # 补字段必须**就地写回 skeleton.json**，不能另存副本、也不能放临时目录。
+        # 约束来自加载端：`load_vqvae` 要求 skeleton.folder == data.folder，
+        # 且训练签名按该目录下 skeleton.json 的内容计算。所以：
+        #   - 若副本在临时目录：签名与加载端对不上，checkpoint 会被误判为
+        #     「数据已改变」而拒绝加载；临时目录被清理后更是永久失效。
+        #   - 若副本在子目录：load_vqvae 的路径一致性检查直接报错。
+        # 就地补字段是唯一自洽的做法。这个文件是我们自己生成的派生视图
+        # （可从 E 盘源数据重建），补充 neutral_joints 属于补全而非篡改。
         payload = dict(source)
         payload["neutral_joints"] = [
             [float(v) for v in bone["position"]] for bone in source["bones"]
         ]
         if "fps" not in payload:
             payload["fps"] = float(self.clips[0]["fps"])
-        target.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        return target_dir
-        self._representation = None  # 延迟构造，避免 pickle 时带上 torch 模块
+        skeleton_path = self.folder / "skeleton.json"
+        skeleton_path.write_text(
+            json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        return self.folder
 
     # ---- 表示层按需构造：Dataset 会被 DataLoader 复制/序列化，
     #      直接持有构造好的模块在部分平台会触发 pickle 失败。
