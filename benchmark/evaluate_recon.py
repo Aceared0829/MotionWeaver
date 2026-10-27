@@ -25,10 +25,7 @@
 - `joint_rmse_cm`：关节位置 RMSE（厘米），与基线 Lerp 的 6.59 cm 可直接比较。
 """
 
-import argparse
-import json
 import sys
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -46,6 +43,9 @@ from motionweaver.representation.helper.data_training_util import (
 
 # 官方 motionweaver_preview.py 用的自校验门槛
 RAW_ERROR_LIMIT = 0.03
+
+# 训练分布覆盖的 token 档位（training_step 随机抽 min_tokens..max_tokens）
+DEFAULT_ROWS = (6, 8, 10, 12, 14, 16)
 
 
 def take_middle(dataset, index, frames):
@@ -193,105 +193,3 @@ def evaluate_all(checkpoint, *, rows=(6, 8, 10, 12, 14, 16), scenes=("B", "C"),
             [r["joint_rmse_cm"] for r in table])["mean"]),
         "max_self_check_m": float(max(r["self_check_m"] for r in table)),
     }
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--views",
-                        default=r"D:\MotionWeaverData\soma_train_v1\full-v1-f32")
-    parser.add_argument("--scenes", nargs="+", default=["B", "C"])
-    parser.add_argument("--clips", type=int, default=8,
-                        help="每个长度抽多少条")
-    parser.add_argument("--output")
-    args = parser.parse_args()
-
-    pose_net, motion_rep, contract = load_vqvae(args.checkpoint)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    pose_net = pose_net.to(device).eval()
-
-    down_t = (contract.get("config", {}).get("model", {})
-              .get("pose_vqvae_network", {}).get("down_t", 3))
-    frames_per_token = 2 ** int(down_t)
-
-    dataset = SomaRealtimeDataset(args.views,
-                                  window_frames=16 * frames_per_token,
-                                  fps_group="fps120", scenes=args.scenes)
-
-    print(f"down_t={down_t}  frames_per_token={frames_per_token}")
-    print(f"joint_positions_from=ric_data  "
-          f"自校验门槛={RAW_ERROR_LIMIT} m\n")
-
-    # 先跑自校验
-    first = take_middle(dataset, 0, 8 * frames_per_token)
-    if first is None:
-        print("首条样本长度不足")
-        return
-    _, _, raw_error = run_one(pose_net, motion_rep, first[0], first[1],
-                              8 * frames_per_token, device)
-    status = "✅ 通过" if raw_error <= RAW_ERROR_LIMIT else "❌ 失败"
-    print(f"自校验（首条往返误差）: {raw_error:.6f} m  {status}")
-    if raw_error > RAW_ERROR_LIMIT:
-        print("自校验未通过，重建指标不可信，终止。")
-        return
-
-    print(f"\n{'token':>5} {'frames':>7} {'feature L1':>12} "
-          f"{'关节 RMSE cm':>14} {'自校验 m':>10}")
-    print("-" * 56)
-
-    rows = []
-    stride = max(1, len(dataset) // args.clips)
-    picks = list(range(0, len(dataset), stride))[:args.clips]
-
-    for tokens in (6, 8, 10, 12, 14, 16):
-        frames = tokens * frames_per_token
-        l1s, cms, raws = [], [], []
-        for index in picks:
-            taken = take_middle(dataset, index, frames)
-            if taken is None:
-                continue
-            l1, cm, raw = run_one(pose_net, motion_rep, taken[0], taken[1],
-                                  frames, device)
-            l1s.append(l1)
-            cms.append(cm)
-            raws.append(raw)
-        if not l1s:
-            print(f"{tokens:>5} {frames:>7} {'片段不足':>12}")
-            continue
-        rows.append({
-            "tokens": tokens, "frames": frames,
-            "feature_l1": float(np.mean(l1s)),
-            "joint_rmse_cm": float(np.mean(cms)),
-            "self_check_m": float(np.max(raws)),
-            "clips": len(l1s),
-        })
-        print(f"{tokens:>5} {frames:>7} {np.mean(l1s):>12.4f} "
-              f"{np.mean(cms):>14.2f} {np.max(raws):>10.6f}")
-
-    if rows:
-        mean_l1 = float(np.mean([r["feature_l1"] for r in rows]))
-        mean_cm = float(np.mean([r["joint_rmse_cm"] for r in rows]))
-        print("-" * 56)
-        print(f"{'平均':>5} {'':>7} {mean_l1:>12.4f} {mean_cm:>14.2f}")
-        print("\n对照：训练末段 l_recons_pose = 0.3031；"
-              "基线 Lerp 关节 RMSE = 6.59 cm")
-
-        if args.output:
-            Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.output).write_text(json.dumps({
-                "checkpoint": args.checkpoint,
-                "global_step": contract.get("global_step"),
-                "down_t": down_t,
-                "joint_positions_from": "ric_data",
-                "scenes": args.scenes,
-                "rows": rows,
-                "mean_feature_l1": mean_l1,
-                "mean_joint_rmse_cm": mean_cm,
-            }, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"已写出 {args.output}")
-
-
-if __name__ == "__main__":
-    main()
-
-

@@ -1,4 +1,4 @@
-# benchmark —— 评测的唯一入口
+﻿# benchmark —— 评测的唯一入口
 
 本目录把分散在各处的评测代码收到一起，并确立一条原则：
 
@@ -12,21 +12,25 @@
 
 ```
 benchmark/
-  official/          官方口径的封装（不重新实现）
+  primitives/
     metrics.py       指标原语：metric() / rms() / joint_rmse_cm()
                      直接 import inference.profiling.evaluate_unreal_streaming，
                      拿不到时退回逐字等价的本地实现并标注来源
-    training_metrics.py
+  training_metrics.py
                      官方 10 个训练指标（perplexity / commit / recons* / skate / loss）
                      只读 metrics.csv，不跑前向
-  soma/              我们自己的补集
-    evaluate_recon.py
-                     SOMA 四键 NPZ 上的重建评测（官方脚本只吃 UE Schema）
+  evaluate_recon.py  重建评测的**库函数**（无 argparse、可安全 import）
                      key: joint_positions_from="ric_data" + 自校验 ≤ 0.03 m
-    migrate_signature.py
+  cli_recon.py       重建评测的**命令行入口**（只做参数解析与打印）
+  run.py             统一入口：一次跑完 A 组 + B 组，输出一份报告
+  migrate_signature.py
                      旧 checkpoint 的签名/路径迁移（带证据校验）
-  out/               评测产物（JSON）
+  plot_arms.py       生成 paper 图 9
+  ../out/            评测产物（JSON 写到 D:\MotionWeaverData\reports\）
 ```
+
+**为什么把库函数与命令行拆开**：`run.py` 需要 import 库函数，若 argparse
+写在模块顶层，import 时就会解析一次命令行参数，产生难以排查的副作用。
 
 ## 官方已有的能力（不要重写）
 
@@ -82,9 +86,10 @@ benchmark/
 
 ```powershell
 # 官方 10 指标（只读 metrics.csv）
-python -m benchmark.official.training_metrics
+python -m benchmark.training_metrics
 
 # 重建评测（需要 checkpoint）
-python -m benchmark.soma.evaluate_recon `
+python -m benchmark.cli_recon `
   --checkpoint <ckpt> --scenes B C --clips 6
 ```
+
