@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MotionWeaver 角色动画生成系统 V1.0 使用说明书</title>
+<style>
+  @page { size: A4; margin: 0; }
+
+  :root {
+    --ink: #1a1a1a;
+    --ink2: #4a4a4a;
+    --line: #c8c8c8;
+    --accent: #1f4e79;
+    --soft: #f5f7f9;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 0 0 60px 0;
+    background: #e8eaed;
+    font-family: "Songti SC", "SimSun", "Noto Serif CJK SC", serif;
+    font-size: 12pt;
+    line-height: 1.75;
+    color: var(--ink);
+  }
+
+  /* A4 纸页 */
+  .page {
+    width: 210mm;
+    height: 297mm;
+    padding: 22mm 20mm;
+    margin: 0 auto 12px auto;
+    background: #fff;
+    box-shadow: 0 2px 10px rgba(0,0,0,.12);
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  /* 页眉：软著名称 + 版本号 + 页码 */
+  .page-header {
+    position: absolute;
+    top: 12mm; left: 20mm; right: 20mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 9pt;
+    color: var(--ink2);
+    border-bottom: .5pt solid var(--line);
+    padding-bottom: 3mm;
+  }
+  .page-footer {
+    position: absolute;
+    bottom: 12mm; left: 20mm; right: 20mm;
+    text-align: center;
+    font-size: 9pt;
+    color: var(--ink2);
+    border-top: .5pt solid var(--line);
+    padding-top: 2mm;
+  }
+
+  /* 封面单独处理（无页眉页脚） */
+  .cover {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  .cover h1 {
+    font-size: 26pt;
+    font-family: "Heiti SC", "SimHei", "Noto Sans CJK SC", sans-serif;
+    letter-spacing: 2px;
+    margin: 0 0 8mm 0;
+    line-height: 1.4;
+    border: none;
+    padding: 0;
+    color: var(--ink);
+  }
+  .cover .ver { font-size: 14pt; color: var(--ink2); letter-spacing: 1px; }
+  .cover .meta {
+    margin-top: 60mm;
+    font-size: 12pt;
+    line-height: 2.4;
+    text-align: left;
+    display: inline-block;
+  }
+  .cover .meta b { display: inline-block; width: 32mm; font-weight: normal; color: var(--ink2); }
+
+  /* 标题层级 */
+  h1 {
+    font-family: "Heiti SC", "SimHei", "Noto Sans CJK SC", sans-serif;
+    font-size: 16pt;
+    margin: 0 0 6mm 0;
+    padding-bottom: 2mm;
+    border-bottom: 1.5pt solid var(--accent);
+    color: var(--accent);
+  }
+  h2 {
+    font-family: "Heiti SC", "SimHei", "Noto Sans CJK SC", sans-serif;
+    font-size: 14pt;
+    margin: 8mm 0 3mm 0;
+    color: var(--ink);
+  }
+  h3 {
+    font-family: "Heiti SC", "SimHei", "Noto Sans CJK SC", sans-serif;
+    font-size: 12.5pt;
+    margin: 6mm 0 2mm 0;
+    color: var(--ink);
+  }
+
+  p { margin: 0 0 3mm 0; text-align: justify; }
+  ul, ol { margin: 0 0 3mm 0; padding-left: 7mm; }
+  li { margin-bottom: 1.5mm; }
+
+  /* 表格 */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 3mm 0 5mm 0;
+    font-size: 10.5pt;
+  }
+  th, td {
+    border: .5pt solid var(--line);
+    padding: 2mm 2.5mm;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--soft); font-weight: bold; }
+  caption {
+    caption-side: top;
+    text-align: center;
+    font-size: 10.5pt;
+    padding-bottom: 2mm;
+    color: var(--ink2);
+  }
+
+  /* 图 */
+  figure { margin: 5mm 0; text-align: center; page-break-inside: avoid; }
+  figure img { max-width: 100%; border: .5pt solid var(--line); }
+  figcaption {
+    font-size: 10.5pt;
+    color: var(--ink2);
+    margin-top: 2mm;
+  }
+
+  /* 截图占位框：没有截图时显示，提醒要补 */
+  .shot {
+    border: 1pt dashed #b0b0b0;
+    background: repeating-linear-gradient(45deg,#fafafa,#fafafa 10px,#f2f2f2 10px,#f2f2f2 20px);
+    height: 60mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #999;
+    font-size: 10.5pt;
+    margin: 3mm 0 1mm 0;
+  }
+  .shot-cap { text-align: center; font-size: 10.5pt; color: var(--ink2); margin-bottom: 4mm; }
+
+  /* 代码块（命令行示例） */
+  pre {
+    background: var(--soft);
+    border-left: 2.5pt solid var(--accent);
+    padding: 3mm 4mm;
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 3mm 0;
+  }
+  pre.flow { font-size: 9pt; line-height: 1.7; white-space: pre; word-break: keep-all; overflow-x: auto; }
+  code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 10pt; background: var(--soft); padding: 0 1mm; }
+
+  /* 内部核对注释：正式导出前用 .strip-notes 隐藏 */
+  .note {
+    color: #a0522d;
+    font-size: 9.5pt;
+    background: #fdf6ec;
+    border-left: 2pt solid #e8b96a;
+    padding: 1.5mm 3mm;
+    margin: 2mm 0;
+  }
+  body.stripped .note { display: none; }
+
+  /* 三线式信息表 */
+  .kv { font-size: 10.5pt; }
+  .kv td:first-child { width: 26%; background: var(--soft); }
+
+  /* 目录 */
+  .toc ol { list-style: none; padding-left: 0; counter-reset: sec; margin: 0; }
+  .toc > ol > li {
+    counter-increment: sec;
+    margin-bottom: 1.6mm;
+    font-size: 11.5pt;
+    line-height: 1.5;
+  }
+  .toc > ol > li::before { content: counter(sec) ". "; font-weight: bold; }
+  .toc .sub { list-style: none; padding-left: 8mm; margin: 0.6mm 0 0 0; font-size: 10.5pt; line-height: 1.45; color: var(--ink2); }
+  .toc .sub li { margin-bottom: 0; }
+  .toc .sub li::before { content: "· "; }
+
+  /* 打印 */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .page {
+      box-shadow: none;
+      margin: 0;
+      width: 210mm;
+      height: 297mm;
+      padding: 22mm 20mm;
+      overflow: hidden;
+      break-after: page;
+    }
+    .page:last-child { break-after: auto; }
+  }
+</style>
+</head>
+<body>
+<!-- ══════════ 封面 ══════════ -->
+<div class="page cover">
+  <h1>MotionWeaver<br>角色动画生成系统</h1>
+  <div class="ver">V1.0</div>
+  <div class="ver" style="margin-top:6mm;">使用说明书</div>
+  <div class="meta">
+    <div><b>软件名称</b>MotionWeaver 角色动画生成系统</div>
+    <div><b>版本号</b>V1.0</div>
+    <div><b>著作权人</b>赵梓宁</div>
+    <div><b>开发完成日期</b>2026 年 __ 月 __ 日</div>
+    <div><b>首次发表日期</b>未发表</div>
+  </div>
+</div>
+
+<!-- ══════════ 第 1 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 1 页</div>
+<h1>目　录</h1>
+<div class="toc">
+    <ol>
+      <li>引言<ul class="sub"><li>问题背景</li><li>现有做法的局限</li><li>本软件的定位</li></ul></li>
+      <li>软件编写目标</li>
+      <li>适用领域</li>
+      <li>运行环境<ul class="sub"><li>硬件环境</li><li>软件环境</li><li>目录与数据准备</li></ul></li>
+      <li>系统设计思路<ul class="sub"><li>总体数据流</li><li>动作数据表示</li><li>离散姿态表示学习</li><li>条件生成模型</li><li>骨架适配与导出</li><li>训练质量与评估口径</li></ul></li>
+      <li>软件功能说明<ul class="sub">
+        <li>动画数据采集与导出</li>
+        <li>训练数据预处理</li>
+        <li>动作数据验收与人工复核</li>
+        <li>模型训练</li>
+        <li>模型导出</li>
+        <li>姿态生成推理</li>
+        <li>可视化交互界面</li>
+        <li>实验对照与评测</li>
+      </ul></li>
+      <li>总结</li>
+      <li>附：来源与第三方组件说明</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ══════════ 第 2 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 2 页</div>
+<h1>1　引言</h1>
+<h2>1.1　问题背景</h2>
+<p>角色动画是游戏与实时三维应用中最消耗人力的资产之一。一段可用的角色动作需要经过动作捕捉或人工编排、曲线清理、脚部接触修正、与角色骨架匹配等多道工序，单段动作的制作周期常以天计。当一个项目需要数百至上千段动作时，制作成本与迭代速度会直接成为项目排期的瓶颈。</p>
+<p>动作捕捉虽然缓解了人工编排的压力，却没有消除后续工序：捕获数据仍需按目标角色的骨架比例重新处理，仍需逐段检查是否存在滑步、穿模与姿态异常。这一环节目前高度依赖人工逐段观看与主观判断，缺少可批量执行、结论可追溯的验收手段。</p>
+<h2>1.2　现有做法的局限</h2>
+<p>（1）依赖人工关键帧与逐段修型。动作风格、节奏与细节需要动画师在曲线上逐帧调整，一旦角色骨架比例改变，先前的调整无法直接复用，需要重新制作。</p>
+<p>（2）跨骨架复用需要重新处理。同一段动作数据在不同比例的骨架之间不能直接套用，重定向之后脚部接触、手部位置与身体朝向都需要重新校验，而校验本身又是人工密集的工作。</p>
+<p>（3）训练结果缺少统一的评估口径。动作生成类模型常以训练损失作为进展指标，但损失下降并不等于姿态可用；缺少同配置、同数据划分的对照，容易把局部指标当作整体结论。</p>
+<h2>1.3　本软件的定位</h2>
+<p>本软件实现从动画数据采集、训练数据预处理与人工验收、离散姿态表示学习、条件姿态生成训练，到推理与可视化对照的完整流程，并提供中文图形操作界面与 Windows 启动入口。软件不依赖外部动画制作工具完成核心计算，动作数据的读取、校验、训练、导出与评估均在本地完成。</p>
+<div class="note">对应代码位置：README.md、docs/motionweaver-architecture.md、docs/repository-layout.md</div>
+</div>
+
+<!-- ══════════ 第 3 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 3 页</div>
+<h1>2　软件编写目标</h1>
+<p>本软件要解决三个具体问题，每个问题对应一组可独立运行的入口。</p>
+<table class="kv">
+    <caption>表 2-1　软件编写目标与对应能力</caption>
+    <thead><tr><th>目标</th><th>要解决的问题</th><th>对应功能（见第 6 章）</th></tr></thead>
+    <tbody>
+      <tr><td>一</td><td>把已有的动画资产稳定地转成可训练数据，并逐段给出可追溯的人工验收结论。</td><td>6.1 动画数据采集与导出<br>6.2 训练数据预处理<br>6.3 动作数据验收与人工复核</td></tr>
+      <tr><td>二</td><td>用离散姿态表示与条件生成模型，根据历史姿态和轨迹条件生成后续姿态。</td><td>6.4 模型训练<br>6.5 模型导出<br>6.6 姿态生成推理</td></tr>
+      <tr><td>三</td><td>让训练与生成结果可以被直接观看和同条件对照，避免只凭损失判断质量。</td><td>6.7 可视化交互界面<br>6.8 实验对照与评测</td></tr>
+    </tbody>
+  </table>
+<p>上述目标均为已实现或部分实现的能力，具体完成度见各节「使用限制」。尚未实现的部分在本说明书中不描述为已有功能。</p>
+<div class="note">对应代码位置：training/pretrain/train_unreal.py、inference/runtime/motionweaver.py、data/tools/motion_review_server.py、inference/visualization/</div>
+</div>
+
+<!-- ══════════ 第 4 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 4 页</div>
+<h1 style="margin-top:10mm;">3　适用领域</h1>
+<table>
+    <caption>表 3-1　适用领域</caption>
+    <thead><tr><th style="width:20%">场景</th><th style="width:24%">使用者</th><th>用途与解决的问题</th></tr></thead>
+    <tbody>
+      <tr><td>角色动画预演</td><td>动画技术美术、独立开发者</td><td>在正式制作前，用已有动作数据训练出的模型快速生成候选姿态，先确认动作方向是否可用，避免直接进入逐帧制作后返工。</td></tr>
+      <tr><td>动作数据质量核查</td><td>动作数据整理人员</td><td>对批量导入或重定向得到的动作逐段播放、逐帧对照原始骨架与目标骨架，记录通过或不通过的结论，使核查结果可复查、可追溯。</td></tr>
+      <tr><td>生成模型实验对照</td><td>算法研究人员</td><td>在相同数据划分、相同轨迹条件下并列比较不同模型的姿态误差、接触脚速与接缝误差，并把结果导出为可观看的对照页面。</td></tr>
+    </tbody>
+  </table>
+<h2 style="margin-top:8mm;">3.1　使用前提</h2>
+<ul>
+    <li>使用者需要具备 Windows 桌面操作与命令行执行的基本能力，能按第 4 章安装依赖并执行命令。</li>
+    <li>动画资产需从支持脚本扩展的三维引擎编辑器中导出，导出格式由本软件自带的编辑器插件生成。</li>
+    <li>训练需要独立显卡；仅做数据预处理、验收复核与结果浏览时可用纯 CPU 完成。</li>
+  </ul>
+<div class="note">对应代码位置：unreal-script/AILocomotionSystem/AILocomotionDataset/、data/tools/prepare_unreal_dataset.py</div>
+</div>
+
+<!-- ══════════ 第 5 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 5 页</div>
+<h1>4　运行环境</h1>
+<h2>4.1　硬件环境</h2>
+<table>
+    <caption>表 4-1　硬件环境要求</caption>
+    <thead><tr><th style="width:22%">项目</th><th style="width:36%">最低配置</th><th>推荐配置（已实际验证）</th></tr></thead>
+    <tbody>
+      <tr><td>处理器</td><td>支持 64 位的多核处理器</td><td>与所装显卡匹配的桌面或移动处理器</td></tr>
+      <tr><td>内存</td><td>8 GB</td><td>16 GB 及以上</td></tr>
+      <tr><td>磁盘空间</td><td>20 GB 可用空间（数据、检查点与导出包）</td><td>建议为数据集单独准备一块数据盘</td></tr>
+      <tr><td>显卡</td><td>数据预处理与界面浏览不需要显卡</td><td>模型训练需要独立显卡：本机已在 8,188 MiB 显存的笔记本显卡上完成 79 骨 VQ-VAE / Pose 训练；正式 20,000 步姿态训练在 80 GB 显存的服务器显卡上完成</td></tr>
+    </tbody>
+  </table>
+<p>训练入口默认按自动方式选择计算设备；若需强制使用显卡，加 <code>--accelerator gpu</code>。显存不足时先降低 <code>--batch_size</code>，而不是缩短窗口帧数，以免改变训练数据契约。</p>
+</div>
+
+<!-- ══════════ 第 6 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 6 页</div>
+<h2>4.2　软件环境</h2>
+<table>
+    <caption>表 4-2　软件环境要求</caption>
+    <thead><tr><th style="width:24%">项目</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>操作系统</td><td>Windows 10 / 11（64 位）。中文单窗口界面依赖 Win32 子窗口托管，仅 Windows 可用。</td></tr>
+      <tr><td>Python 版本</td><td>两条路线并存：<b>Python 3.12</b> 用于数据预处理、模型训练、导出于评测；<b>Python 3.10</b> 用于带物理仿真的参考演示路线（该路线还需要对应的物理引擎依赖）。两套环境互不通用，检查点与数据契约按各自路线维护。</td></tr>
+      <tr><td>核心依赖（训练与数据处理）</td><td>torch 2.14.0、numpy 2.5.3、scipy 1.18.1、einops 0.8.2、hydra-core 1.3.6、pytorch-lightning 2.6.5、vector-quantize-pytorch 1.31.4、adam-atan2-pytorch 0.4.1、colorlog 6.12.0、matplotlib 3.11.1、imageio 2.37.4、pillow 12.3.0（来源：training/requirements.txt）</td></tr>
+      <tr><td>核心依赖（参考演示）</td><td>mujoco 3.13.0、pynput 1.8.2、keyboard 0.13.5（仅 Windows）、transformers 4.57.6（来源：inference/requirements-demo.txt）</td></tr>
+      <tr><td>三维引擎</td><td>用于动画资产导出的编辑器插件，依据该引擎 5.8.2 版本源码实现；插件为纯编辑器模块，不进入打包产物。</td></tr>
+      <tr><td>启动器运行时</td><td>启动器为 .NET 10 Windows Desktop 单文件程序，随软件发布，无需单独安装运行时依赖项以外的组件。</td></tr>
+    </tbody>
+  </table>
+<div class="note">对应代码位置：training/requirements.txt、inference/requirements-demo.txt、launcher/（启动器工程）、setup.py</div>
+<h2>4.3　目录与数据准备</h2>
+<p>软件按职责划分目录。数据、权重与训练输出均不进入程序安装包，需要在使用者的本地磁盘单独准备。</p>
+</div>
+
+<!-- ══════════ 第 7 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 7 页</div>
+<table>
+    <caption>表 4-3　目录职责</caption>
+    <thead><tr><th style="width:26%">目录</th><th>内容与说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>data/prepared/</code></td><td>预处理得到的训练数据集，每套数据一个子目录，含 dataset.json 与逐段 raw_*.npz，不提交到代码仓库。</td></tr>
+      <tr><td><code>training/runs/</code></td><td>训练输出：config.yaml、CSV 训练指标、周期检查点、last.ckpt 与 final.ckpt。</td></tr>
+      <tr><td><code>model-weight/</code></td><td>权重文件目录。预训练检查点默认不随源码分发，需按使用场景单独准备。</td></tr>
+      <tr><td><code>output/</code></td><td>推理、对照与评估产物：报告 JSON、视频、图像与汇总文件。</td></tr>
+      <tr><td><code>data/tools/review_web/</code></td><td>动作验收网页的静态资源，由本地服务直接读取，无需单独构建。</td></tr>
+    </tbody>
+  </table>
+<h3>4.3.1　安装步骤</h3>
+</div>
+
+<!-- ══════════ 第 8 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 8 页</div>
+<pre># 1. 在仓库根目录创建 Python 3.12 虚拟环境
+uv venv --python 3.12 .venv
+
+# 2. 安装训练与数据处理依赖
+uv pip install --python .venv/Scripts/python.exe -r training/requirements.txt
+
+# 3. 以可编辑方式安装本软件（不安装依赖，避免覆盖已装好的框架版本）
+uv pip install --python .venv/Scripts/python.exe --no-deps -e .
+
+# 4. 验证安装：列出训练入口的全部参数
+.venv/Scripts/python.exe -m training.pretrain.train_unreal --help</pre>
+<h3>4.3.2　环境自检</h3>
+<p>软件提供目录与安装自检入口，检查安装入口、各命令行帮助与迁移元数据；发现问题时返回非零状态码，便于在批处理中直接判定。</p>
+<pre>.venv/Scripts/python.exe tools/verify_repository_layout.py --output output/layout-check.json</pre>
+<p>回归测试覆盖坐标与旋转基变换、虚拟骨骼剔除、非法拓扑拒绝、四元数校验，以及三类模型的 CPU 小网络训练与续训流程：</p>
+<pre>.venv/Scripts/python.exe -m unittest discover -s tests -v</pre>
+<p>显卡可用性可单独确认：</p>
+<pre>.venv/Scripts/python.exe -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"</pre>
+<div class="note">对应代码位置：tools/verify_repository_layout.py、tests/、docs/repository-layout.md</div>
+</div>
+
+<!-- ══════════ 第 9 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 9 页</div>
+<h1>5　系统设计思路</h1>
+<h2>5.1　总体数据流</h2>
+<p>软件按「数据从哪来、经过什么、变成什么」组织，五个阶段各自有独立的命令行入口，前一阶段的输出即后一阶段的输入，中间产物全部落盘，因此任一阶段都可以单独重跑而不必重做整条链路。</p>
+<pre class="flow">  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+  │ 动画资产      │   │ 导出批次      │   │ 训练数据集    │
+  │ AnimSequence │──►│ manifest.json│──►│ dataset.json │
+  └──────────────┘   └──────────────┘   └──────────────┘
+                                              │      │
+                          ┌───────────────────┘      └──────────┐
+                          ▼                                     ▼
+                  ┌──────────────┐                      ┌──────────────┐
+                  │ 离散姿态码本  │──► ┌──────────────┐   │ 人工验收复核  │
+                  │  VQ-VAE      │    │ 条件姿态模型  │   │ 通过 / 不通过 │
+                  └──────────────┘    │ Pose Token   │   └──────────────┘
+                                      └──────────────┘
+                                              │
+                                              ▼
+                  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+                  │ 推理包        │◄──│ FP32 导出     │◄──│ 训练检查点    │
+                  │ 姿态生成      │   └──────────────┘   └──────────────┘
+                  └──────────────┘
+                          │
+                          ▼
+                  ┌──────────────┐   ┌──────────────┐
+                  │ 三维可视化    │──►│ 同条件对照报告 │
+                  └──────────────┘   └──────────────┘</pre>
+<p>图 5-1　总体数据流（宽度不超过 80 字符）</p>
+<div class="note">对应代码位置：data/tools/prepare_unreal_dataset.py → training/pretrain/train_unreal.py → inference/export/export_unreal_inference.py → inference/runtime/motionweaver.py → inference/visualization/</div>
+</div>
+
+<!-- ══════════ 第 10 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 10 页</div>
+<h2>5.2　动作数据表示</h2>
+<p><b>骨架。</b>训练骨架由使用者按资产实际骨骼指定：身体根节点默认取骨盆，保留其下全部子骨骼；编辑器插件的唯一世界根轨道单独保存，不进入训练骨架，也不由模型生成。身体树之外的辅助骨骼（含虚拟骨骼）不参与训练。因此同一软件既可处理人形骨架，也可处理骨骼数量不同的其他骨架，特征维数随骨骼数变化而不是固定值。</p>
+<p><b>特征分量。</b>每根骨骼以局部平移与 6 维旋转表示。设身体骨骼数为 J，则全局表示每帧 <code>12J+6</code> 维，局部表示每帧 <code>12J+5</code> 维，双表示每帧 <code>12J+10</code> 维。分离身体的根轨迹与身体姿态，是为了让模型只负责它实际接收到的条件。</p>
+<p><b>坐标与单位。</b>导出数据使用引擎坐标系（厘米、Z 轴向上、四元数 xyzw），送入模型前统一转换为米、Y 轴向上，并消除每根骨骼的参考旋转，使其与正向运动学算法一致。回写引擎动画时需要恢复参考骨轴。</p>
+<div class="note">对应代码位置：data/runtime/unreal_dataset.py、model/MotionWeaver/representation/core/motion_reps/、model/MotionWeaver/geometry/quaternions.py</div>
+<h2>5.3　离散姿态表示学习</h2>
+<p><b>为什么把连续姿态变成离散编号。</b>一段姿态在数值上是十几到几十个关节的位置与旋转，是连续量；连续量上的回归模型容易把细微误差摊到每一帧，表现为画面抖动。软件把连续姿态送入编码器压缩，再经量化器映射到有限个码字上，每帧姿态因此变成一组离散编号；解码器负责从编号还原姿态。这一步相当于给姿态建立一本有限的「词表」：相似的姿态落在同一个词上，不相似的姿态被分开。</p>
+<p><b>两个直接好处。</b>第一，生成模型的输出从「一串任意实数」变成「从有限词表里选词」，选择错误是可枚举、可统计的，训练目标因此可以直接用词表上的交叉熵衡量，而不是只看像素级的重建误差。第二，码本与骨架、归一化统计量绑定，检查点加载时会核对骨架与统计量，换骨架或换统计数据不会被误用。</p>
+<p><b>多码本与条件解码。</b>量化器按多个头并行量化，同一帧姿态由若干码字共同表示；解码器接收码字的同时还接收条件信息，因此在还原姿态时可以考虑上下文，而不是逐帧独立解码。</p>
+</div>
+
+<!-- ══════════ 第 11 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 11 页</div>
+<div class="note">对应代码位置：model/MotionWeaver/tokenizer/neural_modules/vqvae.py、quantize_cnn_multihead.py、encdec_double_cond.py；训练封装 training/models/vqvae/motion_vqvae.py</div>
+<h2>5.4　条件生成模型</h2>
+<p>生成阶段的条件有两类：一类是历史姿态，只取最近若干帧的真实姿态，不输入未来真实姿态；另一类是身体在世界中的运动轨迹（位置与朝向随时间的变化）。前者决定「刚才是什么样子」，后者决定「接下来往哪走」。</p>
+<p>模型先用历史姿态编码，再把轨迹换算成以首帧身体为原点的局部坐标，与编码结果一起作为条件，输出后续若干帧的姿态编号，最后交由解码器还原为身体姿态。因此模型输出的是<b>相对身体的表现姿态</b>，世界位移仍由外部运动组件决定，两者职责不重叠。</p>
+<p>训练时同一数据契约还提供一种轻量直接回归模型作为对照，它不经过离散码本、按骨骼直接回归位置与 6 维旋转。两者共用数据划分与评估脚本，但报告分开署名，避免把对照模型的成绩计入本模型。</p>
+<div class="note">对应代码位置：inference/runtime/motionweaver.py（predict_with_actor_root）、training/models/backbone/motionweaver_pose_model.py、model/MotionWeaver/backbone/neural_modules/pose_backbone.py；对照模型 training/pretrain/train_conditioned_pose.py</div>
+<h2>5.5　骨架适配与导出</h2>
+<p><b>骨架适配。</b>模型在训练骨架的空间里生成姿态，使用者的目标骨架若比例不同，需要先做重定向：按骨骼语义映射（骨盆、左右髋、脚踝、脚掌、双手等）建立对应关系，再做旋转基变换与骨长处理。软件的重定向入口区分单段与批量两种用法，批量模式逐段记录失败原因，不因个别片段失败中断整个批次。</p>
+<p><b>导出。</b>训练得到的检查点包含优化器状态，体积与用途都不适合直接部署。导出入口把检查点转换为不带优化器的 FP32 推理包，包内带可迁移的骨架定义、归一化统计量与配置，并通过随包提供的加载函数在原地重新定位资源。导出过程逐值校验权重，不做 FP16/INT8 转换或剪枝，因此推理结果与训练时的数值一致。若运行环境已能自行提供兼容的码字，可只导出码本与解码器，去掉编码器以减小体积。</p>
+</div>
+
+<!-- ══════════ 第 12 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 12 页</div>
+<p><b>边界。</b>导出的推理包是本地可执行的一组文件，不是本软件之外的三维引擎插件，也不代表已完成引擎内的实时推理接线；引擎侧接入属于后续工作。</p>
+<div class="note">对应代码位置：data/runtime/retarget_motion.py、unreal-script/python/retarget_soma_batch.py、inference/export/export_unreal_inference.py、inference/runtime/checkpoint.py</div>
+<h2>5.6　训练质量与评估口径</h2>
+<p><b>真实帧掩码。</b>动作片段长短不一，短片段需要补齐才能组成批。补齐帧只在卷积上下文中存在，不参与重建损失与运动损失，避免模型把补齐产生的静止画面当成真实动作学下来。</p>
+<p><b>几何约束。</b>在重建项之外增加若干几何项：骨盆对齐后的关节点位置误差、根轨迹误差、脚部端点误差、速度与参考接触约束。各几何项权重可单独设置，设为 0 即得到消融对照。</p>
+<p><b>采样策略。</b>按真实长度分桶，短桶只补齐到批内最短长度的有限倍数；对困难类别在原有权重上加权。该策略只改变取样顺序与补齐长度，不改变网络参数、原生帧率、数据划分与训练步数。</p>
+<p><b>评估口径。</b>评估恢复源的初始朝向与平移，与服务端在<b>同一采样时刻</b>对照，分别报告世界位置、骨盆对齐姿态、根水平与高度误差。所有对照必须同配置、同步数、同数据划分，禁止把局部样本的指标当作整体结论。接触类指标必须同时给出参与统计的接触帧对数量，帧对不足时不报告该指标。</p>
+<div class="note">对应代码位置：training/common/unreal_quality.py、training/evaluation/evaluate_native_quality.py、inference/visualization/README.md</div>
+</div>
+
+<!-- ══════════ 第 13 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 13 页</div>
+<h1>6　软件功能说明</h1>
+<p>本软件按数据处理流程组织为八个功能模块。前三个模块负责把动画资产变成可用、可信的训练数据，中间三个模块负责训练、导出与生成，最后两个模块负责观看与对照。各模块均可独立运行，也可按序串联完成从资产到姿态的完整流程。</p>
+<table>
+    <caption>表 6-1　功能模块总览</caption>
+    <thead><tr><th style="width:12%">章节</th><th style="width:26%">模块名称</th><th>核心入口</th><th style="width:12%">完成度</th></tr></thead>
+    <tbody>
+      <tr><td>6.1</td><td>动画数据采集与导出</td><td>编辑器插件菜单与批处理命令</td><td>已完成</td></tr>
+      <tr><td>6.2</td><td>训练数据预处理</td><td><code>data/tools/prepare_unreal_dataset.py</code></td><td>已完成</td></tr>
+      <tr><td>6.3</td><td>动作数据验收与人工复核</td><td><code>data/tools/motion_review_server.py</code></td><td>已完成</td></tr>
+      <tr><td>6.4</td><td>模型训练</td><td><code>training/pretrain/train_unreal.py</code></td><td>已完成 / 部分完成</td></tr>
+      <tr><td>6.5</td><td>模型导出</td><td><code>inference/export/export_unreal_inference.py</code></td><td>已完成</td></tr>
+      <tr><td>6.6</td><td>姿态生成推理</td><td><code>inference/runtime/motionweaver.py</code></td><td>部分完成</td></tr>
+      <tr><td>6.7</td><td>可视化交互界面</td><td><code>inference/cli/interactive_demo_g1.py</code></td><td>已完成</td></tr>
+      <tr><td>6.8</td><td>实验对照与评测</td><td><code>training/evaluation/</code>、<code>inference/visualization/</code></td><td>已完成</td></tr>
+    </tbody>
+  </table>
+<h2>6.1　动画数据采集与导出</h2>
+<p><b>功能概述。</b>本模块以编辑器插件形式运行，从工程中批量读取动画序列，把世界根轨道与根局部的身体姿态分开保存，并记录有理数帧率、逐帧时间戳与资产元信息，生成一次完整的导出批次。插件不修改、不重定向也不保存源动画资产。</p>
+</div>
+
+<!-- ══════════ 第 14 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 14 页</div>
+<p><b>操作步骤。</b>①把插件目录复制到目标工程的插件目录，编译编辑器目标并启用该插件；②在项目设置中指定身体根节点、骨盆、左右髋、脚踝、脚掌与双手对应的骨骼名称；③在内容浏览器多选动画序列，执行菜单「工具 → AI Locomotion：导出选中动画」；④等待进度完成，到工程的 Saved 目录下按批次编号取回结果。</p>
+<p><b>界面说明。</b>菜单入口位于编辑器主菜单的工具菜单下；批量导出也可用命令行携带导出路径参数启动编辑器完成，失败片段记入批次报告，其余片段继续导出。导出过程中界面显示进度，编辑器处于模态任务状态，支持逐帧检查取消。</p>
+<div class="shot">【截图占位】编辑器菜单与导出进度</div>
+<div class="shot-cap">图 6-1　动画数据导出入口（待补截图）</div>
+<p><b>输入 / 输出。</b>输入为工程内的动画序列资产；输出为一个批次目录，含批次清单文件、每段动画一个 JSON 文件，以及批量模式下的批次报告文件。每段 JSON 同时保存世界根轨道与根局部身体姿态两套数据。</p>
+<p><b>使用限制。</b>插件为纯编辑器模块，不进入打包产物；导出在游戏线程上求值，段数很多时耗时较长；拒绝叠加动画、非单位缩放、语义骨骼缺失或重复分配、无效数值，以及每段超过上限（最大 512 根骨骼、18000 帧，且每段帧数乘骨骼数不超过 250000）的数据；虚拟骨骼不进入训练骨架；原地动画无法仅凭自身学习到前进轨迹。失败或被取消的批次可能保留已写文件但没有最终清单。</p>
+<div class="note">对应代码位置：unreal-script/AILocomotionSystem/AILocomotionDataset/Source/AILocomotionDatasetEditor/Private/AILocomotionDatasetEditorModule.cpp</div>
+</div>
+
+<!-- ══════════ 第 15 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 15 页</div>
+<h2>6.2　训练数据预处理</h2>
+<p><b>功能概述。</b>把导出批次转换成模型可直接读取的训练数据集：校验骨架拓扑与语义骨骼分配，做坐标系与旋转基变换，按原生帧率切片为训练窗口，写出数据集描述文件与逐段原始数据，并把补齐策略、划分方式与统计量一并写入，保证训练时可复原当时的契约。</p>
+<p><b>操作步骤。</b>①确认导出批次目录路径；②选择输出目录，该目录必须尚不存在，以防覆盖已有数据；③指定是否需要按原生帧率筛选、是否按资产名家族划分训练/验证/测试；④执行预处理命令，结束后检查输出目录中的数据集描述文件。</p>
+<pre>.venv/Scripts/python.exe data/tools/prepare_unreal_dataset.py --input "&lt;导出批次目录&gt;" --output data/prepared/native30 --native_fps 30 --short_clip_policy hold --split</pre>
+<p><b>界面说明。</b>命令行方式，参数帮助用 <code>--help</code> 查看。运行结束时在终端打印处理条数、被拒绝条数与拒绝原因分类。</p>
+<p><b>输入 / 输出。</b>输入为 6.1 产生的导出批次；输出为数据集目录，含数据集描述文件、逐段原始数据文件（保存每段原始位置、旋转与时间戳，用于不经过正向运动学的对照）、统计量与划分清单。</p>
+<p><b>使用限制。</b>每个数据集只能包含一致的骨架拓扑、参考姿态、语义映射和帧率，结构不一致必须分开处理；默认拒绝少于 65 帧的动作，指定保留短片段策略时保留原始帧数并保持末帧；划分按去除末尾数字变体的资产名家族确定性切分，比例约 80/10/10，小数据集不保证三个划分都非空；由于缺少录制标识，名称分组不能称为录制级独立划分；预处理失败的输出目录不含数据集描述文件，重跑应使用新目录。</p>
+<div class="note">对应代码位置：data/tools/prepare_unreal_dataset.py、data/runtime/unreal_dataset.py</div>
+<h2>6.3　动作数据验收与人工复核</h2>
+<p><b>功能概述。</b>一个本地网页服务，把原始骨架与重定向后的目标骨架并排显示在同一个时间轴上，使用者逐帧播放、观察位移与姿态，然后给出「通过 / 有问题 / 待定」的结论与文字备注。结论写入本地记录文件，不自动发布、不删除数据，可随时导出台账。</p>
+</div>
+
+<!-- ══════════ 第 16 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 16 页</div>
+<p><b>操作步骤。</b>①指定动作库目录、源数据目录与端口启动服务；②在浏览器打开本地地址，从左侧队列中选择一段动作；③用播放、逐帧、时间轴与视角控件检查动作；④在右侧「你的验收结论」区选择结论并填写备注；⑤点击下一个继续，或用批量按钮对当前筛选结果统一标记。</p>
+<pre>.venv/Scripts/python.exe data/tools/motion_review_server.py --library "&lt;动作库&gt;" --source "&lt;源数据&gt;" --port 8765</pre>
+<p><b>界面说明。</b>界面分左右两栏：左侧为验收队列，含搜索框、全部/疑似问题/抽样筛选、上下翻页、批量标记与进度统计；右侧为工作区，含两块同步相机与同步时间的骨架视图（左原始、右重定向）、预设视角下拉框、骨骼名称与运动轨迹开关、帧级播放控制条、Root 位置读数，以及验收结论区。页面底部给出相机操作与检查信息的说明，并声明骨骼线框不是蒙皮渲染。</p>
+<div class="shot">【截图占位】动作验收界面（双画布同步对照）</div>
+<div class="shot-cap">图 6-2　动作数据验收界面（待补截图）</div>
+<p><b>输入 / 输出。</b>输入为动作库目录、源数据目录，可选传入条件动作契约目录或原生批次索引；输出为写入本地 reviews 目录的结论记录与备注，以及可导出的验收集合页面。</p>
+<p><b>使用限制。</b>界面显示的是骨骼线框而非蒙皮渲染，基础检查未发现问题不等于质量验收通过；自动观察提示（膝关节伸直、移动较慢等）只依据关节夹角与位置变化推导，缺少地面、墙体与障碍物的几何信息，不能据此确认踩地或支撑；来源语义文本与分段时间未经校准，按同起点秒数近似定位；批量标记只表示批量操作，不代表逐条观看。</p>
+<div class="note">对应代码位置：data/tools/motion_review_server.py、data/tools/review_web/index.html、review_web/app.js</div>
+</div>
+
+<!-- ══════════ 第 17 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 17 页</div>
+<h2>6.4　模型训练</h2>
+<p><b>功能概述。</b>统一训练入口，支持三类模型：离散姿态表示模型（编码器、多码本量化器与条件解码器）、条件姿态生成模型（Pose Token 主干）、以及旧版的根轨迹模型。前两类构成本软件的主线，第三类保留用于兼容既有数据契约。训练过程保存配置、逐行指标、周期检查点与最终权重，支持中断后从检查点恢复。</p>
+<p><b>操作步骤。</b>①先训练离散姿态表示模型，得到码本检查点；②再以该检查点作为前提训练条件姿态生成模型；③训练中通过指标文件观察损失变化，需要中断时按 Ctrl+C，检查点目录保留最近一次的周期检查点；④需要续训时加恢复参数并给新的总步数。</p>
+<pre># 第一步：训练离散姿态表示模型
+.venv/Scripts/python.exe training/pretrain/train_unreal.py \
+  --model vqvae --dataset data/prepared/native30 \
+  --output training/runs/native30 --native_quality \
+  --max_steps 20000 --batch_size 4 --accelerator gpu
+
+# 第二步：训练条件姿态生成模型，必须给出上一步的码本检查点
+.venv/Scripts/python.exe training/pretrain/train_unreal.py \
+  --model pose --dataset data/prepared/native30 \
+  --output training/runs/native30_pose \
+  --vqvae training/runs/native30/checkpoints/final.ckpt \
+  --max_steps 20000 --accelerator gpu
+
+# 续训：--max_steps 是恢复后的总步数
+.venv/Scripts/python.exe training/pretrain/train_unreal.py \
+  --model vqvae --dataset data/prepared/native30 \
+  --output training/runs/native30 --resume training/runs/native30/checkpoints/last.ckpt \
+  --max_steps 30000</pre>
+<p><b>界面说明。</b>命令行方式。终端按步打印损失与学习率，同时写入 CSV 指标文件；训练开始前会把当次配置写入输出目录，便于复现。</p>
+</div>
+
+<!-- ══════════ 第 18 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 18 页</div>
+<div class="shot">【截图占位】训练过程损失输出与检查点目录</div>
+<div class="shot-cap">图 6-3　模型训练过程（待补截图）</div>
+<p><b>输入 / 输出。</b>输入为预处理数据集、上游码本检查点（训练生成模型时必需）、可选的根轨迹对齐数据；输出为输出目录下的配置文件、CSV 指标、周期检查点、最近检查点与正常结束时的最终检查点。</p>
+<p><b>使用限制。</b>训练步数不代表质量验收；数据集声明根轨迹权威时，训练入口会拒绝根轨迹模型；生成模型必须使用本数据集训练的码本，检查点绑定骨架与归一化统计量，续训时还会核对码本文件哈希，换码本后误用会被拒绝；预训练权重与本数据集训练出的权重不可互换；小网络冒烟参数只用于验证接口，不能产出可部署模型；显存不足时应降低批大小而不是缩短窗口帧数。</p>
+<div class="note">对应代码位置：training/pretrain/train_unreal.py、training/models/vqvae/motion_vqvae.py、training/models/backbone/pose_model.py、training/common/unreal_quality.py、training/configs/pretrain/</div>
+<h2>6.5　模型导出</h2>
+<p><b>功能概述。</b>把训练检查点转换为不带优化器状态的 FP32 推理包。包内包含可迁移的骨架定义、归一化统计量与配置，并提供随包的加载函数在原地重新定位这些资源，因此可以在另一台机器或另一个目录直接使用。</p>
+<p><b>操作步骤。</b>①训练结束后确认检查点路径；②选择导出目录；③执行导出命令；④如需可与已提供码字的运行时对接，加只导出解码器的选项。</p>
+<pre>.venv/Scripts/python.exe inference/export/export_unreal_inference.py \
+  --checkpoint training/runs/native30/checkpoints/final.ckpt \
+  --output output/exports/native30_fp32</pre>
+</div>
+
+<!-- ══════════ 第 19 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 19 页</div>
+<p><b>界面说明。</b>命令行方式。导出过程逐值校验权重，完成后打印包内文件清单与各项校验结果。</p>
+<p><b>输入 / 输出。</b>输入为训练检查点；输出为推理包目录，含权重、骨架定义、统计量、配置与加载入口。</p>
+<p><b>使用限制。</b>导出过程不做 FP16/INT8 转换或任何有损剪枝；只导出解码器的模式要求调用方自行提供与码本兼容的码字，不能用于从零生成；推理包是本地可执行的一组文件，不是三维引擎插件，也不等同于通用的中间表示格式或引擎侧部署包。</p>
+<div class="note">对应代码位置：inference/export/export_unreal_inference.py、inference/runtime/checkpoint.py</div>
+<h2>6.6　姿态生成推理</h2>
+<p><b>功能概述。</b>加载正式姿态权重与码本，按给定轨迹条件与最近若干帧历史姿态，生成后续若干帧的身体姿态。推理入口提供两条路径：以外部给定的身体轨迹为条件、输出相对身体的表现姿态；以及仅用于离线诊断的、以姿态特征内的根分量为输入的模式。两条路径的编码方式不同，不可混用输入。</p>
+<p><b>操作步骤。</b>①准备姿态检查点、码本检查点与数据集；②准备轨迹条件数据（来源可为导出的轨迹、外部运动组件的录制结果）；③调用推理入口，指定输出目录与运行标签；④检查输出目录中的逐帧结果与汇总指标。</p>
+<p><b>界面说明。</b>推理由脚本入口与可视化入口共同完成：脚本入口批量运行并落盘结果，可视化入口（见 6.7）负责把结果渲染成可观看的画面。命令行执行时按段打印进度。</p>
+<p><b>输入 / 输出。</b>输入为姿态检查点、码本检查点、数据集与轨迹条件；输出为逐帧姿态特征或世界关节位置，以及每条片段的汇总指标文件。</p>
+<p><b>使用限制。</b>模型只输出相对身体的表现姿态，世界位移由外部运动组件决定，模型不生成世界轨迹；在线输入只使用最近 4 帧历史姿态，不输入未来真实姿态；轨迹条件以首帧身体为原点换算为局部坐标，若外部数据未按时对齐会被拒绝；与三维引擎的实时闭环与蒙皮接线尚未完成，当前结果用于离线验证与对照，不构成引擎内运行时。</p>
+<div class="note">对应代码位置：inference/runtime/motionweaver.py、inference/runtime/backbone/motion_inference.py、inference/runtime/conditioned_pose.py</div>
+</div>
+
+<!-- ══════════ 第 20 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 20 页</div>
+<h2>6.7　可视化交互界面</h2>
+<p><b>功能概述。</b>中文单窗口界面：窗口左侧为中文字段控制栏，右侧为实时三维画面。控制栏提供运行控制、相机视角与显示选项，键盘提供移动与动作风格切换。界面同时提供无控制台的 Windows 启动入口。</p>
+<p><b>操作步骤。</b>①在仓库根目录执行启动命令，或在具备运行环境时直接运行启动程序；②等待日志依次显示加载模型、加载数据集、开始运行；③用键盘 WASD 控制方向，用动作风格键切换行走风格；④用左侧控制栏暂停、重置、切换视角；⑤关闭主窗口结束运行。</p>
+<pre># 启动中文界面（默认即为中文）
+.venv/Scripts/python.exe inference/cli/interactive_demo_g1.py
+
+# 使用随机控制器自动演示
+.venv/Scripts/python.exe inference/cli/interactive_demo_g1.py --controller random
+
+# 恢复不带中文控制栏的原始界面（调试用）
+.venv/Scripts/python.exe inference/cli/interactive_demo_g1.py --chinese_ui 0</pre>
+<p><b>界面说明。</b>左侧控制栏分三组：运行控制（暂停 / 继续、重置角色、退出演示）；相机视角（正面、背面、左侧、右侧、俯视）；显示选项（显示接触点、显示关节、半透明显示）。右侧三维画面支持鼠标操作：右键拖动旋转相机，滚轮拉近拉远。键盘方面，W/A/S/D 为前/左/后/右移动，方向以当前相机为参照；另有若干动作风格键分别对应慢走、爬行、潜行、蹲伏、受伤行走等风格，不按风格键时无输入为待机、有输入为普通行走。</p>
+<div class="shot">【截图占位】中文单窗口主界面</div>
+<div class="shot-cap">图 6-4　可视化交互界面主窗口（待补截图）</div>
+</div>
+
+<!-- ══════════ 第 21 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 21 页</div>
+<p><b>输入 / 输出。</b>输入为检查点目录、数据目录与骨架描述文件；输出为实时渲染画面与运行日志，验收过程可另行录制画面。</p>
+<p><b>使用限制。</b>单窗口嵌入依赖 Windows 的窗口托管接口，非 Windows 平台自动回退为两个独立窗口，推理与操作功能不受影响；模型名、骨骼名、配置键与特征名保持英文，因为它们是检查点与程序接口的一部分；界面不修改第三方运行库的二进制文件，因此原始界面中由编译产物生成的菜单无法翻译，若需其完整参数面板需用关闭中文界面的参数启动；启动程序不包含运行环境、模型与依赖，必须在完整目录内使用。</p>
+<div class="note">对应代码位置：inference/cli/interactive_demo_g1.py、inference/demo/chinese_control_panel.py、inference/demo/mujoco_helper.py、launcher/Program.cs</div>
+<h2>6.8　实验对照与评测</h2>
+<p><b>功能概述。</b>本模块负责回答「模型到底好不好」，包含三类入口：离线质量评估、容量与基线诊断、可视化对照。三者共用同一份数据划分与同一套指标定义，输出的报告都带检查点与数据的哈希，便于复核。</p>
+<p><b>操作步骤。</b>①用质量评估入口在指定划分上评估单个检查点；②需要对照时用同一入口指定基线，或用对照脚本并列比较两次运行；③用画廊导出入口把结果转成可在浏览器中逐帧观看的对照页面；④用汇总入口合并多条片段与多组对照的指标。</p>
+<pre># 1) 在测试划分上评估
+.venv/Scripts/python.exe training/evaluation/evaluate_native_quality.py \
+  --dataset data/prepared/native30 \
+  --checkpoint training/runs/native30/checkpoints/final.ckpt \
+  --output training/runs/native30/test --split test
+
+# 2) 导出可在浏览器逐帧观看的对照画廊
+.venv/Scripts/python.exe training/evaluation/export_native_gallery.py \
+  --input training/runs/native30/test/gallery.json \
+  --output output/训练效果对照.html
+
+# 3) 三栏对照（原始 / 旧对照模型 / 本模型）
+.venv/Scripts/python.exe -m inference.visualization.compare_motionweaver \
+  --old output/old_baseline --motionweaver output/actor_run \
+  --output output/comparison --video</pre>
+</div>
+
+<!-- ══════════ 第 22 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 22 页</div>
+<p><b>界面说明。</b>评估与对照以命令行运行，产出两类界面：一份逐项指标的 JSON 与终端摘要，一份浏览器中可播放的对照页面。对照页面的播放器使用完整帧序列与原生时间戳，不依赖抽帧动图，可同时比较无关键帧、仅首帧与首尾关键帧三种条件。</p>
+<div class="shot">【截图占位】评估报告与对照画廊页面</div>
+<div class="shot-cap">图 6-5　实验对照与评测输出（待补截图）</div>
+<p><b>输入 / 输出。</b>输入为数据集、待测检查点，以及可选的基线检查点或对照运行目录；输出为评估报告、画廊数据文件、对照网页、对照视频与汇总文件，全部带检查点与数据哈希。</p>
+<p><b>使用限制。</b>所有对照必须同配置、同步数、同数据划分；2,000 步的运行属于预试验，正式比较应使用 20,000 步的检查点；关节误差只在同一条导出轨迹上比较源与生成结果，外部路径改变后源数据不再是有效目标；接触脚速只在存在连续源接触帧对时统计，帧对不足时不报告；诊断模式中把真实未来根信息只提供给解码器的做法属于泄漏实验，对照脚本会拒绝把该结果当作因果结论；容量诊断中的旁路差值不是量化误差的独立因果分解。</p>
+<div class="note">对应代码位置：training/evaluation/evaluate_native_quality.py、export_native_gallery.py、diagnose_unreal_capacity.py、inference/visualization/compare_motionweaver.py、summarize_acceptance.py</div>
+</div>
+
+<!-- ══════════ 第 23 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 23 页</div>
+<h1>7　总结</h1>
+<p>本软件实现了一条从动画资产到可观看生成结果的完整链路：其一，编辑器插件把工程内的动画序列批量导出为分离了世界根轨道与根局部身体姿态的批次数据，并记录有理数帧率与逐帧时间戳；其二，预处理入口把批次校验、转换、切片为带契约描述的训练数据集；其三，本地验收服务让使用者逐帧对照原始骨架与重定向后骨架，把结论写成可追溯的记录；其四，训练入口支持离散姿态表示模型与条件姿态生成模型，并提供真实帧掩码、几何约束与困难类别采样等质量控制选项；其五，导出与推理入口把检查点转成可迁移的推理包，按外部轨迹条件生成后续姿态；其六，可视化与评测入口把结果渲染为可观看画面与同条件对照报告。</p>
+<p>与常见的「只报告训练损失」的做法相比，本软件有两点不同。第一，质量判定以同配置、同步数、同数据划分的对照为准，评估在恢复源初始朝向与平移后按同一采样时刻比较，接触类指标必须同时给出参与统计的帧对数量，帧对不足时不报告，避免把局部样本当作整体结论。第二，模型输出被限定为相对身体的表现姿态，世界位移交由外部运动组件决定，两者职责不重叠，因此生成结果可以与不同的运动来源在相同接口下对照，而不必为每个来源重做一套评估。</p>
+<p>当前版本仍存在局限。姿态生成部分虽有完整的训练与推理链路，但世界姿态误差与脚部接触质量尚未达到可用门槛，其中蹲伏响应依赖状态输入而模型尚未接入该输入；离散表示的容量与几何细节之间存在折衷，短姿态改善会伴随部分常规动作退步。工程侧，与三维引擎的实时推理闭环、骨骼动画输出插件、运动组件接线与多人并发均未完成，因此本软件目前定位于训练、评估与实验对照，不构成引擎内的正式运行时。</p>
+<div class="note">对应代码位置：README.md、docs/motionweaver-architecture.md、docs/experiments/2026-09-28-motionweaver-a800-actor-root.md</div>
+</div>
+
+<!-- ══════════ 第 24 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 24 页</div>
+<h1>8　附：来源与第三方组件说明</h1>
+<p>本节集中说明上游来源与第三方组件，正文其他章节不以第三方商标描述本软件的功能。</p>
+<h2>8.1　上游架构来源</h2>
+<p>本软件的离散姿态表示与条件生成网络架构，来源于一个公开的人形全身控制研究项目中的动作生成模块；该模块的模型架构、动作表示、原始训练与推理代码、预训练权重及其演示属于原项目成果，按其原始许可（Apache License 2.0）使用，原作者、版权与论文信息予以保留。本软件在其基础上做了面向角色动画的裁剪、中文交互界面与 Windows 启动入口适配，并新增了动作数据导出插件、数据验收服务、自定义骨架训练入口、导出包与对照评估工具。上游演示的结果不能作为本软件新增能力的验证结果。</p>
+<h2>8.2　第三方依赖</h2>
+</div>
+
+<!-- ══════════ 第 25 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 25 页</div>
+<table>
+    <caption>表 8-1　第三方依赖与用途</caption>
+    <thead><tr><th style="width:30%">组件</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td>PyTorch / PyTorch Lightning</td><td>张量计算、自动求导与训练流程编排</td></tr>
+      <tr><td>Hydra</td><td>训练配置的组合与命令行覆盖</td></tr>
+      <tr><td>vector-quantize-pytorch</td><td>向量量化相关算子</td></tr>
+      <tr><td>NumPy / SciPy</td><td>数值计算与信号处理</td></tr>
+      <tr><td>einops</td><td>张量维度变换</td></tr>
+      <tr><td>Matplotlib / Pillow / imageio</td><td>图表绘制与图像、视频编码</td></tr>
+      <tr><td>物理仿真引擎（开源）</td><td>参考演示路线的物理仿真与可视化</td></tr>
+      <tr><td>pynput / keyboard</td><td>参考演示路线的键盘输入捕获</td></tr>
+      <tr><td>transformers</td><td>参考演示路线的文本编码支持</td></tr>
+    </tbody>
+  </table>
+<p>第三方组件的版本以 training/requirements.txt 与 inference/requirements-demo.txt 为准，不在本说明书中另行声明版本号，以免与安装脚本不一致。</p>
+<h2>8.3　外部资源</h2>
+<p>预训练权重、参考骨架的网格资源与动画数据依照各自授权使用。本软件的源代码许可证不授予外部动画资产、网格或数据集的使用权。使用者在分发本软件生成的结果时，应自行确认所用外部资源与数据的授权范围。</p>
+</div>
+
+<!-- ══════════ 第 26 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 26 页</div>
+<h1>附录 A　术语表</h1>
+<p>本说明书中的术语按下表统一，正文不使用同义替换。</p>
+<table>
+    <caption>表 A-1　术语与约定</caption>
+    <thead><tr><th style="width:24%">术语</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td>动画资产</td><td>编辑器工程内可被插件读取的动画序列，是本软件的原始输入。</td></tr>
+      <tr><td>导出批次</td><td>一次导出操作产生的目录，含批次清单、逐段数据文件与批次报告。</td></tr>
+      <tr><td>训练数据集</td><td>预处理产生的目录，含数据集描述文件、逐段原始数据、统计量与划分清单。</td></tr>
+      <tr><td>身体根节点</td><td>训练骨架的起点，默认取骨盆，其下全部子骨骼构成训练骨架。</td></tr>
+      <tr><td>世界根轨道</td><td>角色在世界中的整体位姿轨道。本软件把它与身体姿态分开保存，且不由模型生成。</td></tr>
+      <tr><td>离散姿态码本 / 码字</td><td>编码器与量化器把连续姿态映射到的有限离散编号集合；单个编号称为码字。</td></tr>
+      <tr><td>条件姿态生成模型</td><td>以历史姿态与轨迹为条件，输出后续姿态编号的模型。</td></tr>
+      <tr><td>检查点</td><td>训练过程中保存的权重文件，含优化器状态与训练步数。</td></tr>
+      <tr><td>推理包</td><td>由检查点导出的、不含优化器的 FP32 权重集合，附带骨架、统计量与配置。</td></tr>
+      <tr><td>真实帧掩码</td><td>标记片段中真实存在的帧，用于把补齐帧排除在损失之外。</td></tr>
+      <tr><td>接触帧对</td><td>源数据中相邻两帧都被标记为脚部接触的帧组合；接触脚速只在其上统计。</td></tr>
+      <tr><td>同条件对照</td><td>相同骨架、相同冻结划分、相同控制轨迹与相同运行环境下的并列比较。</td></tr>
+      <tr><td>（待确认）</td><td>本说明书草稿中表示需要使用者补充材料后才能确定的条目。</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════ 第 27 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 27 页</div>
+<h2>A.1　关于草稿中的（待确认）标记</h2>
+<p>本说明书为初稿，凡标注为（待确认）的内容均需补充实证材料后才能定稿，不得直接提交。当前待确认项集中在两处：各功能模块的界面截图尚未采集；软件开发完成日期与首次发表日期需由著作权人确认。</p>
+</div>
+
+<script>
+// 开发辅助：按 Ctrl+Shift+S 切换内部核对注释的显示（正式导出前应处于隐藏状态）
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'S' || e.key === 's')) {
+    document.body.classList.toggle('stripped');
+    e.preventDefault();
+  }
+});
+</script>
+</body>
+</html>

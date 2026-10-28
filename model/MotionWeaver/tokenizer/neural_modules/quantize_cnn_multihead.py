@@ -31,6 +31,11 @@ class QuantizeEMAResetMultiHead(nn.Module):
             # 实测后果：编码器输出方差 2.285、量化后只剩 0.029（1.3%），
             # perplexity 5.64/10，commit 损失 0.0050，关节 RMSE 达 105 cm。
             # 详见 docs/soma-tokenizer-codebook-collapse.md。
+            #
+            # 注意：上面这组数字是**修复前**的测量值，只用来定位死码重置的副作用，
+            # 不代表当前水平。归一化口径对齐后的全库训练是 84-86 cm
+            # （docs/soma-tokenizer-joint-error-options.md 第零节）。
+            # 而 perplexity 仍在 20k 步后塌缩到 1.000，是当前的主要瓶颈。
             threshold_ema_dead_code=0,
             decay=self.mu,
             kmeans_init=bool(args.kmeans_init)
