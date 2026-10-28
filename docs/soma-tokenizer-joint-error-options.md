@@ -11,6 +11,18 @@
 
 但在跑出这条结论之前，必须先记录一个**比方案 A 重要得多**的发现：之前所有实验都建立在一个错误的归一化口径上。
 
+### 0.0 先看图（五张图读完所有结论）
+
+| 图 | 说的一件事 |
+|---|---|
+| ![图1](assets/plan-a-final/fig1_main_curve.png) | **图1｜方案A vs 基线全曲线**：两条线全程贴着 0.56 cm 噪声带互相穿插，没有任何一处系统性分开 |
+| ![图2](assets/plan-a-final/fig2_paired_diff.png) | **图2｜逐点配对差值**：柱子在 0 两侧随机跳动，平均 +0.10 cm，仅 4/10 更优 |
+| ![图3](assets/plan-a-final/fig3_what_mattered.png) | **图3｜谁真正带来了改善**：94.54 → 85.59 是归一化修复的功劳；方案A 只再动 +0.26 cm |
+| ![图4](assets/plan-a-final/fig4_perplexity_collapse.png) | **图4｜码本塌缩**：20k 步后 perplexity 锁死 1.000，tokenizer 退化成自编码器 |
+| ![图5](assets/plan-a-final/fig5_all_experiments.png) | **图5｜全部实验总览**：修复后稳定在 84–86cm；修复前 30k 后失控到 330cm |
+
+**原始数据表**：[`assets/plan-a-final/plan_a_full_table.csv`](assets/plan-a-final/plan_a_full_table.csv)（全部 60+ 个 checkpoint 的 rmse / p95 / max / feature_l1 / 自校验值）
+
 ### 0.1 致命缺陷：训练与评测喂了不同的分布（已修复）
 
 | 项 | 内容 |
