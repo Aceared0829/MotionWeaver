@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -256,6 +256,15 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   并实测出「32 进程反而把吞吐从 6,350 降到 1,400 条/分钟」这一并发上限（§6）。
   在此基础上，分词器首次在 full-v1 全库 fps120 组上训满 3 个 epoch（42,791 步），
   并以 A/B 对照确定码本初始化应保持随机初始化：总损失中位数 0.4026 对 0.5165（§8.7）。
+  <strong>本报告还记录了一次被口径掩盖的失败。</strong>我们试图让训练目标直接对齐验收指标，
+  把米制关节位置误差写进损失；在 17 组同步数对照下该损失的效应只有 +0.10 cm，
+  小于同配置换种子造成的 0.56 cm 抖动（符号检验 $p=0.75$），因此判定无效。
+  更有价值的发现来自排查过程：训练与评测此前喂给模型的<strong>不是同一个归一化分布</strong>，
+  这使得 30,000 步之后的关节误差断崖式恶化（108 → 310 cm），
+  并污染了那一段时期的全部对照结论。把口径对齐后，同一评测口径下的关节 RMSE
+  由 94.54 cm 降至 83.85 cm（−11.3%）——本项目至今最大的一次单点收益并非来自任何损失项。
+  失效的直接原因也被定位：码本在 20,000 步后塌缩至 <code>perplexity = 1.000</code>，
+  每批所有 token 量化到同一码字，分词器退化为自编码器，码字里没有可供优化的信息（§9）。
   <strong>但本报告同样记录失败</strong>：在 3 条同轨迹对照片段中，Walk 的世界关节 RMSE 由基线 6.72 cm 改善至 6.03 cm，
   而 Run（7.36 → 12.00 cm）与 Crouch（5.87 → 8.25 cm）明显退化；接触期脚滑整体仍显著高于来源动作；
   换用另录的 CMC 轨迹后，90° 转向只改变 Actor 局部关节姿态 0.50 cm，且蹲伏状态未被模型响应。
@@ -269,6 +278,16 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   clips (79 bones, 30 FPS) and 71,132 SOMA clips (78 joints, 120.0048 FPS), and improve processing
   throughput by 1.69–1.80x with array-level equivalence. A 20,000-step training run on a single A800 reduces
   masked pose-token cross-entropy on a frozen validation split from 1.862 to 1.454 nats (-21.9%).
+  We further document a failure hidden by a protocol mismatch. Adding a metric joint-position term to the
+  training loss produced an effect of +0.10 cm over 17 matched-budget comparisons—smaller than the 0.56 cm
+  seed-to-seed spread (sign test p=0.75)—so the term is judged ineffective. The diagnostic that mattered
+  was upstream: training and evaluation had been consuming <em>different normalization distributions</em>,
+  which drove joint error from 108 to 310 cm past 30k steps and invalidated every conclusion drawn from
+  that regime. Aligning the protocols lowers joint RMSE from 94.54 to 83.85 cm (-11.3%) under one fixed
+  protocol—the largest single gain in this project, and it came from no loss term at all. The proximate
+  cause of the loss term's ineffectiveness is also identified: the codebook collapses to perplexity 1.000
+  after 20k steps, quantizing every token in a batch to the same codeword, so the tokenizer degenerates
+  into an autoencoder and there is no codeword information left to optimize (Sec. 9).
   We also report failures: on three same-trajectory clips, walk improves (6.72 to 6.03 cm joint RMSE) while
   run (7.36 to 12.00 cm) and crouch (5.87 to 8.25 cm) degrade; contact-phase foot sliding remains far above
   the source motion; and replacing the trajectory with a recorded CMC capture changes local joint poses by
@@ -278,7 +297,7 @@ hr.big{border:0;border-top:1px solid var(--rule);margin:38px 0 0}
   给定 $h$ 帧历史姿态与一条外部 Actor 轨迹，最大化未来姿态码的对数似然（式 3.3）。
   损失函数、评测指标与硬约束投影都写成可复核的显式定义，
   使每个数字都能追溯到它对应的数学对象（§5、§7）。</p>
-  <p class="keywords"><b>关键词</b>：动作生成 · 离散姿态 Token · VQ-VAE · 角色动画 · Unreal Engine · 数据管线</p>
+  <p class="keywords"><b>关键词</b>：动作生成 · 离散姿态 Token · VQ-VAE · 角色动画 · Unreal Engine · 数据管线 · 评测口径 · 码本塌缩</p>
 </section>
 
 <hr class="big">
@@ -1275,9 +1294,106 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
   码字越多，每个码字被采样越少，EMA 更新越慢，越容易出现死码。
 </div>
 
-<h3 class="sub">8.8&nbsp;&nbsp;推理时延</h3>
+<h3 class="sub">8.8&nbsp;&nbsp;分词器评测：统一 benchmark 与四臂结果</h3>
+<p>评测代码原先散在三处（<code>training/evaluation/</code>、<code>data/tools/</code>、
+<code>paper/analysis/</code>），同一指标在不同脚本里统计口径不一致——有的取均值、
+有的取中位、有的取 p90，导致数字无法互相比较。我们把它们收进
+<code>benchmark/</code>，并定下一条原则：<strong>官方已有的不重写，我们只做补集，
+但对外是一份报告。</strong></p>
+
 <div class="tblwrap">
-  <p class="caption"><b>表 17</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
+  <p class="caption"><b>表 17</b>：评测体系的三组分工。指标原语（<code>metric()</code>/
+  <code>rms()</code>）直接 import 官方的
+  <code>inference.profiling.evaluate_unreal_streaming</code>，不重新实现。</p>
+  <table>
+    <thead><tr><th>组</th><th>内容</th><th>来源</th></tr></thead>
+    <tbody>
+      <tr><td><b>A 组</b></td><td>10 个训练指标（perplexity / commit / recons* /
+          joint_vel / skate_contact / loss）</td>
+          <td>官方 <code>motion_vqvae.py:336–352</code> 训练时写入 <code>metrics.csv</code>，
+              本报告只读不算</td></tr>
+      <tr><td><b>B 组</b></td><td>关节 RMSE（厘米）、feature L1、自校验误差</td>
+          <td class="good">我们的补集：官方脚本只吃 UE Schema，
+              SOMA 四键 NPZ 需另写</td></tr>
+      <tr><td><b>C 组</b></td><td>Hold / Lerp 零成本基线</td>
+          <td>引用已冻结的基线报告，不重算</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 18</b>：四臂的 A 组指标（训练集口径，末段 10% 均值）。
+  <code>l_recons_pose_global</code> 与两条 <code>l_recons_root_*</code> 在四臂上
+  恒为 0.0000——根运动与全局姿态的重建完全精确，误差集中在局部姿态。</p>
+  <table>
+    <thead><tr><th>指标</th><th class="num">BC120<br>(B+C, dt3)</th>
+      <th class="num">A120<br>(A, dt2)</th><th class="num">B120<br>(kmeans, dt2)</th></tr></thead>
+    <tbody>
+      <tr><td><code>l_recons_pose</code></td><td class="num">0.3032</td>
+          <td class="num good">0.1811</td><td class="num">0.1815</td></tr>
+      <tr><td><code>l_commit_pose</code></td><td class="num good">0.0050</td>
+          <td class="num">0.5844</td><td class="num">0.5519</td></tr>
+      <tr><td><code>l_joint_vel</code></td><td class="num good">0.1798</td>
+          <td class="num">0.2397</td><td class="num">0.3329</td></tr>
+      <tr><td><b><code>l_skate_contact</code> (m/s)</b></td>
+          <td class="num good">0.3911</td><td class="num">1.1499</td>
+          <td class="num">1.1103</td></tr>
+      <tr><td><code>perplexity_pose</code></td><td class="num good">5.6350</td>
+          <td class="num">5.2925</td><td class="num">5.1851</td></tr>
+      <tr><td><code>loss</code></td><td class="num good">0.6668</td>
+          <td class="num">0.6838</td><td class="num">0.8694</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p><strong>一个必须写明的陷阱：<code>l_recons_pose</code> 不可跨 <code>down_t</code>
+比较。</strong>把 A 组与 B 组并排看会得到一个矛盾：A120(dt2) 的
+<code>l_recons_pose</code> 最低（0.1811），关节误差却高达 208.98 cm；
+BC120 的 loss 较高（0.3032），关节误差反而最小（105.33 cm）。
+原因是该损失在<strong>归一化特征空间</strong>里计算，而归一化用的
+<code>mean/std</code> 随 <code>frames_per_token</code> 变化。
+因此 loss 只能在同一个 <code>down_t</code> 内比较：A120(dt2) 0.1811 与
+B120(dt2) 0.1815 几乎相等，这与 §8.7 得出的「kmeans_init 无优势」一致。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 19</b>：B 组（我们的补集）。自校验是官方
+  <code>motionweaver_preview.py:416</code> 的门槛——逆变换必须能把原始输入
+  还原到 0.03 m 以内，否则重建指标无意义。</p>
+  <table>
+    <thead><tr><th>模型</th><th class="num">feature L1</th>
+      <th class="num">关节 RMSE (cm)</th><th class="num">自校验 (m)</th></tr></thead>
+    <tbody>
+      <tr><td>BC120 (B+C, dt3)</td><td class="num">0.7233</td>
+          <td class="num good">105.33</td><td class="num">0.000000</td></tr>
+      <tr><td>A120 (A, dt2)</td><td class="num">0.7152</td>
+          <td class="num">208.98</td><td class="num">0.000000</td></tr>
+      <tr><td>A120 (A, dt3)</td><td class="num good">0.6572</td>
+          <td class="num">121.04</td><td class="num">0.000000</td></tr>
+      <tr><td>B120 (A, kmeans, dt2)</td><td class="num">0.7824</td>
+          <td class="num bad">308.09</td><td class="num">0.000000</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">自校验全部为 0.000000 m，说明「特征 → 关节位置」的转换链路
+    完全自洽，表中的差异来自模型本身而非评测代码。但关节 RMSE 绝对值很大
+    （105–308 cm），说明即使特征级损失已经较低，还原到关节位置后误差仍不可接受。</p>
+</div>
+
+<p><strong>脚滑是唯一可直接与基线对比的指标</strong>，因为
+<code>l_skate_contact</code> 的单位是 m/s。BC120 的 0.3911 m/s
+已优于 Lerp 基线的 0.545 m/s（21× 源动作）。但两者口径不同：基线是
+<strong>补间生成</strong>的结果，这里是 <strong>tokenizer 重建</strong>的结果，
+不能据此声称「模型补间能力超过 Lerp」。</p>
+
+<figure>
+  <img src="figures/fig9-benchmark-arms.png" alt="四臂的 A 组与 B 组指标对比">
+  <figcaption><b>图 9</b>：四臂在 A 组（训练指标，左）与 B 组（重建误差，右）上的对比。
+    A 组的 <code>l_recons_pose</code> 不可跨 <code>down_t</code> 排序（见正文），
+    因此左图只用于同 <code>down_t</code> 内的比较。</figcaption>
+</figure>
+
+
+<div class="tblwrap">
+  <p class="caption"><b>表 20</b>：Python eager 前向的同步计时（RTX 4070 Laptop，每条 1 次未计时预热，
     计 3 条 × 3 次同步前向）。不含数据准备、UE NNE、蒙皮、渲染与线程调度。</p>
   <table>
     <thead><tr><th>条件</th><th class="num">P50 (ms)</th><th class="num">P95 (ms)</th><th class="num">4 帧预算 @30 Hz (ms)</th><th>是否在预算内</th></tr></thead>
@@ -1291,9 +1407,329 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
     两个数字属于不同任务与不同模型，<b>不能相加或互相替代</b>。</p>
 </div>
 
-<h2 class="sec">9&nbsp;&nbsp;讨论、局限与缺陷清单</h2>
+<h2 class="sec">9&nbsp;&nbsp;损失函数与评测口径：一次被口径掩盖的失败</h2>
 
-<h3 class="sub">9.1&nbsp;&nbsp;这份报告能支撑什么</h3>
+<p>本节记录一条完整但结论为<strong>否定</strong>的实验线：我们试图让训练目标直接对齐验收指标，
+把米制关节误差写进损失，结果在 17 组同步数对照下确认<strong>该损失没有可测量的作用</strong>。
+但更有价值的东西不是这个否定结论，而是中途发现的一件事：
+<strong>在此之前，训练与评测喂给模型的不是同一个分布</strong>，而我们此前所有长训练的结论都建立在这个口径差之上。</p>
+
+<h3 class="sub">9.1&nbsp;&nbsp;动机：训练在优化的量，不是验收在量的量</h3>
+
+<p>分词器的训练损失是 941 维归一化特征上的 SmoothL1，量级约 0.26；而验收指标是把重建结果还原成世界空间骨架后的
+<strong>关节位置 RMSE（厘米）</strong>。两者之间隔着归一化的 <code>mean/std</code>、<code>local↔global</code> 的两级表示转换，
+以及根运动积分。§8.8 已经记录过这个断裂的一个侧面：<code>l_recons_pose</code> 最低的臂（A120, dt2, 0.1811）
+关节误差反而高达 208.98 cm。</p>
+
+<p>于是有了一个自然的想法：<strong>既然验收看米制关节误差，就把它写进损失</strong>。
+我们在解码器输出上先还原到世界空间关节位置，再对预测与真值算 SmoothL1，以系数
+<code>joint_pos_loss_coeff</code> 加入总损失。实现时先修掉一个致命错位：原 <code>loss()</code> 里
+预测走 <code>local_motion_rep.inverse</code>、真值走 <code>global_motion_rep.inverse</code>，
+在当前 <code>pose_vqvae_motion_rep: local</code> 配置下两者实测相差 <strong>120.50 cm</strong>，
+直接相减等于在罚两个坐标系之差。修正后往返精确到 $1.2\times10^{-7}$（特征）与 $1.0\times10^{-6}$ cm（关节）。</p>
+
+<p>另有两个前置疑问必须先用实验堵死，否则后面任何否定结论都可能只是「没接对」：</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 21</b>：在花训练时间之前先排除的两个实现性怀疑。两项都是<strong>否定</strong>性结论——
+  即这两个解释都被证据排除，因此后续结果只能从训练动力学本身去找原因。</p>
+  <table>
+    <thead><tr><th>怀疑</th><th>验证方式</th><th>结果</th><th>判断</th></tr></thead>
+    <tbody>
+      <tr><td>训练口径与评测口径不同构</td>
+          <td>同一检查点分别按训练口径（<code>is_normalized=True</code> 链路）与评测口径还原关节，比较误差</td>
+          <td>72.14 对 72.14；77.32 对 77.32，<b>精确相等</b></td>
+          <td class="good">排除。gt 之间 64.07 cm 的整体旋转属于等距变换，误差不变</td></tr>
+      <tr><td>梯度没有足量传到网络</td>
+          <td>只对关节位置损失反传，测 encoder / decoder 梯度范数</td>
+          <td>encoder 1.17、decoder 20.39，<b>比重建损失大 3.6 倍</b></td>
+          <td class="good">排除。梯度既存在量级也合理</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3 class="sub">9.2&nbsp;&nbsp;反常：训练损失在降，评测却在同一步数上暴涨</h3>
+
+<p>全库（71,127 条 fps120）上跑两组完全相同的配置，只差 <code>joint_pos_loss_coeff</code>（0 与 0.1），
+各 40,000 步，每 10,000 步存档一次。按常理两条曲线应当接近。实际拿到的却是：</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 22</b>：全库训练在 30,000 步处的<strong>断崖式退化</strong>。同期训练损失并未发散，
+  <code>l_recons_pose</code> 仍在缓降（0.330 → 0.285），因此不能用「过拟合」或「训练崩了」解释。
+  评测口径：<code>evaluate_all(ckpt, rows=(8,), clips=16)</code>，16 条 B+C 片段，自校验均
+  $\approx 3.78\times10^{-7}$ m（门槛 0.03）。</p>
+  <table>
+    <thead><tr><th>步数</th><th class="num">无关节损失</th><th class="num">关节损失 0.1</th>
+      <th class="num">feature L1</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>10,000</td><td class="num">105.53</td><td class="num">105.62</td>
+          <td class="num">0.787</td><td>两组都还在「能看」的范围</td></tr>
+      <tr><td>20,000</td><td class="num">108.39</td><td class="num">106.28</td>
+          <td class="num">0.786</td><td>平稳</td></tr>
+      <tr><td>30,000</td><td class="num bad">310.23</td><td class="num bad">298.45</td>
+          <td class="num bad">0.972</td><td><b>两组同时断崖，与损失无关</b></td></tr>
+      <tr><td>40,000</td><td class="num bad">330.13</td><td class="num bad">366.07</td>
+          <td class="num bad">0.994</td><td>继续恶化</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">同期 <code>perplexity_pose</code> 由 4.26（26k）升到 6.08（30k）、
+    <code>l_commit_pose</code> 由 0.0015 升到 0.0179（约 12 倍），提示码本侧发生了状态变化，
+    但两条独立配置在同一步数一起塌陷，更像是<strong>某个与配置无关的量出了问题</strong>。</p>
+</div>
+
+<p>先排除「只是某个场景难」：把 30,000 步的检查点按场景分开评测，<b>四个场景同时变差</b>
+（A 277.80 / B 210.52 / C 180.42 / D 186.05 cm）。这排除了数据混合比例、场景分布之类的解释。
+接下来要回答的是：<strong>如果模型没坏，那是不是我们给它看的东西不一样了？</strong></p>
+
+<h3 class="sub">9.3&nbsp;&nbsp;根因：训练与评测喂了不同的归一化分布</h3>
+
+<p>沿着「训练路径 vs 评测路径」逐段对照，问题落在 <code>training_step</code> 里的一行参数上。
+两条路径在同一批数据（16 条 × 72 帧）上送进 <code>pose_net</code> 的局部身体特征（937 维 body 通道）统计量如下：</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 23</b>：同一批数据、三种转换链得到的 <code>local body</code> 统计量。
+  第三行是把原始特征先 <code>normalize</code> 再按「输入已归一化」进入转换链——也就是理论上正确的写法。
+  用它作参照，可以判定哪一条路径是对的。</p>
+  <table>
+    <thead><tr><th>转换链</th><th class="num">body std</th>
+      <th class="num">与「理论上正确」的 $\max|\Delta|$</th><th>判断</th></tr></thead>
+    <tbody>
+      <tr><td>训练路径（旧）：<code>change_first_heading(..., is_normalized=True)</code>
+          直接吃 collate 的原始特征</td>
+          <td class="num">0.9669</td><td class="num bad">862.40</td>
+          <td class="bad">错。把未归一化值当成 z-score 用了</td></tr>
+      <tr><td>评测路径：<code>global_to_local(..., is_normalized=False)</code></td>
+          <td class="num">0.5845</td><td class="num good">$6.85\times10^{-6}$</td>
+          <td class="good">对。等价于理论上正确的写法</td></tr>
+      <tr><td>理论上正确：先 <code>normalize</code>，再 <code>is_normalized=True</code></td>
+          <td class="num">0.5845</td><td class="num">0</td>
+          <td>参照</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">「判断」列的判定依据是第三行：与它相差 $10^{-6}$ 量级的路径是对的，
+    相差 862 的那条是错的。误差不是随机噪声，而是<strong>系统性错位</strong>。</p>
+</div>
+
+<p>根因是两条数据入口对 <code>batch["motion"]</code> 的归一化状态<strong>恰好相反</strong>，
+而 <code>training_step</code> 把 <code>is_normalized</code> 写死成了 <code>True</code>：</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 24</b>：两条数据入口产出 <code>batch["motion"]</code> 时的归一化状态。
+  二者相反，因此这个开关不能靠默认值猜，必须按数据来源显式声明。</p>
+  <table>
+    <thead><tr><th>入口</th><th>产出方式</th><th>归一化状态</th><th>应取的 <code>is_normalized</code></th></tr></thead>
+    <tbody>
+      <tr><td><code>--dataset</code><br>（<code>UnrealMotionDataset</code>）</td>
+          <td><code>build_unreal_training_set.py:204</code> 落盘前已做 $(x-\mu)/\sigma$</td>
+          <td class="good">已归一化</td><td><code>true</code></td></tr>
+      <tr><td><code>--soma_views</code><br>（<code>SomaRealtimeDataset</code>）</td>
+          <td><code>soma_realtime_dataset.py:389</code> 用 <code>to_normalize=False</code> 产出原始特征</td>
+          <td class="bad">未归一化</td><td><code>false</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p>这解释了一个此前被误读的现象：<strong>20,000 步之前的评测数字其实是假的「好」</strong>。
+那时模型基本只输出一个与输入近乎无关的常量姿态——该常量姿态本身就能拿到 51.73 cm，
+而 20k 的重建结果与输入特征的相关系数只有 $-0.083$。因为两条路径「一致地差」，
+差距被掩盖了。一旦模型真正开始拟合训练侧那份（被错位的）分布，评测侧的输入就成了分布外样本，
+关节误差从 108 cm 跳到 310 cm。所以这不是过拟合，也不是码本坏了，
+是<strong>训练目标与评测目标自始至终不是同一个量</strong>。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 25</b>：被这个口径差污染、因而<b>全部作废</b>的既有结论。
+  它们都建立在 $\geq 30{,}000$ 步的检查点上。</p>
+  <table>
+    <thead><tr><th>旧结论</th><th>当时的证据</th><th>作废原因</th></tr></thead>
+    <tbody>
+      <tr><td>「全库训练到 40k 会崩」</td><td>30k = 310 cm、40k = 330 cm</td>
+          <td class="bad">是口径错位，不是数据量或过拟合</td></tr>
+      <tr><td>「熵正则在 40k 上带来 5% 改善」</td><td>有熵 103.29 vs 无熵 108.76</td>
+          <td class="bad">30k 后数据不可信，差异落在被污染的区间</td></tr>
+      <tr><td>「关节位置损失使结果变差 4.8%」</td><td>108.23 vs 103.29</td>
+          <td class="bad">同上；且两组都在崩溃点之后</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3 class="sub">9.4&nbsp;&nbsp;修复：一个显式的开关，而不是一个默认值</h3>
+
+<p>修法不是把 <code>True</code> 改成 <code>False</code>——那只是把同一类错误换到 <code>--dataset</code> 入口上。
+正确做法是把「输入是否已归一化」提升为<strong>由数据来源决定的事实</strong>：新增
+<code>inputs_are_normalized</code> 参数，由训练入口按实际数据来源写入</p>
+
+<p class="eq"><code>conf.model.args.inputs_are_normalized = not bool(getattr(args, "soma_views", None))</code></p>
+
+<p>而不是让 <code>motion_vqvae.py</code> 去猜。这个改动的价值可以用一条曲线衡量：</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 26</b>：修复前后的同口径对比。修复前最好的成绩来自 B+C 子集的 10k 检查点；
+  修复后在同一评测口径下，全库 15k 即达到 83.85 cm。<b>这是本项目至今最大的一次单点收益，来源不是任何损失项，而是把口径对齐。</b></p>
+  <table>
+    <thead><tr><th>配置</th><th class="num">joint RMSE (cm)</th><th class="num">相对修复前最好</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td>修复前最好（B+C 10k）</td><td class="num">94.54</td><td class="num">—</td><td>此前所有报告的引用基线</td></tr>
+      <tr><td>修复前（全库 40k）</td><td class="num bad">330.13</td><td class="num bad">+249%</td><td>断崖后退化</td></tr>
+      <tr><td><b>修复后（全库 15k）</b></td><td class="num good">83.85</td>
+          <td class="num good">−11.3%</td><td>且 30k 之后不再崩</td></tr>
+      <tr><td>修复后（全库 100k）</td><td class="num">85.59</td><td class="num">−9.5%</td><td>稳定性成立</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<figure>
+  <img src="figures/fig10-all-experiments.png" alt="全部实验总览">
+  <figcaption><b>图 10</b>：全部检查点的关节 RMSE。左图按步数、右图按等效 epoch 对齐。
+    浅灰两条是修复前的（被污染）曲线，30k 后直接飞到 300 cm 以上；
+    修复后的六条全部压在 84–86 cm 的带子里。右图说明崩溃点落在约 2 个 epoch 处，
+    与「数据量不足导致过拟合」的直觉不符——过拟合应当是渐进的，这里是断崖。</figcaption>
+</figure>
+
+<p>为了让这次修复本身可被回归测试守住，我们补了一组测试，并且做了<strong>变异检查</strong>：
+把 <code>is_normalized</code> 写死成任一值、把开关的读取去掉、让训练入口不再按数据来源设置，
+四种人为破坏全部被测试捕获（4/4）。只写测试不做变异检查是不够的——
+本仓库此前出现过「10 个测试全绿，但把熵项整个删掉依然全绿」的情况。</p>
+
+<h3 class="sub">9.5&nbsp;&nbsp;结论一：关节位置损失没有可测量的作用</h3>
+
+<p>口径修好之后，才有资格回答最初的问题。两组配置在全库上各跑 100,000 步，
+每 10,000 步存档，得到 <b>10 个同步数配对点</b>；另在 40,000 步处加扫 0.05 与 0.30 两个系数端点，
+并跑一个<strong>同配置换种子</strong>的基线来标定噪声底。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 27</b>：100,000 步逐点配对。Δ = 关节损失 0.1 − 基线。
+  十次里只有四次更优，且幅度全部小于种子噪声。</p>
+  <table>
+    <thead><tr><th class="num">步数</th><th class="num">基线</th><th class="num">关节损失 0.1</th>
+      <th class="num">Δ</th><th class="num">Δ%</th></tr></thead>
+    <tbody>
+      <tr><td class="num">10,000</td><td class="num">85.43</td><td class="num">85.68</td><td class="num bad">+0.25</td><td class="num">+0.30%</td></tr>
+      <tr><td class="num">20,000</td><td class="num">85.69</td><td class="num">85.09</td><td class="num good">−0.60</td><td class="num">−0.70%</td></tr>
+      <tr><td class="num">30,000</td><td class="num">84.50</td><td class="num">85.89</td><td class="num bad">+1.39</td><td class="num">+1.65%</td></tr>
+      <tr><td class="num">40,000</td><td class="num">85.43</td><td class="num">84.94</td><td class="num good">−0.49</td><td class="num">−0.57%</td></tr>
+      <tr><td class="num">50,000</td><td class="num">85.10</td><td class="num">85.27</td><td class="num bad">+0.17</td><td class="num">+0.20%</td></tr>
+      <tr><td class="num">60,000</td><td class="num">84.76</td><td class="num">84.77</td><td class="num">+0.01</td><td class="num">+0.01%</td></tr>
+      <tr><td class="num">70,000</td><td class="num">86.31</td><td class="num">86.23</td><td class="num good">−0.08</td><td class="num">−0.09%</td></tr>
+      <tr><td class="num">80,000</td><td class="num">85.53</td><td class="num">85.35</td><td class="num good">−0.18</td><td class="num">−0.21%</td></tr>
+      <tr><td class="num">90,000</td><td class="num">85.68</td><td class="num">85.98</td><td class="num bad">+0.30</td><td class="num">+0.34%</td></tr>
+      <tr><td class="num">100,000</td><td class="num">85.59</td><td class="num">85.84</td><td class="num bad">+0.26</td><td class="num">+0.30%</td></tr>
+    </tbody>
+  </table>
+  <p class="tnotes">Δ 均值 <b>+0.104 cm</b>、中位 <b>+0.092 cm</b>；关节损失更优的点为 4/10；
+  符号检验双侧 <b>$p = 0.7539$</b>。</p>
+</div>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 28</b>：系数扫描（40,000 步同步数）。把系数放大六倍（0.05 → 0.30）
+  没有出现任何单调趋势，这是「调系数没调对」这一解释的反证。</p>
+  <table>
+    <thead><tr><th class="num">系数</th><th class="num">joint RMSE (cm)</th>
+      <th class="num">Δ vs 基线均值</th><th>判断</th></tr></thead>
+    <tbody>
+      <tr><td class="num">0（基线，两种子）</td><td class="num">85.89</td><td class="num">—</td><td>基准</td></tr>
+      <tr><td class="num">0.05</td><td class="num">85.49</td><td class="num">−0.39</td><td class="bad">落在噪声内</td></tr>
+      <tr><td class="num">0.10</td><td class="num">85.65</td><td class="num">−0.23</td><td class="bad">落在噪声内</td></tr>
+      <tr><td class="num">0.30</td><td class="num">85.48</td><td class="num">−0.41</td><td class="bad">落在噪声内</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 29</b>：本节的判据链。三条相互独立的证据都指向同一个方向，
+  且<b>噪声底本身由实验测得</b>，而不是估计的。</p>
+  <table>
+    <thead><tr><th>检验</th><th class="num">值</th><th>读法</th></tr></thead>
+    <tbody>
+      <tr><td>效应量</td><td class="num">+0.10 cm</td><td>略微更差，但幅度可忽略</td></tr>
+      <tr><td><b>种子噪声底</b>（同配置换种子，逐 step）</td><td class="num">均值 0.56 / 最大 1.19 cm</td>
+          <td class="bad">效应比噪声底小约 5 倍</td></tr>
+      <tr><td>符号检验（10 个配对点）</td><td class="num">$p = 0.7539$</td><td class="bad">完全无显著性</td></tr>
+      <tr><td>系数单调性（3 个端点）</td><td class="num">无趋势</td><td class="bad">不是「系数没调对」</td></tr>
+      <tr><td>步数饱和（10k → 100k）</td><td class="num">85.43 → 85.59</td>
+          <td class="bad">继续加步数无收益</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<figure>
+  <img src="figures/fig11-paired-diff.png" alt="逐点配对差值">
+  <figcaption><b>图 11</b>：Δ = 关节损失 0.1 − 基线，正值表示关节损失更差。
+    柱子在零线两侧随机跳动，平均 +0.10 cm（紫虚线），除 30k 一根 +1.39 外
+    全部落在浅蓝色的 ±0.56 cm 种子噪声带内。如果损失有效，柱子应当整体压到零线以下。</figcaption>
+</figure>
+
+<p>顺带复核了另一个曾经「看起来有效」的正则项——码字使用熵。在口径修好后重测，
+10,000 步处 85.42 对 85.43、20,000 步处 85.83 对 85.69，同样落在噪声内。
+此前「熵在 40k 上有益 5%」的判断，正是被 §9.2 那个断崖污染出来的假象。</p>
+
+<h3 class="sub">9.6&nbsp;&nbsp;结论二：真正的瓶颈是码本塌缩</h3>
+
+<p>口径修好之后还暴露出一件比损失设计更根本的事：<code>perplexity_pose</code> 在 20,000 步后
+<strong>锁死在 1.000</strong>。</p>
+
+<div class="tblwrap">
+  <p class="caption"><b>表 30</b>：码本使用情况随时间。perplexity 降到 1.000 意味着
+  <b>每一批里所有 token 都被量化到同一个码字</b>，码本容量
+  <code>nb_code</code> $=32^8$ 几乎完全闲置，分词器实际上退化成了一个自编码器。</p>
+  <table>
+    <thead><tr><th>区间（步）</th><th class="num">l_recons_pose</th>
+      <th class="num">perplexity_pose</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td>0 – 10k</td><td class="num">0.2611</td><td class="num">1.876</td><td>仍在收敛</td></tr>
+      <tr><td>10k – 20k</td><td class="num">0.2592</td><td class="num">1.190</td><td>快速塌缩</td></tr>
+      <tr><td>20k – 30k</td><td class="num">0.2613</td><td class="num bad">1.000</td><td>完全塌缩</td></tr>
+      <tr><td>30k – 40k</td><td class="num">0.2593</td><td class="num bad">1.000</td><td>—</td></tr>
+      <tr><td>40k – 50k</td><td class="num">0.2576</td><td class="num bad">1.000</td><td>重建几乎不再改善</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<figure>
+  <img src="figures/fig12-perplexity-collapse.png" alt="码本 perplexity 塌缩">
+  <figcaption><b>图 12</b>：<code>perplexity_pose</code> 随训练步数的变化（2,000 步分桶中位数）。
+    20,000 步之后一直贴在 1.0 的红线上。这个事实解释了 §9.5 的否定结论：
+    <b>码本里没有可供优化的信息</b>，在 941 维特征的平均损失上下压 0.1 cm 是做不到的。</figcaption>
+</figure>
+
+<p>这也和 §8.7 的旧结论对上了：那时我们看到「码本容量 8 → 128 帧，关节误差只变 +0.1%」，
+当时的解读是「容量假设被证伪」。现在的看法更准确——<strong>容量不是没用，而是根本没被用起来</strong>。
+两件事需要放在一起读：容量实验说明加大码本无效，perplexity 说明原因是用不上。
+真正的下一步是约束「太少用」而不是「不够大」，例如在量化器层面约束每批的码字占用分布，
+而不是继续在损失项上做加法。</p>
+
+<h3 class="sub">9.7&nbsp;&nbsp;方法论上的经验：四个差点写错的判断</h3>
+
+<p>§9.3 之外，这条实验线还留下四条可直接复用的教训。它们都不是「指标算错了」，
+而是<strong>在错误的前提上得出了看起来自洽的结论</strong>。</p>
+
+<ol>
+  <li><b>「训练损失降了」不能推出「泛化变好了」。</b>
+      关节位置损失在训练窗口上的分段均值确实降了 32%（0.4470 → 0.3052），
+      而评测口径下关节 MAE 反而 +4.0%。前者衡量的是拟合，后者衡量的是泛化，
+      这条线上两者方向相反过不止一次。</li>
+  <li><b>对比必须同步数，且步数要换算成 epoch 再看。</b>
+      B+C 子集每个 epoch 是 3,372 步，跑到 40,000 步相当于 <b>11.9 个 epoch</b>，
+      早已越过过拟合点；而全库是 14,265 步一个 epoch，40,000 步只有 2.8 个 epoch。
+      同样叫「40k」，一个在过拟合区、一个还在欠拟合区。此前的「40k 对比」正是这样失效的。</li>
+  <li><b>用单步值判断训练进展。</b>
+      <code>l_joint_pos_m</code> 的末行单步值曾是 0.0996，据此得出「已达标」；
+      而末 2,000 步的中位数是 0.2215，标准差 0.3105——单步抖动比信号本身还大。
+      本节的结论一律基于分桶中位数或整点检查点。</li>
+  <li><b>没有噪声底就不能宣称「改善」。</b>
+      在标定种子噪声之前，0.05 与 0.30 两个端点看起来都「改善了 0.4 cm」，
+      而这个数字比同配置换种子造成的差异还小。任何 A/B 结论都必须先回答：
+      这条曲线上的自然抖动有多大？</li>
+</ol>
+
+<p>这四条的共同点是：<strong>它们都让一个错误的结论看起来很有道理</strong>。
+因此本报告在 §9.2、§9.5、§9.6 三处都刻意先写出「本来以为会怎样」，
+再给出实测——差异本身就是这部分最重要的结果。</p>
+
+<hr class="big">
+
+<h2 class="sec">10&nbsp;&nbsp;讨论、局限与缺陷清单</h2>
+
+<h3 class="sub">10.1&nbsp;&nbsp;这份报告能支撑什么</h3>
 <ul>
   <li>Tokenizer 加 Pose Token 的两段式链路在本仓库跑通：数据、训练、检查点、离线推理、视频导出全链路可复现。</li>
   <li>固定验证口径下，20k 训练相对 2k 显著改善 Token 预测（−21.9%），且该改善在三个类别上方向一致。</li>
@@ -1301,9 +1737,9 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
   <li>时延在 Python 前向层面有约 6 倍余量（P95 21 ms 对 133 ms 预算）。</li>
 </ul>
 
-<h3 class="sub">9.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
+<h3 class="sub">10.2&nbsp;&nbsp;这份报告不能支撑什么</h3>
 <div class="tblwrap">
-  <p class="caption"><b>表 18</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
+  <p class="caption"><b>表 31</b>：显式的能力边界。左列是被问过的问题，右列是当前证据状态。</p>
   <table>
     <thead><tr><th>问题</th><th>当前状态</th></tr></thead>
     <tbody>
@@ -1313,12 +1749,14 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
       <tr><td>Token 改善等于姿态改善吗</td><td class="bad">不等。Run 的 CE 降 15%，世界 RMSE 却由 7.36 升到 12.00 cm。</td></tr>
       <tr><td>两种模型是严格消融吗</td><td>不是。历史长度 24 vs 4 帧、架构不同、参数量不同，属产品路线对照。</td></tr>
       <tr><td>时延满足 UE 实时预算吗</td><td>部分。Python 前向有余量，但 UE 侧全过程未测。</td></tr>
-      <tr><td>SOMA 全库都训了吗</td><td>数据已建成，模型未训。训练视图 72,933 条覆盖登记总量 73,101 条的 99.77%，四场景齐全；但本报告的全部结果仍来自 1,722 段 UE 数据，SOMA 训练尚未开始。</td></tr>
+      <tr><td>SOMA 全库都训了吗</td><td>分词器已训（§9）。全库 71,127 条 fps120 上跑到 100,000 步，四场景 A/B/C/D 齐全；<b>但姿态主干仍未在 full-v1 上开训</b>，§8 的姿态质量指标仍来自 UE 数据上的 20k 检查点。</td></tr>
+      <tr><td>码本被有效使用了吗</td><td class="bad">没有。<code>perplexity_pose</code> 在 20,000 步后锁死 1.000，每批所有 token 量化到同一码字，分词器实际退化为自编码器（§9.6）。</td></tr>
+      <tr><td>关节位置损失能降低验收误差吗</td><td class="bad">不能。17 组同步数对照下效应 +0.10 cm，小于种子噪声 0.56 cm，符号检验 p=0.75（§9.5）。</td></tr>
     </tbody>
   </table>
 </div>
 
-<h3 class="sub">9.3&nbsp;&nbsp;方法论上的经验</h3>
+<h3 class="sub">10.3&nbsp;&nbsp;方法论上的经验</h3>
 <p>这次工作中最值得记录的不是某个指标，而是三处「差点把结论写错」的地方：</p>
 <ol>
   <li><b>把 Actor 相对的骨盆特征当成 CMC Root。</b>后果是把「模型跟随控制器」这一命题的验证污染了。
@@ -1330,9 +1768,9 @@ A 在第 10k 步就把码本用到 4.5，而 B 一直压在 2、直到 25k 步�
 </ol>
 <p>共同点是：<strong>指标本身没错，错的是指标所依附的对象身份</strong>。
   因此本报告把每个数字都附上它所属的条件（教师轨迹 / 控制器轨迹 / oracle），
-  并在表 10 与表 18 中显式列出不可跨越的边界。</p>
+  并在表 10 与表 31 中显式列出不可跨越的边界。</p>
 
-<h2 class="sec">10&nbsp;&nbsp;结论与下一步</h2>
+<h2 class="sec">11&nbsp;&nbsp;结论与下一步</h2>
 <p>MotionWeaver 已经建成一条可追溯的数据与训练链路：两套骨骼数据汇入同一目标骨架，
   分词器与姿态主干可分离训练与替换，评测口径被冻结并可复现，训练链路已可直接读取四键 NPZ 训练视图（§6），
   20,000 步训练在 Token 层面给出确定的改善。同时，世界姿态、接触质量与控制器响应三项指标
@@ -1389,6 +1827,9 @@ python -u -m training.pretrain.train_unreal --model pose --dataset ../dataset --
       <tr><td><code>docs/experiments/2026-10-18-soma-processing-speed.md</code></td><td>吞吐优化与 24 次等价核对</td></tr>
       <tr><td><code>docs/soma-training-execution-plan.md</code></td><td>双帧率对齐、场景划分、窗口与 Token 预算</td></tr>
       <tr><td><code>inference/profiling/pose-reference-lab.md</code></td><td>硬参考等式约束投影的对照结果</td></tr>
+      <tr><td><code>docs/soma-tokenizer-joint-error-options.md</code></td><td>§9 的完整实验记录与判别链（口径修复、系数扫描、码本塌缩）</td></tr>
+      <tr><td><code>docs/assets/plan-a-final/plan_a_full_table.csv</code></td><td>§9.5 全部检查点的原始指标（rmse / p95 / max / feature_l1 / 自校验）</td></tr>
+      <tr><td><code>docs/assets/plan-a-final/WEIGHTS_MANIFEST.md</code></td><td>§9 各 run 的配置、步数、最优指标与权重位置</td></tr>
     </tbody>
   </table>
 </div>

@@ -21,6 +21,10 @@ MotionWeaver（原 AIAnimationSystem）是面向 Unreal Engine 的 AI 角色动�
 | 真实资产与生成质量 | 历史实验见插件的 TrainingResults；本次迁移使用受控夹具验证功能，不重新评定真实动作生成质量 |
 | UE 实验推理 | `AIAnimation` 在 GASP 独立对照场景中完成 ONNX 导入、AnimGraph 重建节点、动画工作线程 DirectML 推理、延迟融合播放和性能报告；详见实验说明 |
 | 跑酷参考姿态实验 | 可在本地 HTML 手选关键帧，对比软条件重建与融合后硬约束；已验证单条低障碍动画的参考帧精确到位，仍有邻域连续性和姿态偏差限制 |
+| SOMA 全库训练视图 | 已建成 71,127 条 fps120 四场景（A 27,182 / B 14,235 / C 2,621 / D 27,089），训练端可直接读取四键 NPZ |
+| 分词器（VQ-VAE） | 已在全库上训练至 100,000 步，关节 RMSE 稳定在 84–86 cm；但码本在 20k 步后塌缩至 perplexity 1.000，是当前主要瓶颈 |
+| 统一评测 | `benchmark/` 收敛原先散在三处的评测代码，以 `evaluate_all()` 为唯一入口，官方已有的指标原语直接复用 |
+| 损失函数与评测口径 | 已修正一处使训练与评测喂不同归一化分布的口径缺陷（−11.3%）；关节位置损失经 17 组同步数对照判定无效应，默认关闭 |
 | 正式 UE 运行时动画 | 资源生命周期、游戏工具函数、统一人形重定向、CMC / Mover、多人并发与联机接入均为后续工作 |
 
 现有 G1 权重与参考骨架绑定。自定义 UE 训练入口不支持直接加载 G1 权重微调，原 G1 演示也不能直接预览新的 UE 骨架检查点。
@@ -75,6 +79,25 @@ Windows 下默认打开中文单窗口界面，其他平台在不能嵌入 MuJoC
 
 仓库根目录的 `MotionBricks.exe` 是该参考演示的 Windows 启动器，固定读取根目录 `.venv` 中的环境；上面的 Conda 环境不会自动供 EXE 使用。它不包含 Python、模型和依赖，也不是 UE 插件启动器。
 
+## 最近的实测结论
+
+2026-10 的一轮实验给出两条结论，都记在 [技术报告 §9](paper/main.html) 与
+[关节误差文档](docs/soma-tokenizer-joint-error-options.md)：
+
+1. **评测口径曾经是错的。** 训练与评测喂给模型的是两种不同的归一化分布
+   （`--dataset` 落盘前已标准化，`--soma_views` 产出原始特征，而
+   `is_normalized` 被写死成一个默认值）。后果不是「训练变慢」，而是
+   训练目标与评测目标自始至终不是同一个量：30,000 步之后关节误差从 108 cm
+   断崖到 310 cm。把口径对齐后，同一评测口径下关节 RMSE 由 94.54 cm 降至
+   **83.85 cm（−11.3%）**，这是本项目至今最大的一次单点收益，且不来自任何损失项。
+2. **把验收指标写进损失的尝试失败了。** 在 17 组同步数对照下，关节位置损失的
+   效应为 **+0.10 cm**，小于同配置换种子造成的 0.56 cm 抖动（符号检验 p=0.75）。
+   原因是码本在 20,000 步后塌缩至 `perplexity = 1.000`，每批所有 token 量化到
+   同一码字，分词器退化为自编码器——码字里没有可供优化的信息。
+
+下一步的主线因此不是继续调损失，而是解决码本塌缩。验收判据写在
+[技术报告 §11](paper/main.html)：`perplexity_pose` 稳定 > 8，且关节 RMSE 不退化。
+
 ## 开发方向
 
 第一阶段由 CMC / Mover 负责移动模拟，模型根据实际运动状态与未来轨迹生成角色姿态，再适配目标骨架：
@@ -101,6 +124,8 @@ model-weight/       base/motionbricks/ · 自定义发布产物
 inference/          runtime/ · export/ · profiling/ · cli/ · demo/ · assets/
 unreal-script/      AILocomotionSystem/ · python/
 unreal-sample/      UE 推理/动画工具链实验宿主源码与资产交付边界（Content 暂缓）
+benchmark/          统一评测：recon 库、CLI 与四臂对比（唯一评测入口）
+paper/              技术报告（main.html → PDF）与软著材料
 tests/              单元、训练、导出与目录回归测试
 tools/compat/       历史命令与检查点导入兼容源码
 .build/             python/ 安装元数据 · experiments/ 本地实验输出
@@ -115,6 +140,11 @@ tools/compat/       历史命令与检查点导入兼容源码
 | [接入自有数据集](docs/motionbricks/adding_your_own_dataset.md) | MotionBricks 通用数据集接入；UE 资产优先使用上面的插件说明 |
 | [学习与项目历史](docs/project-background.md) | 源码阅读顺序、游戏动画裁剪范围与上游关系 |
 | [实验记录](docs/experiments/README.md) | 可提交的逐次数据、训练、评估与 UE 验证记录及证据索引 |
+| [技术报告](paper/main.html) | 完整技术报告源码；PDF 见 `paper/MotionWeaver-technical-report.pdf`（31 页） |
+| [软著材料](paper/软著/README.md) | 软件著作权登记材料：说明书、源程序文档、能力清单与一致性检查 |
+| [关节误差与方案 A 结论文档](docs/soma-tokenizer-joint-error-options.md) | 归一化口径缺陷的定位与修复、关节位置损失的 17 组对照、码本塌缩证据 |
+| [分词器评测](docs/soma-tokenizer-benchmark.md) | 统一 benchmark 的四臂结果与口径边界 |
+| [权重清单](docs/assets/plan-a-final/WEIGHTS_MANIFEST.md) | 长期保留的 25 个 run 的配置、步数、最优指标与位置 |
 | [launcher](launcher) | Windows 参考演示启动器源码 |
 
 ## 来源与许可
@@ -130,4 +160,6 @@ Licensed by NVIDIA Corporation under the NVIDIA Open Model License.
 
 ---
 
-本文件由 AIAnimationSystem 维护者基于上游 README 改写；2026-09-07 更新项目命名、使用入口、开发状态及来源声明。
+本文件由 AIAnimationSystem 维护者基于上游 README 改写；2026-09-07 更新项目命名、
+使用入口、开发状态及来源声明；2026-10-28 补充 SOMA 全库训练视图、统一评测、
+分词器现状与最近的实测结论。

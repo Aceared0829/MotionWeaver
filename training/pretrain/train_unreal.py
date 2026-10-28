@@ -127,6 +127,40 @@ def build_config(args, dataset):
             # 默认值由 YAML 决定（当前 false）；只在显式传参时覆盖，
             # 这样能做 A/B 对照而不必改动共享配置文件。
             conf.model.pose_vqvae_network.kmeans_init = bool(args.kmeans_init)
+        if getattr(args, "down_t", None) is not None:
+            # 下采样层数决定 frames_per_token = 2**down_t，进而决定一段窗口
+            # 切成多少个 token。必须同时满足 min_tokens <= 窗口/2**down_t <= max_tokens，
+            # 否则要么 token 过多超出主干上限、要么少到信息不足。
+            # YAML 默认 2，对 48 帧是 12 token、对 72 帧是 18 token（超过 max=16），
+            # 因此按场景选窗口时必须同时覆盖这个值。
+            conf.model.pose_vqvae_network.down_t = int(args.down_t)
+            # model.args 下还有一份 down_t，它参与 token 预算与关键帧调度计算。
+            # 两份不一致会让编码器按一个层数下采样、而调度按另一个算 token 数，
+            # 因此必须同步覆盖。
+            if "down_t" in conf.model.args:
+                conf.model.args.down_t = int(args.down_t)
+        if getattr(args, "nb_code_per_head", None) is not None:
+            # 码本容量：nb_code 与 num_heads 共同决定 nb_code_per_head
+            # （代码里 assert nb_code_per_head ** num_heads == nb_code）。
+            # 直接给 nb_code 容易算错，因此允许按「每 head 多少码字」指定，
+            # 由这里反算 nb_code，并把校验交给模型构造时的 assert。
+            heads = int(conf.model.pose_vqvae_network.num_heads)
+            per_head = int(args.nb_code_per_head)
+            conf.model.pose_vqvae_network.nb_code = per_head ** heads
+        if getattr(args, "usage_entropy_coeff", None) is not None:
+            # 码字使用熵正则系数：>0 时损失里加 -coeff * entropy，
+            # 推动码本被均匀使用，抑制「所有 token 用同一个码字」的塌缩。
+            conf.model.args.usage_entropy_coeff = float(args.usage_entropy_coeff)
+        if getattr(args, "joint_pos_loss_coeff", None) is not None:
+            # 关节位置损失系数（方案 A）：直接罚米制关节误差，
+            # 使训练目标与评测口径一致。
+            conf.model.args.joint_pos_loss_coeff = float(args.joint_pos_loss_coeff)
+        # batch["motion"] 的归一化状态由数据入口决定，不能靠默认值猜：
+        #   soma_views 的 collate 用 to_normalize=False -> 原始特征，未归一化
+        #   其余入口（build_unreal_training_set）落盘前已归一化
+        # 声明错了，change_first_heading 会跳过 normalize，训练与评测就喂不同的分布。
+        conf.model.args.inputs_are_normalized = not bool(
+            getattr(args, "soma_views", None))
         conf.fps = dataset.manifest["fps"]
         conf.id, conf.run_dir, conf.out_dir = "unreal", str(Path(args.output).resolve()), str(Path(args.output).resolve())
         conf.trainer.max_steps = args.max_steps
@@ -203,6 +237,7 @@ def train(args):
             window_frames=getattr(args, "soma_window_frames", 48),
             history_frames=getattr(args, "soma_history_frames", 0),
             fps_group=getattr(args, "soma_fps_group", None),
+            scenes=getattr(args, "soma_scenes", None),
         )
     else:
         dataset = (MotionWeaverUnrealDataset(args.dataset, args.actor_root_sidecar)
@@ -315,8 +350,21 @@ if __name__ == "__main__":
     parser.add_argument("--soma_history_frames", type=int, default=0, help="窗口前的历史帧数，通常为 0")
     parser.add_argument("--soma_fps_group", choices=("fps120", "fps30"),
                         help="只训该帧率组；120fps 与 30fps 不可混批")
+    parser.add_argument("--soma_scenes", nargs="+", choices=("A", "B", "C", "D"),
+                        help="只训指定场景；B/C 共用 72 帧窗口与 down_t=3，A/D 用 48 帧与 down_t=4")
     parser.add_argument("--num_workers", type=int, default=0,
                         help="DataLoader 并行读盘进程数；实测 8 约 6 倍加速（仅影响速度，不影响数值）")
     parser.add_argument("--kmeans_init", type=int, choices=(0, 1), default=None,
                         help="覆盖码本初始化：1=kmeans 初始化，0=随机初始化；不传则用 YAML 默认值")
+    parser.add_argument("--down_t", type=int, choices=(2, 3, 4), default=None,
+                        help="覆盖下采样层数；frames_per_token=2**down_t。48帧配2=12token，配3=6token；72帧配2=18token(超上限)，配3=9token")
+    parser.add_argument("--nb_code_per_head", type=int, default=None,
+                        help="按每 head 的码字数指定码本容量；内部反算 nb_code=per_head**num_heads。"
+                             "10=当前默认(10^8)，32=32^8≈1.1e12")
+    parser.add_argument("--usage_entropy_coeff", type=float, default=None,
+                        help="码字使用熵正则系数；>0 时加 -coeff*entropy 到损失，推动码字均匀使用。"
+                             "0=关闭（官方原行为）。建议从 0.1 起试")
+    parser.add_argument("--joint_pos_loss_coeff", type=float, default=None,
+                        help="关节位置损失系数（方案 A）；>0 时对还原后的米制关节位置算"
+                             "SmoothL1，与验收指标同口径。0=关闭。建议从 0.1 起试")
     train(parser.parse_args())

@@ -125,7 +125,14 @@ class VQVAE(nn.Module):
         x_encoder = self.encoder(x_in)
 
         # quantization
-        x_quantized, loss, perplexity = self.quantizer(x_encoder)
+        # mh_indices 是量化索引；软熵已在 quantizer 内部用同一个 x 算好，
+        # 这里不参与损失，因此用下划线前缀表明有意不使用。
+        x_quantized, loss, perplexity, _mh_indices, soft_entropy = self.quantizer(x_encoder)
+
+        # 码字使用熵（**可导**）：作为正则在模型层加入损失，避免码本塌缩。
+        # 详细动机见 QuantizeEMAResetMultiHead.soft_usage_entropy 的文档字符串。
+        # 与硬索引熵不同，这里梯度能传回编码器，因此 -coeff*entropy 真正有效。
+        usage_entropy = soft_entropy
 
         # decoder
         if target_cond is not None:
@@ -136,7 +143,8 @@ class VQVAE(nn.Module):
         x_decoder = self.decoder(x_quantized, external_cond, target_cond, has_target_cond)
 
         x_out = x_decoder.permute(0, 2, 1)
-        return {'recon_state': x_out, 'l_commit': loss, 'perplexity': perplexity}
+        return {'recon_state': x_out, 'l_commit': loss,
+                'perplexity': perplexity, 'usage_entropy': usage_entropy}
 
     def encode_into_idx(self, x, fetch_overall_indices: bool = True):
         """ @brief: encoder part of the @forward function

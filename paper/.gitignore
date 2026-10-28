@@ -9,3 +9,7 @@ analysis/out/
 
 # 生成的 PDF 默认提交（技术报告需要可直接分发）；若不想入库，取消下一行注释
 # MotionWeaver-technical-report.pdf
+
+# 软著预览产物：由 paper/软著/03-源代码文档/extract_source.py 与说明书 HTML 可随时重生成，
+# 不入库以免仓库膨胀；提交的是源（md/html/py），不是 PDF。
+软著/05-产出/_preview_*.pdf
