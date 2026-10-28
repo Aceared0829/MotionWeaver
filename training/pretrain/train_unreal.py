@@ -126,7 +126,17 @@ def build_config(args, dataset):
             # 码本初始化方式：0 用随机初始化，1 用首批数据做 kmeans 初始化。
             # 默认值由 YAML 决定（当前 false）；只在显式传参时覆盖，
             # 这样能做 A/B 对照而不必改动共享配置文件。
+            #
+            # 为什么它直接决定码本死活：随机初始化的码字范数约 0.25，
+            # 而编码器输出范数约 35（差 141 倍），argmin 基本由浮点噪声决定；
+            # kmeans 初始化让码字与数据同尺度，距离的相对极差从 0.001 升到 0.55。
+            # 详见 docs/soma-tokenizer-codebook-collapse-diagnosis.md。
             conf.model.pose_vqvae_network.kmeans_init = bool(args.kmeans_init)
+        if getattr(args, "threshold_ema_dead_code", None) is not None:
+            # 死码重置阈值：>0 时未被命中的码字会被随机样本重新初始化。
+            # 关闭它（=0）会移除码本唯一的自愈机制，与随机初始化叠加成死锁。
+            conf.model.pose_vqvae_network.threshold_ema_dead_code = int(
+                args.threshold_ema_dead_code)
         if getattr(args, "down_t", None) is not None:
             # 下采样层数决定 frames_per_token = 2**down_t，进而决定一段窗口
             # 切成多少个 token。必须同时满足 min_tokens <= 窗口/2**down_t <= max_tokens，
@@ -356,6 +366,10 @@ if __name__ == "__main__":
                         help="DataLoader 并行读盘进程数；实测 8 约 6 倍加速（仅影响速度，不影响数值）")
     parser.add_argument("--kmeans_init", type=int, choices=(0, 1), default=None,
                         help="覆盖码本初始化：1=kmeans 初始化，0=随机初始化；不传则用 YAML 默认值")
+    parser.add_argument("--threshold_ema_dead_code", type=int, default=None,
+                        help="死码重置阈值；>0 时未被命中的码字会被随机样本重新初始化。"
+                             "0=关闭（历史硬编码值，会与随机初始化叠加成码本死锁）。"
+                             "建议与 --kmeans_init 1 配合使用；官方默认值为 2")
     parser.add_argument("--down_t", type=int, choices=(2, 3, 4), default=None,
                         help="覆盖下采样层数；frames_per_token=2**down_t。48帧配2=12token，配3=6token；72帧配2=18token(超上限)，配3=9token")
     parser.add_argument("--nb_code_per_head", type=int, default=None,

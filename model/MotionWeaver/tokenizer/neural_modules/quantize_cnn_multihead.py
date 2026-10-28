@@ -24,19 +24,25 @@ class QuantizeEMAResetMultiHead(nn.Module):
             separate_codebook_per_head=True,  # whether to have a separate codebook per head.
             codebook_size=self.nb_code_per_head,
             accept_image_fmap=False,
-            # 0 = 关闭死码重置（官方默认值）。
-            # 原为 1，配合 decay=0.99 会形成死循环：码字被选用一次后，
-            # 计数器在 EMA 衰减下迅速回落到 1 以下而触发重置，新中心又因
-            # decay 接近 1 几乎不动，于是码字始终挤在中心附近、留不住。
-            # 实测后果：编码器输出方差 2.285、量化后只剩 0.029（1.3%），
-            # perplexity 5.64/10，commit 损失 0.0050，关节 RMSE 达 105 cm。
-            # 详见 docs/soma-tokenizer-codebook-collapse.md。
+            # 死码重置阈值。可配置：args.threshold_ema_dead_code，默认 0（关闭）。
             #
-            # 注意：上面这组数字是**修复前**的测量值，只用来定位死码重置的副作用，
-            # 不代表当前水平。归一化口径对齐后的全库训练是 84-86 cm
-            # （docs/soma-tokenizer-joint-error-options.md 第零节）。
-            # 而 perplexity 仍在 20k 步后塌缩到 1.000，是当前的主要瓶颈。
-            threshold_ema_dead_code=0,
+            # 历史：原硬编码为 0，理由是「配合 decay=0.99 会形成死循环」。
+            # 但 2026-10 的根因诊断推翻了这个权衡——关闭死码重置移除了码本
+            # 唯一的自愈机制，与另一个缺陷叠加成死锁：
+            #
+            #   kmeans_init=False 时码字范数约 0.25，而编码器输出范数约 35，
+            #   差 141 倍；argmin 基本由浮点噪声决定，命中随机。
+            #   update_ema() 的 Laplace 平滑会给「从未命中」的码字一个
+            #   非零分母（eps=1e-5）配零分子，于是 embed 每步被抹成精确的
+            #   零向量；而零向量离原点最近，反而成为所有输入的最近邻——
+            #   正反馈死锁。实测 fix_base_100k 的 256 个码字里 248 个范数为
+            #   精确 0，每 head 只用 1 个，perplexity 锁死 1.000。
+            #
+            # 详见 docs/soma-tokenizer-codebook-collapse-diagnosis.md。
+            # 修复组合：kmeans_init=True（让码字与数据同尺度）+ 本项 >= 1
+            # （让漏掉的码字被随机样本重新初始化，切断正反馈）。
+            threshold_ema_dead_code=int(
+                getattr(args, "threshold_ema_dead_code", 0) or 0),
             decay=self.mu,
             kmeans_init=bool(args.kmeans_init)
         )  # commitment loss coeff = 1.0 since we do that weighting outside  #
