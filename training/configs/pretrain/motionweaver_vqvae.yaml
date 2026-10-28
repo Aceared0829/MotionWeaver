@@ -72,6 +72,11 @@ model:
     # 这些在 941 维归一化平均里被摊平，靠加步数压不下去。
     # 建议从 0.1 起；数值参考：关节项 SmoothL1 实测均值约 0.49。
     joint_pos_loss_coeff: 0.0
+    # batch["motion"] 是否已归一化。两条数据入口相反，必须显式声明：
+    #   --dataset   (UnrealMotionDataset)    落盘前已 (x-mean)/std -> true
+    #   --soma_views(SomaRealtimeDataset)    collate 用 to_normalize=False -> false
+    # 训练入口会按实际数据来源自动改写；这里只是默认值（对应 --dataset）。
+    inputs_are_normalized: true
   optimizer:
     _target_: adam_atan2_pytorch.AdamAtan2
     _partial_: true

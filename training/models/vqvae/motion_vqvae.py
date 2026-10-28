@@ -121,6 +121,25 @@ class MotionVQVAEModel(LightningModule):
         actual_batch_size = int(batch_size * self.args["batchsize_mul_factor"])
 
         # prepare global & local motion representations
+        #
+        # batch["motion"] 是否已归一化，取决于数据入口，两条路径相反：
+        #
+        #   --dataset（UnrealMotionDataset + collate_batch）
+        #       build_unreal_training_set.py:204 落盘前已做 (x-mean)/std，
+        #       collate 只做 padding，所以**已是** z-score 空间。
+        #   --soma_views（SomaRealtimeDataset + SomaRealtimeCollate）
+        #       soma_realtime_dataset.py:389 用 to_normalize=False 产出**原始**
+        #       特征，所以**不是** z-score 空间。
+        #
+        # 之前这里写死 True，等于对 --soma_views 声称「已归一化」，
+        # change_first_heading 便跳过 normalize，把原始值当 z-score 用；
+        # 而评测（evaluate_recon.run_one）走 is_normalized=False，是正确的一次归一化。
+        # 两条路径喂给 pose_net 的 body 因此不是同一分布：
+        #   实测 16 条 72 帧 local body std：训练 0.9669 / 评测 0.5845；
+        #   修复后训练 0.6324，与评测 max|d| = 5.7e-5。
+        # 后果是训练目标与评测目标不是同一个量：20k 前模型只输出近似常量，
+        # 两条路径「一致地差」；真正开始拟合后就错位，joint 108 cm -> 310 cm。
+        inputs_are_normalized = bool(self._args.get("inputs_are_normalized", False))
         first_frame_heading_angle = (
             t.rand(actual_batch_size).to(device) * np.pi * 2.0
             if not self.motion_rep.compute_kwargs["removing_heading"]
@@ -129,7 +148,7 @@ class MotionVQVAEModel(LightningModule):
         global_motions = self.global_motion_rep.change_first_heading(
             motions,
             first_frame_heading_angle,
-            is_normalized=True,
+            is_normalized=inputs_are_normalized,
             to_normalize=True,
         )
         local_motions = self.dual_rep.global_to_local(

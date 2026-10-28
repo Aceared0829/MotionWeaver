@@ -155,6 +155,12 @@ def build_config(args, dataset):
             # 关节位置损失系数（方案 A）：直接罚米制关节误差，
             # 使训练目标与评测口径一致。
             conf.model.args.joint_pos_loss_coeff = float(args.joint_pos_loss_coeff)
+        # batch["motion"] 的归一化状态由数据入口决定，不能靠默认值猜：
+        #   soma_views 的 collate 用 to_normalize=False -> 原始特征，未归一化
+        #   其余入口（build_unreal_training_set）落盘前已归一化
+        # 声明错了，change_first_heading 会跳过 normalize，训练与评测就喂不同的分布。
+        conf.model.args.inputs_are_normalized = not bool(
+            getattr(args, "soma_views", None))
         conf.fps = dataset.manifest["fps"]
         conf.id, conf.run_dir, conf.out_dir = "unreal", str(Path(args.output).resolve()), str(Path(args.output).resolve())
         conf.trainer.max_steps = args.max_steps
