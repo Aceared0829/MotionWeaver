@@ -93,9 +93,12 @@ class MotionWindows(Dataset):
         return len(self.rows)
 
     def _ensure_loaded(self, index):
-        """按需加载一条 clip；LRU 淘汰最久未用的。tiny_root 存在时优先读精简窗口。"""
+        """按需加载一条 clip；LRU 淘汰最久未用的。mmap_root 存在时优先读内存映射。"""
         if index in self.raw:
-            self.raw.move_to_end(index)
+            # 只有 OrderedDict 支持 move_to_end；测试会用 object.__new__ 绕过 __init__
+            # 直接塞普通 dict，这里不能假定容器类型。
+            if hasattr(self.raw, "move_to_end"):
+                self.raw.move_to_end(index)
             return
         clip = self.contract["clips"][index]
 
