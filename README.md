@@ -4,6 +4,10 @@ MotionWeaver（原 AIAnimationSystem）是面向 Unreal Engine 的 AI 角色动�
 
 本项目基于 NVIDIA [GR00T-WholeBodyControl](https://github.com/NVlabs/GR00T-WholeBodyControl) 仓库中的 [MotionBricks](https://nvlabs.github.io/motionbricks/) 开发，由本仓库独立维护。MotionBricks 的模型架构、动作表示、原有训练与推理代码、预训练权重和上游演示属于原项目成果；本项目在其基础上面向游戏动画做裁剪、中文交互界面与 Windows 启动器适配，并添加实验性的 UE 动画导出和自定义骨架训练入口。
 
+> **当前主线：** 参考引导姿态补全（reference-guided pose in-betweening）已跑通全库训练与权威评测，
+> 权重封盘于 `D:\MotionWeaverData\model_weight\refpose_v3_71k\`，详见 [训练与评测记录](docs/refpose-v3-training-evaluation.md)。
+> 早期离散 Token 路线因码本塌缩已停止推进。
+>
 > **实验阶段：** 已有 UE 数据、训练与 FP32 导出工具；`AIAnimation` Inference Lab 已在独立 GASP 对照场景中验证 AnimGraph 节点、动画工作线程 DirectML 推理和连续播放修复。它不是正式游戏运行时，也未完成完整玩法、打包、多角色并发、网络或 CMC / Mover 接入。本项目不代表 NVIDIA 官方产品，也不表示获得 NVIDIA 的认可或背书。
 
 当前先完成 Locomotion、跳跃和蹲伏的数据与动画流程；项目名称覆盖更广泛的角色动画方向，后续动作范围以开发方案与实际验证为准。
@@ -22,10 +26,43 @@ MotionWeaver（原 AIAnimationSystem）是面向 Unreal Engine 的 AI 角色动�
 | UE 实验推理 | `AIAnimation` 在 GASP 独立对照场景中完成 ONNX 导入、AnimGraph 重建节点、动画工作线程 DirectML 推理、延迟融合播放和性能报告；详见实验说明 |
 | 跑酷参考姿态实验 | 可在本地 HTML 手选关键帧，对比软条件重建与融合后硬约束；已验证单条低障碍动画的参考帧精确到位，仍有邻域连续性和姿态偏差限制 |
 | SOMA 全库训练视图 | 已建成 71,127 条 fps120 四场景（A 27,182 / B 14,235 / C 2,621 / D 27,089），训练端可直接读取四键 NPZ |
-| 分词器（VQ-VAE） | 已在全库上训练至 100,000 步，关节 RMSE 稳定在 84–86 cm；但码本在 20k 步后塌缩至 perplexity 1.000，是当前主要瓶颈 |
+| 分词器（VQ-VAE） | 已在全库上训练至 100,000 步，关节 RMSE 稳定在 84–86 cm；但码本在 20k 步后塌缩至 perplexity 1.000。**该路线已证否，不再是主线** |
+| **参考引导姿态补全（主线）** | 全库 71,127 条 / 1,988,285 窗口训满 20 epoch，验证 **3.654 cm**；四档位置精度优于 Lerp 基线 **1.69–3.15 倍**；权重已封盘（详见 [训练与评测记录](docs/refpose-v3-training-evaluation.md)） |
+| 接触（脚滑）约束 | 已接入训练；脚滑倍数由 17–22 降至 **6.9–8.7**（只统计纯生成帧对时 **6.6–7.3**），未达 &lt;5× 目标，余量交由 UE 端 Foot Locking / Two-Bone IK 补齐 |
+| 训练数据格式 | 已改为可 mmap 的逐字段 npy；随机窗口读 3.75→1.33 ms，吞吐 322→1,829 样本/秒，逐元素与原数据一致 |
 | 统一评测 | `benchmark/` 收敛原先散在三处的评测代码，以 `evaluate_all()` 为唯一入口，官方已有的指标原语直接复用 |
 | 损失函数与评测口径 | 已修正一处使训练与评测喂不同归一化分布的口径缺陷（−11.3%）；关节位置损失经 17 组同步数对照判定无效应，默认关闭 |
 | 正式 UE 运行时动画 | 资源生命周期、游戏工具函数、统一人形重定向、CMC / Mover、多人并发与联机接入均为后续工作 |
+
+## 主线结果：参考引导姿态补全
+
+任务：给定过去 24 帧历史、未来 24 帧 Root 轨迹与 0–2 帧硬参考，生成其余帧的全身关节姿态。
+这是**补间生成**（in-betweening），不是重建——锚点以外的 22–24 帧全部由模型生成。
+
+| 档位 | GT 帧 | 生成帧 | 模型 | Lerp 基线 | 优于基线 | 脚滑（全帧） | 脚滑（纯生成） |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `no_reference` | 0 | 24 | **5.28 cm** | 16.64 | **3.15×** | 6.9× | **6.9×** |
+| `middle_reference` | 1 | 23 | **3.22 cm** | 7.24 | **2.25×** | 8.6× | **7.3×** |
+| `end_reference` | 1 | 23 | **3.22 cm** | 7.46 | **2.32×** | 8.6× | **7.3×** |
+| `middle_and_end` | 2 | 22 | **2.17 cm** | 3.66 | **1.69×** | 8.7× | **6.6×** |
+
+- 指标：test split 257,171 窗口，每 clip 等权，只算非锚点帧的关节位置 RMSE
+- 脚滑倍数 = 接触期脚速 ÷ 源动作接触期脚速（源基准 0.0261 m/s）；「纯生成」只保留相邻两帧都为生成帧的接触帧对
+- 模型 3.09 M 参数，78 骨，隐层 256；训练全库 71,127 条 / 1,988,285 窗口，20 epoch，8.7 小时（单卡 RTX 4070 Laptop）
+
+**已知限制**：脚滑未达 &lt;5× 目标；Root 轨迹取自源动作，是理想控制输入；所有指标为离线关节误差，**未做 UE 内实机验证**。
+
+完整记录见 [docs/refpose-v3-training-evaluation.md](docs/refpose-v3-training-evaluation.md)。
+
+## 文档
+
+| 类别 | 位置 |
+|---|---|
+| 训练与评测记录 | [docs/refpose-v3-training-evaluation.md](docs/refpose-v3-training-evaluation.md) |
+| 技术报告（论文） | [paper/main.html](paper/main.html)（HTML 工作稿，可导出 PDF） |
+| 软件著作权材料 | [paper/软著/](paper/软著/)（能力清单、说明书、源程序、申请表） |
+| 评测协议基线 | [docs/soma-inbetweening-baseline-full-v1.md](docs/soma-inbetweening-baseline-full-v1.md) |
+| 架构与目录 | [docs/motionweaver-architecture.md](docs/motionweaver-architecture.md)、[docs/repository-layout.md](docs/repository-layout.md) |
 
 现有 G1 权重与参考骨架绑定。自定义 UE 训练入口不支持直接加载 G1 权重微调，原 G1 演示也不能直接预览新的 UE 骨架检查点。
 

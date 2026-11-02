@@ -165,6 +165,43 @@ def build_config(args, dataset):
             # 关节位置损失系数（方案 A）：直接罚米制关节误差，
             # 使训练目标与评测口径一致。
             conf.model.args.joint_pos_loss_coeff = float(args.joint_pos_loss_coeff)
+        if getattr(args, "use_cosine_sim", False):
+            # 球面量化：按余弦距离做最近邻，而不是欧氏距离。
+            # 依据：编码器输出的 token 两两余弦相似度均值 0.766、最大 0.999999，
+            # 全都挤在同一个方向锥里（见 docs/soma-tokenizer-codebook-collapse-diagnosis.md）。
+            conf.model.pose_vqvae_network.use_cosine_sim = True
+        if getattr(args, "encoder_out_norm", False):
+            # 编码器输出侧 LayerNorm：唯一的「改模型结构」实验。
+            # 量化器里的同名选项在本项目维度下是 no-op（project_in 恒为 Identity），
+            # 因此真实生效位置必须是 encoder 输出之后。
+            conf.model.pose_vqvae_network.encoder_out_norm = True
+        if getattr(args, "layernorm_after_project_in", False):
+            # 量化器投影后接 LayerNorm，对抗「输出尺度与方向由少数主成分主导」。
+            conf.model.pose_vqvae_network.layernorm_after_project_in = True
+        if getattr(args, "min_tokens", None) is not None or getattr(args, "max_tokens", None) is not None:
+            # token 预算必须与「窗口帧数 / frames_per_token」一致，否则
+            # training_step 会随机取到比窗口还长的 num_frames，
+            # 进而因 motion_lengths >= num_frames + 1 不成立而 return None。
+            #
+            # 实测（窗口 72 帧、down_t=3 -> frames_per_token=8）：
+            #   min_tokens=6, max_tokens=16 (YAML 默认)
+            #     num_frames 取值 48..128，只有 48/56/64 合法
+            #     -> 真实训练入口 120 步里 80 步 return None = 66.7%
+            #   max_tokens=8 -> num_frames 48..64，全部合法 -> 0% 跳过
+            # 详见 docs/soma-training-throughput-diagnosis.md。
+            dt = int(conf.model.args.down_t)
+            frames_per_token = 2 ** dt
+            window = int(getattr(args, "soma_window_frames", 48))
+            max_legal = (window - 1) // frames_per_token
+            if getattr(args, "min_tokens", None) is not None:
+                conf.model.args.min_tokens = int(args.min_tokens)
+            if getattr(args, "max_tokens", None) is not None:
+                conf.model.args.max_tokens = int(args.max_tokens)
+            if int(conf.model.args.max_tokens) > max_legal:
+                raise ValueError(
+                    f"max_tokens={int(conf.model.args.max_tokens)} 超过窗口允许上限 "
+                    f"{max_legal}（窗口 {window} 帧 / 每 token {frames_per_token} 帧）："
+                    f"超出的步会被 training_step 静默跳过")
         # batch["motion"] 的归一化状态由数据入口决定，不能靠默认值猜：
         #   soma_views 的 collate 用 to_normalize=False -> 原始特征，未归一化
         #   其余入口（build_unreal_training_set）落盘前已归一化
@@ -364,6 +401,14 @@ if __name__ == "__main__":
                         help="只训指定场景；B/C 共用 72 帧窗口与 down_t=3，A/D 用 48 帧与 down_t=4")
     parser.add_argument("--num_workers", type=int, default=0,
                         help="DataLoader 并行读盘进程数；实测 8 约 6 倍加速（仅影响速度，不影响数值）")
+    parser.add_argument("--encoder_out_norm", action="store_true",
+                        help="在编码器输出之后插入 LayerNorm（改模型结构）。"
+                             "针对 latent 有效秩仅 2-3 维的问题；默认关闭时 state_dict 不变")
+    parser.add_argument("--use_cosine_sim", action="store_true",
+                        help="量化器改用余弦相似度做最近邻（球面量化）。"
+                             "用于对抗编码器输出高度共线（实测 token 间余弦均值 0.766）导致的码本塌缩")
+    parser.add_argument("--layernorm_after_project_in", action="store_true",
+                        help="量化器投影后接 LayerNorm，对抗输出尺度/方向被少数主成分主导")
     parser.add_argument("--kmeans_init", type=int, choices=(0, 1), default=None,
                         help="覆盖码本初始化：1=kmeans 初始化，0=随机初始化；不传则用 YAML 默认值")
     parser.add_argument("--threshold_ema_dead_code", type=int, default=None,
@@ -381,4 +426,10 @@ if __name__ == "__main__":
     parser.add_argument("--joint_pos_loss_coeff", type=float, default=None,
                         help="关节位置损失系数（方案 A）；>0 时对还原后的米制关节位置算"
                              "SmoothL1，与验收指标同口径。0=关闭。建议从 0.1 起试")
+    parser.add_argument("--min_tokens", type=int, default=None,
+                        help="每段最少 token 数；不传则用 YAML 默认（6）")
+    parser.add_argument("--max_tokens", type=int, default=None,
+                        help="每段最多 token 数；必须满足 max_tokens <= (窗口帧数-1)/2**down_t，"
+                             "否则 training_step 会随机取到超长 num_frames 并静默跳过整步。"
+                             "72 帧窗口配 down_t=3 时上限为 8（YAML 默认 16 会跳过约 67% 的步）")
     train(parser.parse_args())

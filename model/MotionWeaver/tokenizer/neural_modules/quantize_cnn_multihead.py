@@ -44,7 +44,22 @@ class QuantizeEMAResetMultiHead(nn.Module):
             threshold_ema_dead_code=int(
                 getattr(args, "threshold_ema_dead_code", 0) or 0),
             decay=self.mu,
-            kmeans_init=bool(args.kmeans_init)
+            kmeans_init=bool(args.kmeans_init),
+            # 球面量化：让最近邻在余弦距离上比较，而不是欧氏距离。
+            #
+            # 动机（诊断实测）：编码器输出的 token 两两余弦相似度均值 0.766、
+            # 最大 0.999999，全都挤在同一个方向锥里；latent 参与率有效秩只有
+            # 2.18–3.15（满值 256）。欧氏最近邻在这种高度共线的数据上，
+            # argmin 由幅值主导而非方向，码字容易退化成单点。
+            # 改成余弦匹配后，比较只看方向，理论上能缓解共线导致的塌缩。
+            #
+            # 默认 False（保持官方原行为），显式开启才生效。
+            use_cosine_sim=bool(getattr(args, "use_cosine_sim", False)),
+            # 投影后接 LayerNorm：诊断文档的另一条待验证假设
+            # （「编码器最后一层缺少归一化，输出尺度与方向都由少数主成分主导」）。
+            # 默认 False（官方原行为）。
+            layernorm_after_project_in=bool(
+                getattr(args, "layernorm_after_project_in", False))
         )  # commitment loss coeff = 1.0 since we do that weighting outside  #
         self.init = True
         self._calculate_per_head_perplexity = getattr(args, "calculate_per_head_perplexity", False)
