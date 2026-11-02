@@ -27,12 +27,17 @@ CONT_INDENT = "        "
 
 # (相对路径, 起始行, 结束行, 说明书章节, 分组)
 SELECTION = [
+    # —— 第一部分：数据与模型定义 ——
     ("model/MotionWeaver/geometry/quaternions.py", 1, 41, "5.2 动作数据表示", "一"),
     ("model/MotionWeaver/representation/core/utils/rotations.py", 1, 389, "5.2 动作数据表示", "一"),
     ("data/runtime/unreal_dataset.py", 1, 385, "6.2 训练数据预处理", "一"),
+    # 参考引导补全是当前主线（5.7）；离散码本路线（5.3）作为并列方案保留一节
+    ("training/pretrain/train_conditioned_pose.py", 232, 414,
+     "5.7 参考引导姿态补全", "一"),
     ("model/MotionWeaver/tokenizer/neural_modules/vqvae.py", 1, 196, "5.3 离散姿态表示学习", "一"),
-    ("model/MotionWeaver/tokenizer/neural_modules/quantize_cnn_multihead.py", 1, 230, "5.3 离散姿态表示学习", "一"),
-    ("model/MotionWeaver/backbone/neural_modules/pose_backbone.py", 1, 248, "5.4 条件生成模型", "一"),
+    ("model/MotionWeaver/backbone/neural_modules/pose_backbone.py", 1, 120, "5.4 条件生成模型", "一"),
+    # —— 第二部分：训练与推理入口 ——
+    ("tools/train_reference_pose.py", 1, 174, "6.9 参考引导姿态补全训练", "二"),
     ("training/models/vqvae/motion_vqvae.py", 1, 320, "6.4 模型训练", "二"),
     ("training/pretrain/train_unreal.py", 1, 370, "6.4 模型训练", "二"),
     ("inference/runtime/motionweaver.py", 1, 346, "6.6 姿态生成推理", "二"),

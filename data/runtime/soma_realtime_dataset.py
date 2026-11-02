@@ -245,36 +245,33 @@ class SomaRealtimeDataset(Dataset):
     def __getitem__(self, index):
         clip = self.clips[index]
         with np.load(self.folder / clip["file"], allow_pickle=False) as archive:
-            positions = np.asarray(archive["positions"], dtype=np.float32)
+            total = archive["positions"].shape[0]
+            # 先定窗口再读数组：整条 clip 平均 2575 帧，而训练窗口只有 48/72 帧，
+            # 97% 的帧读完就会被丢弃。四元数转矩阵是热路径里最贵的一步
+            # （2575 帧 17.5 ms vs 72 帧 0.1 ms，175 倍），因此必须在切片之后做，
+            # 否则每取一条样本都要为用不到的数据付这份钱。
+            span = self.window_frames + self.history_frames
+            if total > span:
+                if self.deterministic_window:
+                    start = (index * 37) % (total - span + 1)
+                else:
+                    start = int(np.random.randint(0, total - span + 1))
+            else:
+                start = 0
+            stop = start + span
+            positions = np.asarray(archive["positions"][start:stop], dtype=np.float32)
             # 兼容两种旋转表示：
             #   quat_xyzw —— 压缩视图（float32 四元数，读盘快 5 倍）
             #   rotations —— 原始视图（float64 的 3×3 矩阵）
             if "quat_xyzw" in archive.files:
                 rotations = quat_to_matrix(
-                    np.asarray(archive["quat_xyzw"], dtype=np.float32)
+                    np.asarray(archive["quat_xyzw"][start:stop], dtype=np.float32)
                 ).astype(np.float32)
             else:
-                rotations = np.asarray(archive["rotations"], dtype=np.float32)
-            root_track = np.asarray(archive["root_track"], dtype=np.float32)
+                rotations = np.asarray(archive["rotations"][start:stop], dtype=np.float32)
+            root_track = np.asarray(archive["root_track"][start:stop], dtype=np.float32)
 
         fps = float(clip["fps"])
-        total = len(positions)
-        # 训练窗口从随机位置切，让同一段动画在不同 epoch 覆盖不同片段。
-        # deterministic_window=True 时用确定性起点（按样本下标算），
-        # 供对照实验与复现使用。
-        span = self.window_frames + self.history_frames
-        if total > span:
-            if self.deterministic_window:
-                start = (index * 37) % (total - span + 1)
-            else:
-                start = int(np.random.randint(0, total - span + 1))
-        else:
-            start = 0
-        stop = start + span
-        positions = positions[start:stop]
-        rotations = rotations[start:stop]
-        root_track = root_track[start:stop]
-
         contacts = world_foot_contacts(positions, root_track, self.skeleton, fps)
         return {
             "positions": torch.from_numpy(positions),

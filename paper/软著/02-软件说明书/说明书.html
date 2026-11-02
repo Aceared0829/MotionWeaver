@@ -247,7 +247,7 @@
       <li>软件编写目标</li>
       <li>适用领域</li>
       <li>运行环境<ul class="sub"><li>硬件环境</li><li>软件环境</li><li>目录与数据准备</li></ul></li>
-      <li>系统设计思路<ul class="sub"><li>总体数据流</li><li>动作数据表示</li><li>离散姿态表示学习</li><li>条件生成模型</li><li>骨架适配与导出</li><li>训练质量与评估口径</li></ul></li>
+      <li>系统设计思路<ul class="sub"><li>总体数据流</li><li>动作数据表示</li><li>离散姿态表示学习</li><li>条件生成模型</li><li>骨架适配与导出</li><li>训练质量与评估口径</li><li>参考引导姿态补全（当前主线）</li><li>训练数据的内存映射格式</li><li>接触（脚滑）约束</li></ul></li>
       <li>软件功能说明<ul class="sub">
         <li>动画数据采集与导出</li>
         <li>训练数据预处理</li>
@@ -257,6 +257,8 @@
         <li>姿态生成推理</li>
         <li>可视化交互界面</li>
         <li>实验对照与评测</li>
+        <li>参考引导姿态补全训练</li>
+        <li>实测效果</li>
       </ul></li>
       <li>总结</li>
       <li>附：来源与第三方组件说明</li>
@@ -483,6 +485,55 @@ uv pip install --python .venv/Scripts/python.exe --no-deps -e .
 <p><b>采样策略。</b>按真实长度分桶，短桶只补齐到批内最短长度的有限倍数；对困难类别在原有权重上加权。该策略只改变取样顺序与补齐长度，不改变网络参数、原生帧率、数据划分与训练步数。</p>
 <p><b>评估口径。</b>评估恢复源的初始朝向与平移，与服务端在<b>同一采样时刻</b>对照，分别报告世界位置、骨盆对齐姿态、根水平与高度误差。所有对照必须同配置、同步数、同数据划分，禁止把局部样本的指标当作整体结论。接触类指标必须同时给出参与统计的接触帧对数量，帧对不足时不报告该指标。</p>
 <div class="note">对应代码位置：training/common/unreal_quality.py、training/evaluation/evaluate_native_quality.py、inference/visualization/README.md</div>
+<h2>5.7　参考引导姿态补全（当前主线）</h2>
+<p><b>为什么新增这条路线。</b>5.3 的离散码本路线在实际训练中出现了码本塌缩：训练到约两万步后，
+每批所有姿态 token 都量化到同一个码字，量化器的困惑度（perplexity）降为 1.000，
+分词器退化为自编码器，码字里不再含有可供生成模型学习的信息。此时继续在离散轨道上调整损失项，
+验收指标不再变化。为把数据与评测口径上的既有成果保住，软件在同一套数据契约与评测协议下
+增加了参考引导的直接关节回归路线：不经过码本，直接回归每根骨骼的位置与 6 维旋转。</p>
+
+<p><b>任务定义。</b>给定过去 24 帧历史姿态、未来 24 帧的身体运动轨迹，以及若干帧「硬参考」姿态，
+预测其余帧的全身关节姿态。四个参考强度档位对应使用者在实际使用中给出参考的疏密程度：
+无参考、仅中点、仅末帧、中点加末帧。锚点帧直接采用使用者给出的参考，模型只负责补全非锚点帧，
+因此考核指标只在非锚点帧上统计。</p>
+
+<p><b>网络结构。</b>历史帧经门控循环单元编码为状态向量；未来轨迹与参考帧掩码经线性层投影为条件向量；
+两者相加后送入三层 Transformer 编码器（4 个注意力头、前馈维数 768、前置归一化），
+最后经层归一化与线性层输出 24 帧 × 78 骨 × 9 维（3 维平移 + 6 维旋转）的关节量。
+模型参数量 3.09 M。</p>
+
+<div class="note">对应代码位置：tools/train_reference_pose.py；网络定义与损失 training/pretrain/train_conditioned_pose.py（ReferenceGuidedPose、losses）</div>
+
+<h2>5.8　训练数据的内存映射格式</h2>
+<p><b>问题。</b>原始数据以「整条动作片段一个压缩包」的形式存放。一条片段平均 868 帧，
+而一次训练只取其中 48 帧的窗口，读写与解压开销中有约 94.5% 落在永远用不到的帧上。
+在全库规模下，这会把磁盘读到饱和，GPU 反而长期空闲。</p>
+
+<p><b>做法。</b>保持数据内容不变，只改变存放结构：把每个片段拆成三个按字段分离的二进制数组文件
+（关节位置、6 维旋转、根轨迹），使其可以被操作系统的内存映射机制按页加载。
+训练时只把窗口覆盖的那一页读入，不再解压整包。拆分后的数据经逐元素比对，
+与原数据完全一致（随机抽检 50 个窗口，最大差值 0.00e+00）。</p>
+
+<p><b>效果。</b>随机窗口读取由 3.75 ms 降至 1.33 ms；同一配置下的训练吞吐由每秒 322 个样本
+提升到每秒 1,829 个样本，约为原来的 5.7 倍。因为不再需要把全部片段常驻内存，
+该格式使数据规模与内存占用解耦，全库 71,127 条（176.7 GB）可以在一台笔记本上直接训练。</p>
+
+<div class="note">对应代码位置：training/pretrain/train_conditioned_pose.py（mmap_root 分支）；数据构建脚本见 tools/</div>
+
+<h2>5.9　接触（脚滑）约束</h2>
+<p><b>问题。</b>只以关节位置与旋转为目标的模型，可以在数值上很接近真实姿态，
+却让脚在已经着地的帧上继续滑动。这类滑动在画面上比关节误差更刺眼，
+是检索式与插值基线最明显的缺陷。</p>
+
+<p><b>做法。</b>在原有损失之外增加一项接触约束：按数据契约里的接触标签取出「相邻两帧都着地」的帧对，
+在这些帧对上计算脚部关节的世界坐标位移速度，对其平方取均值作为惩罚项，再乘以可调权重加入总损失。
+因为只统计连续着地的帧对，摆动期不受影响；因为用世界坐标，身体位移与局部姿态被同时约束。</p>
+
+<p><b>权重的选择。</b>权重为 0（关闭）、1.0 与 0.4 的三次对照显示：权重 1.0 能把脚滑压到最低，
+但关节位置精度会退化约四成；权重 0.4 在几乎不损失位置精度的前提下取得大部分脚滑改善。
+软件默认取 0.4，并将其作为可调参数开放。</p>
+
+<div class="note">对应代码位置：training/pretrain/train_conditioned_pose.py（losses 的 contact_weight 分支）；训练入口参数 --contact-weight</div>
 </div>
 
 <!-- ══════════ 第 13 页 ══════════ -->
@@ -490,7 +541,7 @@ uv pip install --python .venv/Scripts/python.exe --no-deps -e .
   <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
   <div class="page-footer">第 13 页</div>
 <h1>6　软件功能说明</h1>
-<p>本软件按数据处理流程组织为八个功能模块。前三个模块负责把动画资产变成可用、可信的训练数据，中间三个模块负责训练、导出与生成，最后两个模块负责观看与对照。各模块均可独立运行，也可按序串联完成从资产到姿态的完整流程。</p>
+<p>本软件按数据处理流程组织为九个功能模块。前三个模块负责把动画资产变成可用、可信的训练数据，中间三个模块负责训练、导出与生成，最后两个模块负责观看与对照。各模块均可独立运行，也可按序串联完成从资产到姿态的完整流程。</p>
 <table>
     <caption>表 6-1　功能模块总览</caption>
     <thead><tr><th style="width:12%">章节</th><th style="width:26%">模块名称</th><th>核心入口</th><th style="width:12%">完成度</th></tr></thead>
@@ -498,11 +549,12 @@ uv pip install --python .venv/Scripts/python.exe --no-deps -e .
       <tr><td>6.1</td><td>动画数据采集与导出</td><td>编辑器插件菜单与批处理命令</td><td>已完成</td></tr>
       <tr><td>6.2</td><td>训练数据预处理</td><td><code>data/tools/prepare_unreal_dataset.py</code></td><td>已完成</td></tr>
       <tr><td>6.3</td><td>动作数据验收与人工复核</td><td><code>data/tools/motion_review_server.py</code></td><td>已完成</td></tr>
-      <tr><td>6.4</td><td>模型训练</td><td><code>training/pretrain/train_unreal.py</code></td><td>已完成 / 部分完成</td></tr>
+      <tr><td>6.4</td><td>模型训练</td><td><code>training/pretrain/train_unreal.py</code>、<code>tools/train_reference_pose.py</code></td><td>已完成 / 部分完成</td></tr>
       <tr><td>6.5</td><td>模型导出</td><td><code>inference/export/export_unreal_inference.py</code></td><td>已完成</td></tr>
       <tr><td>6.6</td><td>姿态生成推理</td><td><code>inference/runtime/motionweaver.py</code></td><td>部分完成</td></tr>
       <tr><td>6.7</td><td>可视化交互界面</td><td><code>inference/cli/interactive_demo_g1.py</code></td><td>已完成</td></tr>
       <tr><td>6.8</td><td>实验对照与评测</td><td><code>training/evaluation/</code>、<code>inference/visualization/</code></td><td>已完成</td></tr>
+      <tr><td>6.9</td><td>参考引导姿态补全训练</td><td><code>tools/train_reference_pose.py</code></td><td>已完成</td></tr>
     </tbody>
   </table>
 <h2>6.1　动画数据采集与导出</h2>
@@ -673,10 +725,91 @@ uv pip install --python .venv/Scripts/python.exe --no-deps -e .
 <div class="note">对应代码位置：training/evaluation/evaluate_native_quality.py、export_native_gallery.py、diagnose_unreal_capacity.py、inference/visualization/compare_motionweaver.py、summarize_acceptance.py</div>
 </div>
 
-<!-- ══════════ 第 23 页 ══════════ -->
+<!-- ══════════ 第 23 页（参考引导补全） ══════════ -->
 <div class="page">
   <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
   <div class="page-footer">第 23 页</div>
+<h2>6.9　参考引导姿态补全训练</h2>
+<p><b>功能概述。</b>本模块训练参考引导的直接关节回归模型：在给定历史姿态、未来身体运动轨迹与若干帧硬参考的条件下，补全其余帧的全身关节姿态。与 6.4 的离散码本路线并列，二者共用同一套数据契约、划分方式与评测协议，但模型不经过码本，因而不会受码本塌缩影响。本模块产出的检查点已在全库上完成训练与评测，是当前的主线模型。</p>
+
+<p><b>操作步骤。</b>①准备可被内存映射的训练数据视图（见 5.8）与对应契约，契约需含参考窗口定义与接触标签；②指定训练数据目录、映射数据目录与输出目录；③设定训练轮数、批大小、工作进程数与接触约束权重（见 5.9）；④运行训练入口，程序在每轮结束时于验证集上计算关节位置误差，并保存当前最优与最近两份检查点；⑤训练结束后运行评测入口，按四个参考档位分别统计非锚点帧的关节位置误差与接触期脚速。</p>
+
+<pre class="cmd">python tools/train_reference_pose.py \
+    --release  &lt;契约目录&gt; \
+    --mmap-root &lt;映射数据目录&gt; \
+    --output   &lt;输出目录&gt; \
+    --epochs 20 --batch-size 256 \
+    --contact-weight 0.4 --workers 8</pre>
+
+<p><b>输入 / 输出。</b>输入为契约目录（含片段清单、窗口清单、骨架与归一化统计量）、内存映射数据目录，以及可选的接触权重与随机种子；输出为最优检查点、最近检查点、逐轮验证记录与评测结果文件。检查点内含模型权重、骨架骨骼数、隐层宽度与所在轮次的最优验证误差，加载时会严格核对层结构。</p>
+
+<p><b>使用限制。</b>本模块的输入条件中，未来身体运动轨迹取自源动作，是理想控制输入，不代表玩家输入或运动组件实际给出的轨迹；硬参考取自目标帧，只有被选中的姿态帧作为条件公开。评测指标为各档位验证集上的关节位置误差与接触期脚速（接触期脚速除以参考动作接触期脚速），均为离线结果，不代表引擎内的实际播放效果，也不涉及蒙皮、IK 与网络同步。</p>
+
+<div class="note">对应代码位置：tools/train_reference_pose.py；网络定义与损失 training/pretrain/train_conditioned_pose.py；评测口径 docs/refpose-v3-training-evaluation.md</div>
+</div>
+
+<!-- ══════════ 第 24 页（实测效果） ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 24 页</div>
+<h2>6.10　实测效果</h2>
+<p><b>任务性质。</b>本节的指标衡量的是<strong>补间生成</strong>而非重建：每个窗口只有 0 至 2 帧
+作为条件给出真值参考，其余 22 至 24 帧全部由模型生成。四档参考强度对应的正是使用者给出关键帧的疏密程度。</p>
+
+<p>本节给出一条完整链路的实测数据，作为软件可运行性与效果的证据。测试环境见第 4 章；
+所有数字均由软件自带的训练与评测入口产出，可用相同命令复现。</p>
+
+<p><b>数据规模。</b>训练使用全库 71,127 条动作片段（120 帧组），
+按历史 24 帧加未来 24 帧切成窗口，得到训练窗口 1,988,285 个、验证窗口 245,232 个、测试窗口 257,171 个。
+数据以 5.8 描述的内存映射格式存放，占用 176.7 GB。</p>
+
+<p><b>训练过程。</b>在单张笔记本级显卡上训练 20 轮，批大小 256，接触权重 0.4，
+单轮约 7,766 步，全程耗时约 8.7 小时。验证集关节位置误差由第 1 轮的 7.046 厘米
+单调降至第 20 轮的 3.654 厘米，末轮仍在改善。</p>
+
+<figure>
+  <img src="../04-界面截图/16-训练损失曲线.png" alt="验证误差随训练轮次的变化">
+  <figcaption>图 6-6　验证集关节位置误差随训练轮次的变化（20 轮，真实数据）</figcaption>
+</figure>
+
+<table>
+  <caption>表 6-2　四档参考强度下的实测误差</caption>
+  <thead><tr><th style="width:26%">参考档位</th><th>本软件（厘米）</th><th>线性插值（厘米）</th><th>优于基线</th><th>接触期脚速倍数</th></tr></thead>
+  <tbody>
+    <tr><td>无参考</td><td>5.28</td><td>16.64</td><td>3.15 倍</td><td>6.9 倍</td></tr>
+    <tr><td>仅中点</td><td>3.22</td><td>7.24</td><td>2.25 倍</td><td>8.6 倍</td></tr>
+    <tr><td>仅末帧</td><td>3.22</td><td>7.46</td><td>2.32 倍</td><td>8.6 倍</td></tr>
+    <tr><td>中点加末帧</td><td>2.17</td><td>3.66</td><td>1.69 倍</td><td>8.7 倍</td></tr>
+  </tbody>
+</table>
+<p>表中误差为测试集上非锚点帧的关节位置均方根误差，每个片段等权。
+线性插值为非学习的参照基线；接触期脚速倍数为脚部关节在连续着地帧上的移动速度，
+除以参考动作在同期的移动速度，倍数越小说明脚越不容易滑动。表中倍数按全部接触帧对统计；若只统计相邻两帧都由模型生成的帧对（排除真值参考帧边界的影响），四档分别为 6.9、7.3、7.3、6.6 倍。</p>
+
+<figure>
+  <img src="../04-界面截图/17-四档对比.png" alt="四档参考强度下的姿态补全误差">
+  <figcaption>图 6-7　四档参考强度下本软件与线性插值基线的误差对比</figcaption>
+</figure>
+
+<p><b>接触约束的效果。</b>关闭接触约束时，接触期脚速为参考动作的 17 至 22 倍；
+接入该约束并取权重 0.4 后降至 6.9 至 8.7 倍。权重取 1.0 时可进一步降低，
+但关节位置误差会增大，因此软件默认取 0.4。</p>
+
+<p><b>数据格式改造的效果。</b>改用内存映射格式前后，随机窗口读取由 3.75 毫秒降至 1.33 毫秒，
+同一配置下的训练吞吐由每秒 322 个样本提升到每秒 1,829 个样本。
+拆分后的数据与原数据经逐元素比对完全一致（抽检 50 个窗口，最大差值 0）。</p>
+
+<p><b>效果边界。</b>上述指标均为离线计算，衡量的是模型输出与参考动作之间的关节位置差异，
+不代表引擎内的实际播放观感；脚速倍数虽已从 17 至 22 倍降至 6.9 至 8.7 倍，
+仍未达到本项目自定的 5 倍以内标准，其余量计划由引擎侧的足部锁定与反向动力学补齐。
+此外，未来运动轨迹取自源动作，是理想控制输入，不代表玩家或运动组件实际给出的轨迹。</p>
+
+<div class="note">对应代码位置：tools/train_reference_pose.py；评测脚本与完整记录见 docs/refpose-v3-training-evaluation.md</div>
+
+<!-- ══════════ 第 25 页 ══════════ -->
+<div class="page">
+  <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
+  <div class="page-footer">第 25 页</div>
 <h1>7　总结</h1>
 <p>本软件实现了一条从动画资产到可观看生成结果的完整链路：其一，编辑器插件把工程内的动画序列批量导出为分离了世界根轨道与根局部身体姿态的批次数据，并记录有理数帧率与逐帧时间戳；其二，预处理入口把批次校验、转换、切片为带契约描述的训练数据集；其三，本地验收服务让使用者逐帧对照原始骨架与重定向后骨架，把结论写成可追溯的记录；其四，训练入口支持离散姿态表示模型与条件姿态生成模型，并提供真实帧掩码、几何约束与困难类别采样等质量控制选项；其五，导出与推理入口把检查点转成可迁移的推理包，按外部轨迹条件生成后续姿态；其六，可视化与评测入口把结果渲染为可观看画面与同条件对照报告。</p>
 <p>与常见的「只报告训练损失」的做法相比，本软件有两点不同。第一，质量判定以同配置、同步数、同数据划分的对照为准，评估在恢复源初始朝向与平移后按同一采样时刻比较，接触类指标必须同时给出参与统计的帧对数量，帧对不足时不报告，避免把局部样本当作整体结论。第二，模型输出被限定为相对身体的表现姿态，世界位移交由外部运动组件决定，两者职责不重叠，因此生成结果可以与不同的运动来源在相同接口下对照，而不必为每个来源重做一套评估。</p>
@@ -684,10 +817,13 @@ uv pip install --python .venv/Scripts/python.exe --no-deps -e .
 <div class="note">对应代码位置：README.md、docs/motionweaver-architecture.md、docs/experiments/2026-09-28-motionweaver-a800-actor-root.md</div>
 </div>
 
-<!-- ══════════ 第 24 页 ══════════ -->
+
+</div>
+
+<!-- ══════════ 第 26 页 ══════════ -->
 <div class="page">
   <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
-  <div class="page-footer">第 24 页</div>
+  <div class="page-footer">第 26 页</div>
 <h1>8　附：来源与第三方组件说明</h1>
 <p>本节集中说明上游来源与第三方组件，正文其他章节不以第三方商标描述本软件的功能。</p>
 <h2>8.1　上游架构来源</h2>
@@ -695,10 +831,10 @@ uv pip install --python .venv/Scripts/python.exe --no-deps -e .
 <h2>8.2　第三方依赖</h2>
 </div>
 
-<!-- ══════════ 第 25 页 ══════════ -->
+<!-- ══════════ 第 27 页 ══════════ -->
 <div class="page">
   <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
-  <div class="page-footer">第 25 页</div>
+  <div class="page-footer">第 27 页</div>
 <table>
     <caption>表 8-1　第三方依赖与用途</caption>
     <thead><tr><th style="width:30%">组件</th><th>用途</th></tr></thead>
@@ -719,10 +855,10 @@ uv pip install --python .venv/Scripts/python.exe --no-deps -e .
 <p>预训练权重、参考骨架的网格资源与动画数据依照各自授权使用。本软件的源代码许可证不授予外部动画资产、网格或数据集的使用权。使用者在分发本软件生成的结果时，应自行确认所用外部资源与数据的授权范围。</p>
 </div>
 
-<!-- ══════════ 第 26 页 ══════════ -->
+<!-- ══════════ 第 28 页 ══════════ -->
 <div class="page">
   <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
-  <div class="page-footer">第 26 页</div>
+  <div class="page-footer">第 28 页</div>
 <h1>附录 A　术语表</h1>
 <p>本说明书中的术语按下表统一，正文不使用同义替换。</p>
 <table>
@@ -746,10 +882,10 @@ uv pip install --python .venv/Scripts/python.exe --no-deps -e .
   </table>
 </div>
 
-<!-- ══════════ 第 27 页 ══════════ -->
+<!-- ══════════ 第 29 页 ══════════ -->
 <div class="page">
   <div class="page-header"><span>MotionWeaver 角色动画生成系统 V1.0</span><span>使用说明书</span></div>
-  <div class="page-footer">第 27 页</div>
+  <div class="page-footer">第 29 页</div>
 <h2>A.1　关于草稿中的（待确认）标记</h2>
 <p>本说明书为初稿，凡标注为（待确认）的内容均需补充实证材料后才能定稿，不得直接提交。当前待确认项集中在两处：各功能模块的界面截图尚未采集；软件开发完成日期与首次发表日期需由著作权人确认。</p>
 </div>
