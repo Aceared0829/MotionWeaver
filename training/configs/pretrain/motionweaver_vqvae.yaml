@@ -28,7 +28,15 @@ model:
     dilation_growth_rate: 3
     activation: relu
     num_heads: 8
+    # 码本初始化：false=随机（kaiming，范数约 0.25）；true=用首批数据做 kmeans。
+    # 编码器输出范数约 35，随机初始化会让 argmin 由浮点噪声决定，
+    # 与 threshold_ema_dead_code=0 叠加成码本死锁（实测 248/256 码字归零、
+    # perplexity 锁死 1.000）。修复组合：kmeans_init=true + threshold_ema_dead_code>=1。
+    # 详见 docs/soma-tokenizer-codebook-collapse-diagnosis.md。
     kmeans_init: false
+    # 死码重置阈值：0=关闭。关闭后未被命中的码字会被 Laplace 平滑每步抹成
+    # 精确零向量，而零向量离原点最近、反而成为最近邻 —— 正反馈死锁。
+    threshold_ema_dead_code: 0
     norm: None
     calculate_per_head_perplexity: true
     cond_fusion_last_layer: false

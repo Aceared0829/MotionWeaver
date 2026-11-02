@@ -86,6 +86,22 @@ class VQVAE(nn.Module):
         decoder_external_cond_dim = extract_feature_from_motion_rep(dummy_input, motion_rep,
                                                                    self.decoder_external_cond_feature_mode).shape[-1]
 
+        # 编码器输出侧归一化（默认关闭）。
+        #
+        # 动机：诊断实测 latent 的参与率有效秩只有 2.18–3.15（满值 256），
+        # 前 5 个主成分就解释 97.3% 方差，且 token 两两余弦相似度均值 0.766。
+        # 假设是「编码器最后一层缺少归一化，输出尺度与方向都由少数主成分主导」。
+        #
+        # 注意：量化器里的 layernorm_after_project_in 在本项目维度下是 no-op
+        # （codebook_input_dim == dim 导致 project_in 恒为 Identity），
+        # 所以必须插在 encoder 输出这里才真正生效。
+        #
+        # 用 None（而非 Identity）保存，保证默认情况下 state_dict 不新增键，
+        # 已有 checkpoint 仍能 strict 加载。
+        self.encoder_out_norm = (
+            nn.LayerNorm(output_emb_width)
+            if kwargs.get('encoder_out_norm', False) else None)
+
         self.encoder = Encoder(encoder_state_dim, output_emb_width,
                                down_t, stride_t, width, depth,
                                dilation_growth_rate, activation=activation, norm=norm)
@@ -123,6 +139,9 @@ class VQVAE(nn.Module):
         # encoder
         x_in = self.extract_feature(x, self.encoder_input_feature_mode).permute(0, 2, 1)  # from [B,T,F] to [B,F,T]
         x_encoder = self.encoder(x_in)
+        if self.encoder_out_norm is not None:
+            # LayerNorm 作用在 [B, C, T] 的通道维上（normalized_shape=C）。
+            x_encoder = self.encoder_out_norm(x_encoder.transpose(1, 2)).transpose(1, 2)
 
         # quantization
         # mh_indices 是量化索引；软熵已在 quantizer 内部用同一个 x 算好，
