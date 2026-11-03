@@ -226,8 +226,6 @@ def main():
     sheet = plt.figure(figsize=(13, 6.4), dpi=120)
     sheet.patch.set_facecolor("#10141a")
     picks = np.linspace(8, len(gt_world) - 2, 6).astype(int)
-    np.concatenate((gt_along, pred_along))
-    np.concatenate((gt_up, pred_up))
     for plot_index, frame in enumerate(picks, 1):
         ax = sheet.add_subplot(1, 6, plot_index)
         ax.set_facecolor("#10141a")

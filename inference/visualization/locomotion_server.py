@@ -266,7 +266,6 @@ class LocomotionSim:
             self.phase = 0.0
             self.cycle, self.stride = self.gaits[gait]
             self.cycle_n = len(self.cycle)
-        self.root_hist[-1]
         combined = np.concatenate((self.pose_hist, self.rot_hist), axis=-1).reshape(WINDOW, -1)
         hist_root = self.root_hist.copy()
         hist_root[:, 3:] = align_quats(hist_root[:, 3:])

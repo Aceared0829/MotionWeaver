@@ -27,9 +27,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     mean = np.load(g.STATS / "pose_m.npy").astype(np.float32)
     std = np.load(g.STATS / "pose_s.npy").astype(np.float32)
-    json.loads((g.MMAP / "skeleton.json").read_text(encoding="utf-8"))
-    name_path = P.MMAP / "skeleton.json"
-    frame = json.loads(name_path.read_text(encoding="utf-8"))
+    frame = json.loads((P.MMAP / "skeleton.json").read_text(encoding="utf-8"))
     names = [b["name"] for b in frame["bones"]]
     parents = [b["parent"] for b in frame["bones"]]
 

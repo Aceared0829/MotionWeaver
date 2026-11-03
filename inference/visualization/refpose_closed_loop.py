@@ -78,7 +78,8 @@ def main():
     print(f"Root 头权重：{root_path}  训练验证 {root_ck['val_root_rmse_cm']:.2f} cm / {root_ck['val_heading_deg']:.2f} deg", flush=True)
 
     raw = "020545"
-    index[raw]
+    if raw not in index:
+        raise KeyError(f"clip {raw} 不在 contract 里，无法闭环推演")
     folder = g.MMAP / raw
     positions = np.load(folder / "p.npy")
     rotations = np.load(folder / "r.npy")
@@ -142,7 +143,6 @@ def main():
 
     font = ImageFont.truetype(r"C:\Windows\Fonts\msyh.ttc", 18)
     small = ImageFont.truetype(r"C:\Windows\Fonts\msyh.ttc", 15)
-    np.array([1.0, 0.0])
     frames = []
     for frame in range(0, n, 4):
         image = Image.new("RGB", (W, H), "#10141a")
