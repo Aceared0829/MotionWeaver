@@ -2,14 +2,14 @@
 
 import json
 import sys
-from pathlib import Path
 
 import numpy as np
+import paths
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial.transform import Rotation
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = paths.ROOT
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
 import render_refpose_gifs as g
@@ -140,8 +140,8 @@ def main():
         draw.line(pts, fill="#3ddc97", width=3)
         upcoming = np.where(given)[0]
         upcoming = upcoming[upcoming >= current][:1]
-        for index in upcoming:
-            draw_bones(draw, targets[index], parents, "#1f8a5b", camera, axis, 2)
+        for hit in upcoming:
+            draw_bones(draw, targets[hit], parents, "#1f8a5b", camera, axis, 2)
         if show_idle:
             draw_bones(draw, idle_world[-1], parents, "#8fb8ff", camera, axis, 3)
         else:
@@ -152,9 +152,9 @@ def main():
     frames = []
     for _ in range(10):
         frames.append(frame_image(0, "先看到站立。绿线是接下来要走的 Root，绿骨架是要到达的姿态。", "#8fb8ff", show_idle=True))
-    for index in range(0, len(world), 2):
-        label = "这一帧是给定的目标姿态" if given[index] else "这一帧是模型补出来的"
-        frames.append(frame_image(index, label, "#3ddc97" if given[index] else "#ffb15a"))
+    for frame_no in range(0, len(world), 2):
+        label = "这一帧是给定的目标姿态" if given[frame_no] else "这一帧是模型补出来的"
+        frames.append(frame_image(frame_no, label, "#3ddc97" if given[frame_no] else "#ffb15a"))
     gif = OUT / "idle_fill.gif"
     frames[0].save(gif, save_all=True, append_images=frames[1:], duration=70, loop=0, optimize=False)
     still = frame_image(11, "站立出发后，模型补向第一个目标姿态", "#ffb15a")

@@ -1,14 +1,15 @@
 """把 0.2 秒填补窗口顺着原轨迹滚成一段可看的长动画。"""
 
+import json
 import sys
-from pathlib import Path
 
 import numpy as np
+import paths
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial.transform import Rotation
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = paths.ROOT
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
 import paths
@@ -107,7 +108,7 @@ def render(model, mean, std, parents, font, raw, start, title, name):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    skeleton = __import__("json").loads((MMAP / "skeleton.json").read_text(encoding="utf-8"))
+    skeleton = json.loads((MMAP / "skeleton.json").read_text(encoding="utf-8"))
     parents = [bone["parent"] for bone in skeleton["bones"]]
     mean = np.load(STATS / "pose_m.npy").astype(np.float32)
     std = np.load(STATS / "pose_s.npy").astype(np.float32)
@@ -121,7 +122,7 @@ def main():
         ("000171", 800, "跑 · 连续 8 秒", "run_8s.gif"),
     ]
     for raw, start, title, name in jobs:
-        print(__import__("json").dumps(render(model, mean, std, parents, font, raw, start, title, name), ensure_ascii=False))
+        print(json.dumps(render(model, mean, std, parents, font, raw, start, title, name), ensure_ascii=False))
 
 
 if __name__ == "__main__":

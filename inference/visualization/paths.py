@@ -16,8 +16,36 @@
 import os
 from pathlib import Path
 
-ROOT = Path(os.environ.get("MW_ROOT") or Path(__file__).resolve().parents[2])
-DATA = Path(os.environ.get("MW_DATA_ROOT") or "D:/MotionWeaverData")
+
+def _env_path(name, default, anchor=None):
+    """读一个路径型环境变量，空串/纯空白一律回落到默认值。
+
+    为什么要 strip：`os.environ.get(name) or default` 只能挡住空串，
+    挡不住 "   "——那会变成相对当前工作目录的怪路径，而且不报错，
+    只是所有数据都读不到，排查起来非常费劲。
+
+    给了 anchor 时，相对路径按 anchor 解析（而不是按 CWD），
+    这样在仓库外任何目录跑脚本，MW_DATA_ROOT=data 都指向同一个地方。
+    """
+    value = os.environ.get(name, "").strip()
+    if not value:
+        return Path(default)
+    path = Path(value).expanduser()
+    if anchor is not None and not path.is_absolute():
+        path = Path(anchor) / path
+    return path
+
+
+ROOT = _env_path("MW_ROOT", Path(__file__).resolve().parents[2])
+DATA = _env_path("MW_DATA_ROOT", "D:/MotionWeaverData", anchor=ROOT)
+
+# 自检：ROOT 是按 __file__ 推的，挪动本文件会让它静默指错。
+# 这一行把"静默错误"变成"import 时就炸"。
+if not (ROOT / "inference").is_dir():
+    raise RuntimeError(
+        f"paths.ROOT 指向的不是仓库根：{ROOT}\n"
+        "通常是因为 paths.py 被挪了位置，或者 MW_ROOT 设错了。"
+    )
 
 MMAP = DATA / "full_mmap"
 RELEASE = DATA / "full_release"

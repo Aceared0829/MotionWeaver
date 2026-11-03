@@ -5,13 +5,13 @@
 """
 import json
 import sys
-from pathlib import Path
 
 import numpy as np
+import paths
 import torch
 from scipy.spatial.transform import Rotation
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = paths.ROOT
 sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT/"inference"/"visualization"))
 import paths
 import render_refpose_gifs as g

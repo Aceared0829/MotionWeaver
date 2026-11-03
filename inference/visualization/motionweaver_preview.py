@@ -18,10 +18,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from data.runtime.unreal_dataset import apply_authoritative_root
-from motionweaver.representation.helper.data_training_util import extract_feature_from_motion_rep
 from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial.transform import Rotation
+
+from data.runtime.unreal_dataset import apply_authoritative_root
+from motionweaver.representation.helper.data_training_util import (
+    extract_feature_from_motion_rep,
+)
 
 SIZE = (1280, 720)
 KEEP_BONES = {

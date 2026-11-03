@@ -2,7 +2,7 @@
 
 - 日期：2026-11-03
 - 动作：把 `output/refpose_preview/viewer3d/index.html` 的「游戏模拟」整层删除
-- 文件：1070 行 → 606 行（删 464 行）
+- 文件：1069 行 → 605 行（按换行计；`split` 口径为 1070 → 606），删 **464 行**
 - 存档：`.build/archive/viewer3d/index.game-sim.html`（删前完整副本，逐字节未改）
 - 该 html 不在 git 里（`/output/` 被 gitignore），所以这份存档是唯一的回滚路径
 
@@ -138,7 +138,7 @@ drawGame()                     2D canvas 手画：网格/骨架/Root 预测线/�
 | `inference/visualization/locomotion_server.py` | **文件保留，进程仍在 8822 监听**。页面已不再连它 |
 | `inference/visualization/ue_axis.py` | 保留，是 UE 坐标转换的 Python 实现 |
 | `web3d/`、`closed_loop/`、`matrix/` 等实验目录 | 保留，是历史证据 |
-| `manny_gl.js` + `SKM_Manny.glb` | 保留但**从未被引用**（写了没接，后续要么接上要么删） |
+| `manny_gl.js` + `SKM_Manny.glb` | **曾计划接入、从未入库**，也未进版本库。2026-11-03 确认全盘已无 *manny* / *.glb 文件 |
 
 ---
 
@@ -146,7 +146,9 @@ drawGame()                     2D canvas 手画：网格/骨架/Root 预测线/�
 
 - 语法：抽出内联 `<script type="module">` 462 行 → `node --check` **EXIT 0**
 - 结构：`<div>` 10 开 10 合、`<script>`/`<style>` 各 1 对
-- 残留标识符扫描：`gameOn/gameBuf/gameTick/uePlay/WS_URL/rotInput...` 共 46 个 → **0 命中**
+- 残留标识符扫描：46 个游戏层标识符（`gameOn` `gameBuf` `gameTick` `gameBasis` `drawGame`
+  `connectGame` `sizeGame` `pump` `stickNow` `stickId` `ruleNum` `WS_URL` `uePlay` `ueStop`
+  `ueBack` `gameBtn` `gameCanvas` `gameCtx` `gameDist` `rotInputX` `rotInputY` `__dbg` 等）→ **0 命中**
 - 无头浏览器（Playwright chromium，1600×900）：
   - `window.__ready === true`，`console error`/`pageerror` **均为 0**
   - 6 个宫格、6 个 canvas 均 409×401 正常出图

@@ -83,3 +83,20 @@ def test_probe_accepts_calls_and_docstrings(tmp_path):
         encoding="utf-8",
     )
     assert dead_expressions(probe) == []
+
+
+def test_visualization_scripts_are_import_safe():
+    """import 这些脚本不该产生副作用（写盘、打印、跑推理）。
+
+    2026-11-03 发现 apply_smoothing.py 和 export_segment_reset.py 在模块级
+    直接干活：任何 import 都会跑完整管线并覆盖 output/ 下的产物。其余 18 个
+    脚本都有 __main__ 守卫，这两个是例外。
+    """
+    offenders = []
+    for script in sorted(VISUALIZATION.glob("*.py")):
+        if script.name in {"__init__.py", "paths.py"}:
+            continue
+        source = script.read_text(encoding="utf-8")
+        if "__name__" not in source:
+            offenders.append(script.name)
+    assert not offenders, "这些脚本没有 __main__ 守卫，import 即执行：" + ", ".join(offenders)
