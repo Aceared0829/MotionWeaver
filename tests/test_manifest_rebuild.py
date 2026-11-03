@@ -65,13 +65,13 @@ def test_checksums_match_current_artifacts(manifest):
     assert not mismatched, f"manifest 与当前产物不一致：{mismatched}"
 
 
-def _training_side_windows(split, limit=6):
+def _training_side_windows(split, limit=6, scenario="random"):
     """用真正的训练侧取窗口；这是被验证的一方，不是重建的一方。"""
 
     from training.pretrain.train_conditioned_pose import MotionWindows
 
     contract = json.loads((RELEASE / "contract" / "contract.json").read_text(encoding="utf-8"))
-    dataset = MotionWindows(RELEASE, contract, split, scenario="random", seed=7, mmap_root=MMAP)
+    dataset = MotionWindows(RELEASE, contract, split, scenario=scenario, seed=7, mmap_root=MMAP)
     picks = random.Random(1234).sample(range(len(dataset)), min(limit, len(dataset)))
     samples = []
     for index in picks:
@@ -97,7 +97,9 @@ def test_rebuild_matches_training_side(manifest, contract, split):
 
     for sample in samples:
         clip = contract_live["clips"][sample["clip_index"]]
-        # 训练侧的 reference 是按 scenario 随机选的 offset，用 mask 反推回来
+        # 训练侧的 reference offset 是按 scenario 随机选的，只能从 mask 反推。
+        # 注意这条路径有循环论证的味道（用训练侧的 mask 推出 offset，再拿它生成 mask 去比对），
+        # 所以另有一条 test_rebuild_with_fixed_offsets 用**我们指定的** offset 独立验证。
         mask = sample["inputs"][3]
         offsets = tuple(int(v) for v in np.nonzero(mask[:, 0])[0])
         mine = R.build_sample(manifest, mmap_root=MMAP, release=RELEASE,
@@ -116,6 +118,37 @@ def test_rebuild_matches_training_side(manifest, contract, split):
         details.append(f"{clip['raw_file']} start={sample['start']} target max|d|={delta:.3e}")
 
     assert worst < TOLERANCE, f"{split} 最大误差 {worst:.3e} 超过 {TOLERANCE:.0e}\n" + "\n".join(details)
+
+
+@requires_data
+@pytest.mark.parametrize("scenario,offsets", [("one_ref", (12,)), ("two_refs", (12, 23))])
+def test_rebuild_with_fixed_offsets(manifest, scenario, offsets):
+    """offset 由我们指定，不由训练侧的 mask 反推——避免另一条测试的循环论证。
+
+    只对**训练侧写死 offset 的 scenario** 做，这样期望值完全独立：
+    one_ref 恒为 (12,)，two_refs 恒为 (12, 23)。
+    随机 scenario 的 offset 只存在于训练侧内部，无法独立指定，所以不在此列。
+    """
+    contract_live, samples = _training_side_windows("test", limit=3, scenario=scenario)
+
+    for sample in samples:
+        clip = contract_live["clips"][sample["clip_index"]]
+        theirs_mask = np.asarray(sample["inputs"][3], dtype=np.float32)
+        expected = np.zeros_like(theirs_mask)
+        expected[list(offsets)] = 1
+        assert np.array_equal(theirs_mask, expected), (
+            f"{scenario} 的 mask 与预期 offsets {offsets} 不符，说明训练侧的 scenario 语义变了")
+
+        mine = R.build_sample(manifest, mmap_root=MMAP, release=RELEASE,
+                              clip_raw_file=clip["raw_file"], start=sample["start"],
+                              reference_offsets=offsets)
+        for name, position in (("reference", 2), ("mask", 3)):
+            theirs = np.asarray(sample["inputs"][position], dtype=np.float32)
+            ours = np.asarray(mine[name], dtype=np.float32)
+            delta = float(np.abs(theirs - ours).max())
+            assert delta < TOLERANCE, (
+                f"{clip['raw_file']} start={sample['start']} offsets={offsets} "
+                f"{name} max|d|={delta:.3e}")
 
 
 def test_column_concat_layout_must_fail(manifest):
