@@ -22,6 +22,7 @@ manifest 是阶段 0 签过字的唯一真源，抄文档里的数字迟早会�
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -187,6 +188,7 @@ def export(manifest_path, checkpoint, output, *, relative_tolerance=RELATIVE_TOL
 
     model, ckpt = build_model(checkpoint)
 
+
     # 与权重本身对账：manifest 声明 78 骨，checkpoint 里也得是 78。
     # 只比 manifest 内部字段是自洽检查，manifest 整体写错时它发现不了。
     if ckpt["bones"] != bone_count:
@@ -200,8 +202,16 @@ def export(manifest_path, checkpoint, output, *, relative_tolerance=RELATIVE_TOL
         raise ValueError(
             f"模型实际输出 {list(produced.shape)}，与 manifest 推导的 "
             f"{[1, future_frames, features]} 不符")
-    release = Path(manifest["artifacts"]["release_dir"])
-    mmap_root = Path(manifest["artifacts"]["mmap_dir"])
+    # manifest 里存的是本机绝对路径，换机器会失效。
+    # 用 MW_RELEASE_DIR / MW_MMAP_DIR 覆盖，checksums 仍然保证一致性。
+    release = Path(os.environ.get("MW_RELEASE_DIR") or manifest["artifacts"]["release_dir"])
+    mmap_root = Path(os.environ.get("MW_MMAP_DIR") or manifest["artifacts"]["mmap_dir"])
+    if not (release / "contract" / "contract.json").is_file():
+        raise FileNotFoundError(
+            f"release 目录无效：{release}\n"
+            "换机器时请设 MW_RELEASE_DIR（路径可变，但 contract/stats 的 sha256 必须与 manifest 一致）")
+    if not (mmap_root / "skeleton.json").is_file():
+        raise FileNotFoundError(f"mmap 目录无效：{mmap_root}\n换机器时请设 MW_MMAP_DIR")
     feeds = sample_feeds(manifest, mmap_root=mmap_root, release=release, limit_per_split=limit_per_split)
 
     output.mkdir(parents=True, exist_ok=True)

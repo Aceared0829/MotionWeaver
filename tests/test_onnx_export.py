@@ -207,3 +207,15 @@ def test_export_cross_checks_against_checkpoint(tmp_path):
     path.write_text(json.dumps(tampered, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(ValueError, match="骨"):
         E.export(path, CHECKPOINT, tmp_path / "out")
+
+
+def test_export_supports_path_override():
+    """换机器时 manifest 里的绝对路径会失效，脚本必须支持环境变量覆盖。
+
+    这条只读源码，不需要数据。
+    """
+    source = (REPO / "benchmark" / "manifest" / "export_onnx.py").read_text(encoding="utf-8")
+    assert "MW_RELEASE_DIR" in source, "应有 MW_RELEASE_DIR 覆盖 release 路径"
+    assert "MW_MMAP_DIR" in source, "应有 MW_MMAP_DIR 覆盖 mmap 路径"
+    # 路径无效时应给出可操作的错误，而不是裸 FileNotFoundError
+    assert "换机器时请设" in source, "错误信息应告诉用户怎么修"
