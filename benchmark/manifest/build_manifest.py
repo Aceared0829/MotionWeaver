@@ -125,8 +125,15 @@ def build(release, mmap, checkpoint):
                 "col2": "cross(col0, col1)",
             },
             "warning": "仓库自带的 matrix_to_cont6d 是「按列拼接」，与本排布不兼容；"
-                       "误用会让部分骨骼旋转退化",
-            "verified_on": "000000 / 019534 / 019857 / 027106：两半范数 1.0±2e-7、点积 < 8e-8",
+                       "按错误口径解读时 78 根骨里只有 2 根掉到 1e-2 以下"
+                       "（骨 42 RightForeArm 1.05e-04、骨 14 LeftForeArm 8.67e-03），"
+                       "骨 42 会真的除零得 NaN",
+            "verified_on": "000000 / 019534 / 019857 / 027106："
+                           "两半范数 1.0±2e-7、点积 < 8e-8",
+            "degeneration_probe": {
+                "42": 1.05e-4, "14": 8.67e-3, "75": 6.66e-2,
+                "70": 8.72e-2, "12": 1.30, "40": 1.31,
+            },
         },
 
         "coordinates": {
