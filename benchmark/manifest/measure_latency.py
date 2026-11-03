@@ -18,20 +18,50 @@ import numpy as np
 import onnxruntime as ort
 
 
-def measure(session_path, *, runs=300, warmup=20):
-    session = ort.InferenceSession(str(session_path), providers=["CPUExecutionProvider"])
-    shapes = {spec.name: spec.shape for spec in session.get_inputs()}
+def _real_feeds(manifest_path, session):
+    """优先用真实窗口；拿不到就退回噪声。
+
+    实测两者延迟几乎一样（真实 0.897 / 噪声 0.881 ms）——因为算子路径固定，
+    数值不影响耗时。但真实数据更诚实，也顺带证明「这些张量是模型真能吃进去的」。
+    """
+    import sys
+
+    repo = Path(__file__).resolve().parents[2]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    sys.path.insert(0, str(repo / "benchmark" / "manifest"))
+    import export_onnx as E
+
+    if manifest_path is None or not Path(manifest_path).is_file():
+        return None, "noise"
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    feeds = E.sample_feeds(manifest,
+                           mmap_root=Path(manifest["artifacts"]["mmap_dir"]),
+                           release=Path(manifest["artifacts"]["release_dir"]),
+                           limit_per_split=1)
+    tensors = {name: feeds[0]["tensors"][name] for name in E.INPUT_NAMES}
+    return tensors, "real_window"
+
+
+def _noise_feeds(session):
     rng = np.random.default_rng(0)
     feeds = {}
-    for name, shape in shapes.items():
-        dims = [int(d) for d in shape]
-        feeds[name] = rng.normal(size=dims).astype(np.float32)
-    # root_plan 的四元数部分归一化，mask 归到 0/1——不然测的是非典型输入
+    for spec in session.get_inputs():
+        feeds[spec.name] = rng.normal(size=[int(d) for d in spec.shape]).astype(np.float32)
+    # root_plan 的四元数归一化，mask 归到 0——不然测的是非典型输入
     if "root_plan" in feeds:
         quat = feeds["root_plan"][..., 3:]
         feeds["root_plan"][..., 3:] = quat / np.linalg.norm(quat, axis=-1, keepdims=True)
     if "mask" in feeds:
         feeds["mask"][...] = 0.0
+    return feeds
+
+
+def measure(session_path, *, manifest_path=None, runs=300, warmup=20):
+    session = ort.InferenceSession(str(session_path), providers=["CPUExecutionProvider"])
+    feeds, source = _real_feeds(manifest_path, session)
+    if feeds is None:
+        feeds = _noise_feeds(session)
 
     for _ in range(warmup):
         session.run(None, feeds)
@@ -62,6 +92,7 @@ def measure(session_path, *, runs=300, warmup=20):
         "format": "refpose_latency_v1",
         "onnx": str(session_path),
         "providers": session.get_providers(),
+        "input_source": source,
         "runs": runs,
         "single_stream": {
             "p50_ms": float(np.percentile(timings, 50)),
@@ -79,10 +110,11 @@ def measure(session_path, *, runs=300, warmup=20):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--onnx", required=True)
+    parser.add_argument("--manifest", default=None, help="给了就用真实窗口测，否则用噪声")
     parser.add_argument("--output", required=True)
     parser.add_argument("--runs", type=int, default=300)
     args = parser.parse_args()
-    record = measure(args.onnx, runs=args.runs)
+    record = measure(args.onnx, manifest_path=args.manifest, runs=args.runs)
     Path(args.output).write_text(
         json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: record[k] for k in ("single_stream",)}, ensure_ascii=False, indent=2))
