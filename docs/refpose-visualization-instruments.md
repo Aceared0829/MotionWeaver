@@ -1,6 +1,6 @@
 # inference/visualization：这批一次性仪器的现状与边界
 
-> 这份文档解决一个具体问题：仓库里躺着 20 个 `inference/visualization/*.py`，
+> 这份文档解决一个具体问题：仓库里躺着 25 个 `inference/visualization/*.py`（本 PR 新增 19 个），
 > 它们没有测试、没有 CI、路径硬编码，谁也不敢说自己能维护。
 > 本文说清它们**是什么、凭什么存在、边界在哪**，好让下一个人不用重新猜一遍。
 
@@ -53,7 +53,7 @@
 ## 三、路径约定（2026-11-03 收敛）
 
 **改动前**：每个脚本各自写死 `Path(r"D:\AILocomotonSystem\MotionWeaver")` 和
-`Path(r"D:\MotionWeaverData\...")`，共 30 处。换盘符要改十几处，改漏一处不报错——
+`Path(r"D:\MotionWeaverData\...")`，散在 16 个文件里。换盘符要改十几处，改漏一处不报错——
 它只是读不到数据，然后抛一个毫不相干的异常。
 
 **改动后**：全部收敛到 `inference/visualization/paths.py`。
@@ -71,7 +71,8 @@
 | `P.REVIEWS` | `<DATA>/reviews/refpose-closed-loop` | — |
 
 **验收判据（已实测）**：重构后 8 个常量与重构前逐字硬编码值**完全相等**，
-`Path(want) == got` 全部为真。全部 25 个模块 import 成功。
+`Path(want) == got` 全部为真。`inference/visualization` 下 25 个模块 import 全部成功；
+其中 17 个文件改为引用 `paths` 常量，共 47 处（含 17 处 `ROOT` 推导）。
 
 ---
 
