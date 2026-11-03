@@ -11,13 +11,13 @@ from scipy.spatial.transform import Rotation
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
-import paths as P
+import paths
 
 from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
 
-MMAP = P.MMAP
-STATS = P.STATS
-WEIGHT = P.POSE_WEIGHT
+MMAP = paths.MMAP
+STATS = paths.STATS
+WEIGHT = paths.POSE_WEIGHT
 OUT = ROOT / "output" / "refpose_preview" / "gifs"
 WINDOW = 24
 STRIDE = 8

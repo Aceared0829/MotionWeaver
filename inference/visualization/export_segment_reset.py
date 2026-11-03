@@ -9,11 +9,11 @@ from scipy.spatial.transform import Rotation
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
-import paths as P
+import paths
 
 SRC = ROOT/"output"/"refpose_preview"/"segment_reset"
 OUT = ROOT/"output"/"refpose_preview"/"viewer3d"
-MMAP = P.MMAP
+MMAP = paths.MMAP
 def compose(local, root):
     r = Rotation.from_quat(root[:, 3:])
     return np.einsum("tij,tkj->tki", r.as_matrix(), local[:, :, :3]) + root[:, None, :3]

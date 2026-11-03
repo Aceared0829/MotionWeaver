@@ -10,15 +10,15 @@ import torch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
-import paths as P
+import paths
 import render_refpose_gifs as g
 from refpose_closed_loop import compose, localize
 
 from tools.train_root_plan import RootPlanHead
 from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
 
-POSE_W = P.POSE_WEIGHT
-ROOT_W = P.ROOT_WEIGHT
+POSE_W = paths.POSE_WEIGHT
+ROOT_W = paths.ROOT_WEIGHT
 OUT = ROOT / "output" / "refpose_preview" / "web3d"
 WINDOW, STRIDE, SECONDS = 24, 8, 10
 
@@ -27,7 +27,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     mean = np.load(g.STATS / "pose_m.npy").astype(np.float32)
     std = np.load(g.STATS / "pose_s.npy").astype(np.float32)
-    frame = json.loads((P.MMAP / "skeleton.json").read_text(encoding="utf-8"))
+    frame = json.loads((paths.MMAP / "skeleton.json").read_text(encoding="utf-8"))
     names = [b["name"] for b in frame["bones"]]
     parents = [b["parent"] for b in frame["bones"]]
 

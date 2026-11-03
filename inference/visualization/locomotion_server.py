@@ -23,14 +23,14 @@ from scipy.spatial.transform import Rotation
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
-import paths as P
+import paths
 import render_refpose_gifs as g
 from ue_axis import vec_to_ue
 
 from inference.runtime.conditioned_pose import rotation_6d_to_matrix
 from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
 
-POSE_W = P.POSE_WEIGHT
+POSE_W = paths.POSE_WEIGHT
 HOST, PORT = "127.0.0.1", 8822
 WINDOW, PLAY = 24, 8
 FPS = 120.0

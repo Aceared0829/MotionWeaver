@@ -15,12 +15,12 @@ from scipy.spatial.transform import Rotation
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT/"inference"/"visualization"))
-import paths as P
+import paths
 import render_refpose_gifs as g
 
 from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
 
-POSE_W = P.POSE_WEIGHT
+POSE_W = paths.POSE_WEIGHT
 OUT = ROOT/"output"/"refpose_preview"/"segment_reset"
 WINDOW, STRIDE = 24, 8
 

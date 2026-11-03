@@ -13,16 +13,16 @@ import torch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
-import paths as P
+import paths
 import render_refpose_gifs as g
 from refpose_closed_loop import compose, localize
 
 from tools.train_root_plan import RootPlanHead
 from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
 
-POSE_W = P.POSE_WEIGHT
-ROOT_W = P.ROOT_WEIGHT
-OUT = P.REVIEWS
+POSE_W = paths.POSE_WEIGHT
+ROOT_W = paths.ROOT_WEIGHT
+OUT = paths.REVIEWS
 WINDOW, STRIDE, SECONDS = 24, 8, 10
 
 

@@ -10,11 +10,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
-import paths as P
+import paths
 from scipy.spatial.transform import Rotation
 
-STATS = P.STATS
-MMAP = P.MMAP
+STATS = paths.STATS
+MMAP = paths.MMAP
 SOURCES = [
     ("closed_020545", "walk_arc_cw_loop_002 · 闭环", "020545", 120),
 ]
@@ -22,7 +22,7 @@ OUT = ROOT / "output" / "refpose_preview" / "viewer3d"
 
 
 def load_clip(clip_id):
-    path = P.REVIEWS / "clips" / clip_id / "motion.npz"
+    path = paths.REVIEWS / "clips" / clip_id / "motion.npz"
     with np.load(path, allow_pickle=False) as archive:
         local = archive["frames"].astype(np.float64)
         roots = archive["root_frames"].astype(np.float64)

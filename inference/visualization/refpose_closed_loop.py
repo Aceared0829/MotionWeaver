@@ -15,17 +15,17 @@ from scipy.spatial.transform import Rotation
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
-import paths as P
+import paths
 import render_refpose_gifs as g
 
 from tools.train_root_plan import RootPlanHead
 from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
 
-POSE_W = P.POSE_WEIGHT
+POSE_W = paths.POSE_WEIGHT
 # 优先用 20 epoch 版；盘上没有就回退到早先那版。两个值必须保持不同，
 # 否则 load_models 里的 "优先 A、回退 B" 退化成「A 不存在就直接炸」。
-ROOT_W = P.ROOT_WEIGHT
-ROOT_W2 = P.ROOT_WEIGHT_PREV
+ROOT_W = paths.ROOT_WEIGHT
+ROOT_W2 = paths.ROOT_WEIGHT_PREV
 OUT = ROOT / "output" / "refpose_preview" / "closed_loop"
 WINDOW = 24
 STRIDE = 8
