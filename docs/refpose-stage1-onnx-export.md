@@ -127,7 +127,29 @@
 
 ---
 
-## 五、已知限制
+## 五、ONNX 图构成（UE 侧 NNE 需要看这个）
+
+| 项 | 值 |
+|---|---|
+| 节点总数 | 257 |
+| opset / IR | 17 / 8 |
+| 用到的域 | **只有 `ai.onnx`**，无自定义算子 |
+| 最大 initializer | `onnx::GRU_608` 2.18 MB |
+| GRU | `hidden_size=256`, `linear_before_reset=1` |
+
+算子清单（按数量）：
+
+```
+Constant 73, Reshape 33, Transpose 25, Add 22, MatMul 17, Gather 11,
+Slice 9, Sqrt 9, Shape 7, LayerNormalization 7, Cast 7, Mul 6,
+Unsqueeze 5, Concat 5, Mod 3, Squeeze 3, Div 3, Softmax 3,
+Gemm 3, Relu 3, Expand 1, GRU 1, Where 1
+```
+
+**`Where` 只有 1 个，说明 `torch.where(mask, reference, predicted)` 被完整保留，
+没有在导出时被优化掉**——这条是硬覆盖语义能在 UE 侧生效的前提。
+
+## 六、已知限制
 
 1. **静态 batch=1**。GRU 在非 1 batch 下会报错（导出时 torch 明确警告）。
    多角色必须每角色一个 session，不能靠 batch 堆叠。
@@ -138,7 +160,7 @@
 
 ---
 
-## 六、复现
+## 七、复现
 
 ```powershell
 # 导出 + 数值校验
