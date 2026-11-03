@@ -24,7 +24,9 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
+# 只忽略 setuptools 生成的根级 MANIFEST 清单文件；
+# 写裸 MANIFEST 会连 benchmark/manifest/ 这类目录一起忽略掉（git 的模式对目录同样生效）。
+/MANIFEST
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

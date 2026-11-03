@@ -1,0 +1,447 @@
+{
+  "format": "refpose_manifest_v1",
+  "generated_by": "benchmark/manifest/build_manifest.py",
+  "purpose": "参考引导姿态补全的输入契约；UE 侧装配输入以本文件为准",
+  "checksums": {
+    "checkpoint_sha256": "6d10d358e0a719e9ddc6aaacae5adac5b0bfb1c4a64f2508d857517e0ed55ffc",
+    "contract_sha256": "7efcda88d082d6beb84c51edeaf9b38d86620200a469248ea8cc1bd6e97f7dd3",
+    "pose_mean_sha256": "f4a9908b264bd77509a40097cd3e74a6cb4b3551829ea8a7cb531c924845e4e7",
+    "pose_std_sha256": "3b52147f200aadca72e7e980c007d205884e63eee7c3e997a4a2c6cc1964fac0",
+    "skeleton_sha256": "bd547e3a32feeb079b09a91c39833a25046d6c754c80c910a89985a4d5e729e5"
+  },
+  "skeleton": {
+    "bone_count": 78,
+    "names": [
+      "Root",
+      "Hips",
+      "Spine1",
+      "Spine2",
+      "Chest",
+      "Neck1",
+      "Neck2",
+      "Head",
+      "HeadEnd",
+      "Jaw",
+      "LeftEye",
+      "RightEye",
+      "LeftShoulder",
+      "LeftArm",
+      "LeftForeArm",
+      "LeftHand",
+      "LeftHandThumb1",
+      "LeftHandThumb2",
+      "LeftHandThumb3",
+      "LeftHandThumbEnd",
+      "LeftHandIndex1",
+      "LeftHandIndex2",
+      "LeftHandIndex3",
+      "LeftHandIndex4",
+      "LeftHandIndexEnd",
+      "LeftHandMiddle1",
+      "LeftHandMiddle2",
+      "LeftHandMiddle3",
+      "LeftHandMiddle4",
+      "LeftHandMiddleEnd",
+      "LeftHandRing1",
+      "LeftHandRing2",
+      "LeftHandRing3",
+      "LeftHandRing4",
+      "LeftHandRingEnd",
+      "LeftHandPinky1",
+      "LeftHandPinky2",
+      "LeftHandPinky3",
+      "LeftHandPinky4",
+      "LeftHandPinkyEnd",
+      "RightShoulder",
+      "RightArm",
+      "RightForeArm",
+      "RightHand",
+      "RightHandThumb1",
+      "RightHandThumb2",
+      "RightHandThumb3",
+      "RightHandThumbEnd",
+      "RightHandIndex1",
+      "RightHandIndex2",
+      "RightHandIndex3",
+      "RightHandIndex4",
+      "RightHandIndexEnd",
+      "RightHandMiddle1",
+      "RightHandMiddle2",
+      "RightHandMiddle3",
+      "RightHandMiddle4",
+      "RightHandMiddleEnd",
+      "RightHandRing1",
+      "RightHandRing2",
+      "RightHandRing3",
+      "RightHandRing4",
+      "RightHandRingEnd",
+      "RightHandPinky1",
+      "RightHandPinky2",
+      "RightHandPinky3",
+      "RightHandPinky4",
+      "RightHandPinkyEnd",
+      "LeftLeg",
+      "LeftShin",
+      "LeftFoot",
+      "LeftToeBase",
+      "LeftToeEnd",
+      "RightLeg",
+      "RightShin",
+      "RightFoot",
+      "RightToeBase",
+      "RightToeEnd"
+    ],
+    "parents": [
+      -1,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      7,
+      7,
+      7,
+      4,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      15,
+      20,
+      21,
+      22,
+      23,
+      15,
+      25,
+      26,
+      27,
+      28,
+      15,
+      30,
+      31,
+      32,
+      33,
+      15,
+      35,
+      36,
+      37,
+      38,
+      4,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      43,
+      48,
+      49,
+      50,
+      51,
+      43,
+      53,
+      54,
+      55,
+      56,
+      43,
+      58,
+      59,
+      60,
+      61,
+      43,
+      63,
+      64,
+      65,
+      66,
+      1,
+      68,
+      69,
+      70,
+      71,
+      1,
+      73,
+      74,
+      75,
+      76
+    ],
+    "roles": {
+      "root": "Root",
+      "pelvis": "Hips",
+      "left_hip": "LeftLeg",
+      "right_hip": "RightLeg",
+      "left_knee": "LeftShin",
+      "right_knee": "RightShin",
+      "left_foot": "LeftFoot",
+      "right_foot": "RightFoot",
+      "left_toe": "LeftToeBase",
+      "right_toe": "RightToeBase",
+      "left_hand": "LeftHand",
+      "right_hand": "RightHand",
+      "left_shoulder": "LeftShoulder",
+      "right_shoulder": "RightShoulder",
+      "head": "Head",
+      "jaw": "Jaw",
+      "left_eye": "LeftEye",
+      "right_eye": "RightEye"
+    }
+  },
+  "timing": {
+    "fps": 120.00480019200768,
+    "fps_note": "不是整数 120；24 帧 = 199.99 ms，按 120.0 计算会引入 8us 误差",
+    "history_frames": 24,
+    "future_frames": 24,
+    "window_seconds": 0.199992
+  },
+  "inputs": {
+    "history": {
+      "shape": [
+        24,
+        709
+      ],
+      "composition": "78x9 归一的姿态位置+6D 旋转，拼上 7 维 root_local",
+      "layout": {
+        "position": {
+          "offset": 0,
+          "width": 234,
+          "normalized": true,
+          "formula": "(positions - mean) / std，逐骨逐轴"
+        },
+        "rotation_6d": {
+          "offset": 234,
+          "width": 468,
+          "normalized": false
+        },
+        "root_local": {
+          "offset": 702,
+          "width": 7,
+          "normalized": false,
+          "composition": "xyz(3) + xyzw 四元数(4)，相对最后一帧历史 Root"
+        }
+      }
+    },
+    "root_plan": {
+      "shape": [
+        24,
+        7
+      ],
+      "composition": "xyz(3) + xyzw(4)，相对 origin（见 anchor）",
+      "normalized": false,
+      "authority": "k.npy"
+    },
+    "reference": {
+      "shape": [
+        24,
+        702
+      ],
+      "composition": "78 骨 x 9 维；未选中帧全 0",
+      "normalized": "位置已归一化（同 history），旋转不归一化",
+      "semantics": "硬覆盖：forward 末行 torch.where(mask, reference, predicted)，mask=1 的帧输出与 reference 逐元素精确 0.0 误差",
+      "zero_frames_are_a_signal": "未选中帧整行乘 0，同时通过 (1-mask) 参与 loss 加权——「0」本身表达「该帧不可见」，不是缺失数据",
+      "signed_zero": "实测 masked-out 区域里有 -0.0；数值上 ==0 成立，做位级比对时需要用它而不是 == 判等"
+    },
+    "mask": {
+      "shape": [
+        24,
+        1
+      ],
+      "dtype": "float32",
+      "values": [
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "output": {
+    "shape": [
+      24,
+      702
+    ],
+    "composition": "78 骨 x 9 = 3 位置 + 6 旋转",
+    "position_normalized": true,
+    "denormalize": "positions * std + mean"
+  },
+  "rotation_6d": {
+    "layout": "row_major_interleaved",
+    "order": [
+      "m00",
+      "m01",
+      "m10",
+      "m11",
+      "m20",
+      "m21"
+    ],
+    "decode": {
+      "col0": [
+        0,
+        2,
+        4
+      ],
+      "col1": [
+        1,
+        3,
+        5
+      ],
+      "col2": "cross(col0, col1)"
+    },
+    "warning": "仓库自带的 matrix_to_cont6d 是「按列拼接」，与本排布不兼容；按错误口径解读会让 col2=cross(col0,col1) 退化成近零向量，严重时除零得 NaN。具体哪些骨见 degeneration_probe",
+    "verified_on": "000000 / 019534 / 019857 / 027106：两半范数落在 [0.999999824, 1.000000182]，两列点积 |.| ≤ 1.67e-07",
+    "degeneration_probe": {
+      "criterion": "|col0 x col1|（叉乘模长，决定 col2 是否会除零）",
+      "clips_probed": [
+        "000000",
+        "019534",
+        "019857",
+        "027106"
+      ],
+      "would_divide_by_zero": [
+        {
+          "bone": 0,
+          "name": "Root",
+          "min_cross_norm": 0.0
+        },
+        {
+          "bone": 34,
+          "name": "LeftHandRingEnd",
+          "min_cross_norm": 0.0
+        },
+        {
+          "bone": 52,
+          "name": "RightHandIndexEnd",
+          "min_cross_norm": 0.0
+        },
+        {
+          "bone": 62,
+          "name": "RightHandRingEnd",
+          "min_cross_norm": 0.0
+        }
+      ],
+      "below_1e_2_count": 23,
+      "below_1e_2_bones": [
+        {
+          "bone": 0,
+          "name": "Root",
+          "min_cross_norm": 0.0
+        },
+        {
+          "bone": 1,
+          "name": "Hips",
+          "min_cross_norm": 0.001982794337148383
+        },
+        {
+          "bone": 2,
+          "name": "Spine1",
+          "min_cross_norm": 0.0004070059628952324
+        },
+        {
+          "bone": 5,
+          "name": "Neck1",
+          "min_cross_norm": 0.006963466422489593
+        },
+        {
+          "bone": 8,
+          "name": "HeadEnd",
+          "min_cross_norm": 1.4809609469758807e-07
+        },
+        {
+          "bone": 9,
+          "name": "Jaw",
+          "min_cross_norm": 1.4809609469758807e-07
+        },
+        {
+          "bone": 10,
+          "name": "LeftEye",
+          "min_cross_norm": 1.4809609471442565e-07
+        },
+        {
+          "bone": 11,
+          "name": "RightEye",
+          "min_cross_norm": 1.4809609471442565e-07
+        },
+        {
+          "bone": 15,
+          "name": "LeftHand",
+          "min_cross_norm": 0.0006144353066024251
+        },
+        {
+          "bone": 19,
+          "name": "LeftHandThumbEnd",
+          "min_cross_norm": 6.981316851751923e-08
+        },
+        {
+          "bone": 24,
+          "name": "LeftHandIndexEnd",
+          "min_cross_norm": 1.480960946820562e-07
+        },
+        {
+          "bone": 29,
+          "name": "LeftHandMiddleEnd",
+          "min_cross_norm": 3.490658416276539e-08
+        }
+      ],
+      "note": "两条独立事实，别混为一谈：(a) 按**正确**排布解码时，全部 78 根骨的 |col0 x col1| 都 ≈1.0（200 条随机 clip 实测最小 0.999999693），无一退化；(b) 上表列的是**误读**时的后果，其中 Root 与 3 个叶骨恰好落在 0——它们同时是「没有子骨、旋转本身不受约束」的骨，所以最容易先崩。"
+    }
+  },
+  "coordinates": {
+    "space": "模型内部坐标系（前 +Z、上 +Y、右 -X）",
+    "ue_conversion": "见 inference/visualization/ue_axis.py：ue=(ours_z, -ours_x, ours_y)",
+    "positions_are_root_local": true,
+    "root_local_proof": "world = R(k) @ local + k_pos；float64 回代误差 ≈1.3e-15，float32 数据下约 1e-07 量级（受 dtype 限制，不是 1e-15）"
+  },
+  "root": {
+    "authority": "k.npy",
+    "p_axis0": {
+      "meaning": "Root 骨在位置数组里的那一项，等于 -R^T · k_pos",
+      "not_a_second_trajectory": true,
+      "verified_max_abs_error": 1.2e-06,
+      "note": "它由 k 完全决定，不含独立信息；UE 侧忽略其水平分量即可"
+    },
+    "vertical": "k[:, 1] 恒为 0，垂直高度全部留在身体姿态里",
+    "status": "offline_proxy_not_observed_actor_root"
+  },
+  "anchor": {
+    "origin": "root[middle - 1]，middle = start + history_frames",
+    "note": "位置与朝向都相对它；用 root[middle] 会让整条 root_plan 偏移"
+  },
+  "normalization": {
+    "mean": {
+      "file": "pose_m.npy",
+      "shape": [
+        78,
+        3
+      ]
+    },
+    "std": {
+      "file": "pose_s.npy",
+      "shape": [
+        78,
+        3
+      ]
+    },
+    "scope": "只作用于位置通道（234 维）；旋转 6D 与 root_local 不归一化",
+    "must_not_recompute": "统计量绑定训练分区，重算会破坏权重"
+  },
+  "artifacts": {
+    "release_dir": "D:\\MotionWeaverData\\full_release",
+    "mmap_dir": "D:\\MotionWeaverData\\full_mmap",
+    "checkpoint": "D:\\MotionWeaverData\\model_weight\\refpose_v3_71k\\best.pt",
+    "stats_dir": "contract/stats（相对 release_dir）",
+    "note": "这些路径是本机绝对路径，仅供定位；换机器的正确判据是 checksums 全等"
+  },
+  "dataset": {
+    "clips": 71127,
+    "window_count": 2490688,
+    "split_counts": {
+      "validation": 245232,
+      "train": 1988285,
+      "test": 257171
+    },
+    "contact_source": "world_foot_contacts_from_full_positions"
+  }
+}
