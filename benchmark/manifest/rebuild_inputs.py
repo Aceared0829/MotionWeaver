@@ -77,6 +77,15 @@ def build_sample(manifest, *, mmap_root, release, clip_raw_file, start, referenc
     history_frames = manifest["timing"]["history_frames"]
     future_frames = manifest["timing"]["future_frames"]
     positions, rotations, root = load_clip(mmap_root, clip_raw_file)
+
+    # 越界要显式报错，别让 numpy 抛一个看不出上下文的 IndexError：
+    # 窗口是 [start, start+48)，而 origin 取 [middle-1]，两者都在长度范围内才行。
+    span = history_frames + future_frames
+    total = len(root)
+    if start < 0 or start + span > total:
+        raise IndexError(
+            f"窗口越界：clip {clip_raw_file} 共 {total} 帧，"
+            f"start={start} 需要 {span} 帧，末端 {start + span} 超出 {total - start} 帧")
     mean = np.load(Path(release) / "contract" / "stats" / manifest["normalization"]["mean"]["file"])
     std = np.load(Path(release) / "contract" / "stats" / manifest["normalization"]["std"]["file"])
 
