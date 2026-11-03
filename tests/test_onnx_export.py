@@ -26,11 +26,38 @@ ONNX_PATH = ONNX_DIR / "model.onnx"
 ONNX_MANIFEST = ONNX_DIR / "onnx_manifest.json"
 
 
-def _available():
-    return all(p.exists() for p in (MANIFEST_PATH, CHECKPOINT, ONNX_PATH, ONNX_MANIFEST))
+def _missing():
+    return [str(p) for p in (MANIFEST_PATH, CHECKPOINT, ONNX_PATH, ONNX_MANIFEST) if not p.exists()]
 
 
-requires_onnx = pytest.mark.skipif(not _available(), reason="本机缺少 manifest / 权重 / ONNX 产物")
+# 缺**输入**（manifest / 权重）时 skip 是合理的：换台机器本来就没有数据。
+# 但缺**产物**（model.onnx / onnx_manifest.json）不能 skip —— 那意味着导出失败、
+# 或者导出到一半崩了留下半成品。skip 会让整组用例显示绿色，把失败吞掉。
+_INPUTS = (MANIFEST_PATH, CHECKPOINT)
+_OUTPUTS = (ONNX_PATH, ONNX_MANIFEST)
+
+requires_data = pytest.mark.skipif(
+    any(not p.exists() for p in _INPUTS), reason="本机缺少 manifest / 权重")
+requires_artifact = pytest.mark.skipif(
+    any(not p.exists() for p in _INPUTS), reason="本机缺少 manifest / 权重")
+requires_onnx = requires_artifact
+
+
+def test_export_artifacts_exist():
+    """产物缺失必须 fail，不能 skip。
+
+    这条不加 requires_*：如果换机器没数据，它也会 fail——但那时应该连带
+    requires_data 的用例一起 skip，而这条会明确告诉你「产物没生成」。
+    半成品（有 model.onnx 没 onnx_manifest.json）是最需要报警的状态：
+    旧版 _available() 要求四个文件齐全，半成品会让整组用例静默 skip。
+    """
+    missing_inputs = [str(p) for p in _INPUTS if not p.exists()]
+    if missing_inputs:
+        pytest.skip(f"本机缺少输入数据：{missing_inputs}")
+    missing_outputs = [str(p) for p in _OUTPUTS if not p.exists()]
+    assert not missing_outputs, (
+        f"产物缺失：{missing_outputs}。这可能意味着导出失败或导出中途崩溃留下了半成品——"
+        "请重跑 benchmark/manifest/export_onnx.py")
 
 
 @pytest.fixture(scope="module")
@@ -106,8 +133,13 @@ def test_numeric_alignment_holds(record):
 def test_mask_hard_override_survives_export(manifest):
     """mask=1 的帧必须**精确**等于 reference——这是 hard override，不是软条件。
 
-    ONNX 编译器完全可能把 torch.where 优化掉或改成近似。
-    这条测试专门守住那个语义。
+    **为什么必须塞一个非二值 mask**：如果 mask 只取 0/1，那么
+    `torch.where(mask, ref, pred)` 与 `ref*mask + pred*(1-mask)` 在 IEEE 下
+    逐位相同（1*x + 0*y ≡ x）。只用 0/1 测，这条测试**原理上无法区分**
+    Where 和 lerp——而它声称要防的正是 where 被重写成 lerp。
+
+    mask=0.5 时两者差异是 O(1)：bool(0.5) 为 True 仍取 reference，
+    而 lerp 会给出 0.5*ref + 0.5*pred。
     """
     import export_onnx as E
     import onnxruntime as ort
@@ -117,7 +149,6 @@ def test_mask_hard_override_survives_export(manifest):
                            mmap_root=Path(manifest["artifacts"]["mmap_dir"]),
                            release=Path(manifest["artifacts"]["release_dir"]),
                            limit_per_split=1)
-    # 只挑有 reference 的样本
     picked = [f for f in feeds if f["offsets"]]
     assert picked, "样本里没有带 reference 的"
 
@@ -131,12 +162,56 @@ def test_mask_hard_override_survives_export(manifest):
         delta = float(np.abs(out[0][selected] - reference[selected]).max())
         worst = max(worst, delta)
 
-    # 硬覆盖要求精确相等。实测在 torch 里是 0.0；ONNX 走 Where 算子也应当精确。
-    # 给 1e-6 的余量以防某层做了 dtype 提升，但绝不允许是 O(1e-3) 这种量级。
-    assert worst < 1e-6, f"mask=1 的帧没有精确等于 reference，最大差 {worst:.3e}——硬覆盖语义丢了"
+    # Where 是逐位精确的，所以门限就是 0，不是「小于某个小数」。
+    assert worst == 0.0, (
+        f"mask=1 的帧没有精确等于 reference，最大差 {worst:.3e}——硬覆盖语义丢了")
 
 
 @requires_onnx
+def test_mask_non_binary_proves_where_not_lerp(manifest):
+    """用一个非二值 mask 证明图里是 Where，不是 lerp。
+
+    这是上一条测试的补强：mask∈{0,1} 时 Where 与 lerp 逐位相同，无法区分。
+    把某一帧的 mask 设成 0.5，两者会分叉到 O(1)。
+    """
+    import export_onnx as E
+    import onnxruntime as ort
+
+    session = ort.InferenceSession(str(ONNX_PATH), providers=["CPUExecutionProvider"])
+    feeds = E.sample_feeds(manifest,
+                           mmap_root=Path(manifest["artifacts"]["mmap_dir"]),
+                           release=Path(manifest["artifacts"]["release_dir"]),
+                           limit_per_split=1)
+    feed = next(f for f in feeds if f["offsets"])
+    tensors = dict(feed["tensors"])
+
+    # 把第 12 帧的 mask 改成 0.5（reference 相应填上该帧真值）
+    target = 12
+    tensors["mask"] = np.zeros_like(tensors["mask"])
+    tensors["mask"][0, target, 0] = 0.5
+    reference = np.zeros_like(tensors["reference"])
+    source_ref = feed["tensors"]["reference"][0, target]
+    reference[0, target] = source_ref
+    tensors["reference"] = reference
+
+    out = session.run(None, {name: tensors[name] for name in E.INPUT_NAMES})[0]
+    where_value = out[0, target]
+
+    # 模拟 lerp：ref*mask + pred*(1-mask)。pred 用 mask=0 时的输出近似
+    plain = dict(tensors)
+    plain["mask"] = np.zeros_like(tensors["mask"])
+    pred = session.run(None, {name: plain[name] for name in E.INPUT_NAMES})[0][0, target]
+    lerp_value = source_ref * 0.5 + pred * 0.5
+
+    to_where = float(np.abs(where_value - source_ref).max())
+    to_lerp = float(np.abs(where_value - lerp_value).max())
+
+    assert to_where == 0.0, (
+        f"mask=0.5 时输出没有精确等于 reference（差 {to_where:.3e}）——不是 Where 语义")
+    assert to_lerp > 1e-3, (
+        f"mask=0.5 时输出与 lerp 只差 {to_lerp:.3e}——图里可能是 lerp 而非 Where")
+
+
 def test_batch_size_1_is_enforced(record):
     """静态 batch=1 是硬约束：GRU 在非 1 batch 下会报错，多角色必须多 session。"""
     import onnxruntime as ort
@@ -178,7 +253,8 @@ def test_export_rejects_tampered_manifest(manifest, tmp_path, mutate):
     mutate(tampered)
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(tampered, ensure_ascii=False), encoding="utf-8")
-    with pytest.raises((ValueError, IndexError, KeyError)):
+    # 只收 ValueError：放行 KeyError 会把「代码里拼错键」也当成「正确拒绝了篡改」。
+    with pytest.raises(ValueError):
         E.export(path, CHECKPOINT, tmp_path / "out")
 
 
@@ -248,3 +324,87 @@ def test_all_four_inputs_actually_affect_output(manifest):
         delta = float(np.abs(changed - base).max())
         assert delta > 1e-3, (
             f"把 {name} 置零后输出只变了 {delta:.3e}——该输入可能没真正参与计算")
+
+@requires_onnx
+def test_recorded_tolerance_matches_code(record):
+    """record 里记的阈值必须就是代码里的常量。
+
+    否则有人用 --relative-tolerance 1e-2 重导，哈希对得上、
+    manifest 自述「我用 1e-2 验过」，而 CI 仍按 2e-5 判——两边不一致且无人发现。
+    """
+    import export_onnx as E
+
+    assert record["relative_tolerance"] == E.RELATIVE_TOLERANCE, (
+        "record 记的阈值与代码常量不符，说明产物是用放宽/收紧的阈值导出的"
+    )
+
+
+@requires_onnx
+def test_nan_on_torch_side_is_rejected():
+    """torch 侧产出 NaN 时必须报错，不能被静默吞掉。
+
+    这是真实 bug 的回归测试：只检查 ORT 输出 finite 不够——
+    若 torch 侧含 NaN，np.abs(actual-expected).max() 得 nan，
+    而 Python 的 max(0.0, nan) 返回 0.0，闸门会在最该报警时变绿。
+    """
+
+    class NanModel:
+        def __call__(self, *args):
+            import torch
+
+            return torch.full((1, 24, 702), float("nan"))
+
+    class ZeroSession:
+        def run(self, _names, feed):
+            return [np.zeros((1, 24, 702), dtype=np.float32)]
+
+    import export_onnx as E
+
+    shapes = {"history": 709, "root_plan": 7, "reference": 702, "mask": 1}
+    feeds = [{
+        "split": "x", "clip": "x", "start": 0, "offsets": [],
+        "tensors": {n: np.zeros((1, 24, w), dtype=np.float32) for n, w in shapes.items()},
+    }]
+    with pytest.raises(ValueError, match="torch 输出含 NaN"):
+        E.compare(NanModel(), ZeroSession(), feeds)
+
+
+@requires_onnx
+def test_allclose_catches_real_regression():
+    """allclose 判据必须能抓到「真实量级」的精度损失。
+
+    构造一个刻意偏离的 session：把输出整体偏移 1e-3。
+    这个量级的错误在全局比值判据下也会被抓到，但这里确认 allclose 这条路径确实有效。
+    """
+    import export_onnx as E
+
+    class Baseline:
+        def __call__(self, *args):
+            import torch
+
+            return torch.ones(1, 24, 702)
+
+    class Shifted:
+        def run(self, _names, _feed):
+            return [np.ones((1, 24, 702), dtype=np.float32) + 1e-3]
+
+    shapes = {"history": 709, "root_plan": 7, "reference": 702, "mask": 1}
+    feeds = [{
+        "split": "x", "clip": "x", "start": 0, "offsets": [],
+        "tensors": {n: np.zeros((1, 24, w), dtype=np.float32) for n, w in shapes.items()},
+    }]
+    with pytest.raises(ValueError, match="allclose"):
+        E.compare(Baseline(), Shifted(), feeds)
+
+
+def test_atol_covers_float_noise_near_zero():
+    """接近零的元素只要求噪声地板精度，不要求高相对精度。
+
+    实测：|x| < 1e-3 的元素有 17.4 万个，最大「局部相对误差」是 32000%，
+    但对应绝对误差只有 6.25e-06 —— 那是 float32 正常噪声，不是精度损失。
+    若把 atol 压到 1e-7，1.5% 的元素会被误判为失败。
+    """
+    import export_onnx as E
+
+    assert E.ATOL >= 1e-5, "atol 太小会把接近零元素的浮点噪声判成失败"
+    assert E.RTOL == E.RELATIVE_TOLERANCE, "rtol 应与相对阈值一致"
