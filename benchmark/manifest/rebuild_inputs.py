@@ -43,7 +43,11 @@ def verify_checksums(manifest, *, checkpoint, contract, mmap, stats_dir):
 def decode_6d(values, manifest):
     """按 manifest 声明的 row-major 交错排布解出旋转矩阵。
 
-    values: [..., 6]；返回 [..., 3, 3]。列 2 用叉乘补齐，保证正交。
+    values: [..., 6]；返回 [..., 3, 3]。
+
+    **前提：col0 / col1 已是单位正交向量。**本函数只补 col2 = cross(col0, col1)，
+    不做归一化——真实数据满足这个前提（实测两半范数 1.0±2e-7、点积 ≤1.67e-07），
+    但如果你把未归一化的数喂进来，得到的矩阵不会正交，而且不会报错。
     """
     spec = manifest["rotation_6d"]["decode"]
     col0 = values[..., spec["col0"]]
@@ -100,6 +104,10 @@ def build_sample(manifest, *, mmap_root, release, clip_raw_file, start, referenc
         (combined[:history_frames], root_local(root[start:middle], origin)), axis=-1)
     target = combined[history_frames:]
 
+    # 负数下标在 numpy 里会静默回绕（-1 点亮最后一帧），这是很难发现的语义错误。
+    bad = [o for o in reference_offsets if not 0 <= o < future_frames]
+    if bad:
+        raise ValueError(f"reference_offsets 必须是 0..{future_frames - 1} 的整数，收到 {bad}")
     mask = np.zeros((future_frames, 1), dtype=np.float32)
     mask[list(reference_offsets)] = 1
     reference = target * mask
@@ -114,18 +122,55 @@ def build_sample(manifest, *, mmap_root, release, clip_raw_file, start, referenc
 
 
 def assert_manifest_self_consistent(manifest):
-    """manifest 内部的恒等式；不满足就是 manifest 本身写错了。"""
+    """manifest 内部的恒等式；不满足就 raise。
+
+    用 raise 而不是 assert：这是对外契约，`python -O` 会把 assert 整段删掉，
+    那样这些校验在最需要它们的场景下反而不生效。
+    """
     bone_count = manifest["skeleton"]["bone_count"]
     features = bone_count * 9
     history_frames = manifest["timing"]["history_frames"]
     future_frames = manifest["timing"]["future_frames"]
-    assert manifest["inputs"]["history"]["shape"] == [history_frames, features + 7]
-    assert manifest["inputs"]["root_plan"]["shape"] == [future_frames, 7]
-    assert manifest["inputs"]["reference"]["shape"] == [future_frames, features]
-    assert manifest["inputs"]["mask"]["shape"] == [future_frames, 1]
-    assert manifest["output"]["shape"] == [future_frames, features]
-    assert len(manifest["skeleton"]["names"]) == bone_count
-    assert len(manifest["skeleton"]["parents"]) == bone_count
+
+    def require(condition, message):
+        if not condition:
+            raise ValueError(message)
+
+    require(manifest["inputs"]["history"]["shape"] == [history_frames, features + 7],
+            f"history 形状不符：{manifest['inputs']['history']['shape']}")
+    require(manifest["inputs"]["root_plan"]["shape"] == [future_frames, 7],
+            f"root_plan 形状不符：{manifest['inputs']['root_plan']['shape']}")
+    require(manifest["inputs"]["reference"]["shape"] == [future_frames, features],
+            f"reference 形状不符：{manifest['inputs']['reference']['shape']}")
+    require(manifest["inputs"]["mask"]["shape"] == [future_frames, 1],
+            f"mask 形状不符：{manifest['inputs']['mask']['shape']}")
+    require(manifest["output"]["shape"] == [future_frames, features],
+            f"output 形状不符：{manifest['output']['shape']}")
+    require(len(manifest["skeleton"]["names"]) == bone_count, "骨骼名数量不符")
+    require(len(manifest["skeleton"]["parents"]) == bone_count, "父索引数量不符")
+
     spec = manifest["rotation_6d"]["decode"]
-    assert sorted(spec["col0"] + spec["col1"]) == list(range(6)), spec
+    require(sorted(spec["col0"] + spec["col1"]) == list(range(6)),
+            f"6D 解码索引没有覆盖 0..5：{spec}")
+    require(spec["col2"] == "cross(col0, col1)", f"col2 定义异常：{spec['col2']}")
+
+    # layout 是 UE 侧 C++ 唯一要照抄的东西，必须逐段核对：
+    # position / rotation_6d / root_local 三段要首尾相接、连续覆盖 features+7。
+    layout = manifest["inputs"]["history"]["layout"]
+    position, rotation, root_local = layout["position"], layout["rotation_6d"], layout["root_local"]
+    require(position["width"] == bone_count * 3,
+            f"position 宽度应为 {bone_count * 3}，实际 {position['width']}")
+    require(rotation["width"] == bone_count * 6,
+            f"rotation_6d 宽度应为 {bone_count * 6}，实际 {rotation['width']}")
+    require(root_local["width"] == 7, f"root_local 宽度应为 7，实际 {root_local['width']}")
+    segments = [(position["offset"], position["offset"] + position["width"]),
+                (rotation["offset"], rotation["offset"] + rotation["width"]),
+                (root_local["offset"], root_local["offset"] + root_local["width"])]
+    cursor = 0
+    for start, end in segments:
+        require(start == cursor,
+                f"layout 段不连续：期望从 {cursor} 开始，实际 {start}（{segments}）")
+        cursor = end
+    require(cursor == features + 7,
+            f"layout 总宽应为 {features + 7}，实际覆盖到 {cursor}")
     return True

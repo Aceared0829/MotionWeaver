@@ -151,6 +151,37 @@ def test_rebuild_with_fixed_offsets(manifest, scenario, offsets):
                 f"{name} max|d|={delta:.3e}")
 
 
+@requires_data
+@pytest.mark.parametrize("mutate", [
+    lambda m: m["inputs"]["history"]["layout"]["root_local"].__setitem__("offset", 700),
+    lambda m: m["inputs"]["history"]["layout"]["position"].__setitem__("width", 233),
+    lambda m: m["inputs"]["history"]["layout"]["rotation_6d"].__setitem__("width", 465),
+    lambda m: m["rotation_6d"]["decode"].__setitem__("col2", "nonsense"),
+    lambda m: m["inputs"]["mask"].__setitem__("shape", [99, 9]),
+])
+def test_manifest_tampering_must_be_caught(manifest, mutate):
+    """layout / decode / shape 被篡改时，自检必须炸。
+
+    layout 是 UE 侧 C++ 唯一要照抄的东西；它错了而自检还过，
+    等于把错误直接送进引擎。
+    """
+    import copy
+
+    tampered = copy.deepcopy(manifest)
+    mutate(tampered)
+    with pytest.raises((ValueError, IndexError)):
+        R.assert_manifest_self_consistent(tampered)
+
+
+@requires_data
+def test_offset_negative_is_rejected(manifest, contract):
+    """负数 offset 在 numpy 里会静默回绕（-1 点亮最后一帧），必须显式拒绝。"""
+    clip = contract["clips"][0]
+    with pytest.raises(ValueError, match="reference_offsets"):
+        R.build_sample(manifest, mmap_root=MMAP, release=RELEASE,
+                       clip_raw_file=clip["raw_file"], start=0, reference_offsets=(-1,))
+
+
 def test_column_concat_layout_must_fail(manifest):
     """反向测试：把 6D 排布换成「列拼接」，重建必须对不上。
 
@@ -182,7 +213,6 @@ def test_column_concat_layout_must_fail(manifest):
     assert np.abs(gram - np.eye(3)).max() > 1e-2, "错排布竟然也正交，反向测试无效"
 
 
-@requires_data
 def test_rebuild_does_not_import_training_code():
     """独立脚本必须真的独立：不许 import 训练侧装配逻辑。"""
     source = (REPO / "benchmark" / "manifest" / "rebuild_inputs.py").read_text(encoding="utf-8")
