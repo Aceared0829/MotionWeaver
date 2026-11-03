@@ -114,25 +114,35 @@ def sample_feeds(manifest, *, mmap_root, release, limit_per_split=6):
     return feeds
 
 
-# 为什么不用单一绝对阈值 max|Δ| < 1e-5：
+# 判据由三部分组成，缺一不可：
 #
-# 实测（72 个真实窗口）绝对误差最大 1.287e-05，中位 4.97e-06。
-# 但误差随输出幅值放大——它与 |out|max 的相关系数是 0.524。
-# 换成相对误差则是 5.29e-06，而且绝对误差只有 float32 eps 的 19.4 倍，
-# 与 257 个节点逐层累积的理论量级（sqrt(257) ~ 16 倍）吻合。
+# 1) 逐元素 np.allclose(atol=1e-5, rtol=1e-5)
+#    —— 真正的误差界。单独用「全局 max|Δ| / max|out|」是混范数
+#    （∞-范数误差 ÷ max-范数尺度），会掩盖小幅值元素的相对误差。
+# 2) 全局 max|Δ| / max|out| < 2e-5
+#    —— 与调研文档的口径可比，保留作为参考指标。
+# 3) 两侧输出都必须 finite
+#    —— 见下，这是 gate 失效的修复。
 #
-# 也就是说 1e-5 对 float32 + 257 节点的模型定得太紧，会在正确实现上误报；
-# 直接放宽到 1e-4 又太松，会把真的精度损失放过去。
+# 为什么 2e-5：2026-11-03 用 float64 真值三方对比测过——
+# torch-f32 对 f64 相对误差 3.86e-06，ORT-f32 对 f64 是 4.09e-06，
+# 两次独立 f32 求值的合成界 sqrt(3.86²+4.09²) = 5.62e-06。
+# 实测 flip 是 5.29e-06，与这个界几乎相等，说明 ORT 不比 torch 差、导出无损。
+# 2e-5 相对这个界留了约 3.3 倍余量。
 #
-# 所以改判相对误差：与幅值无关，可跨模型 / 跨批次比较。
+# 注意：不要用「误差 ≈ sqrt(节点数) × eps」这类估算——误差累积量级取决于
+# 运算结构（本图 257 个节点里只有 75 个算术节点，182 个是形变类不累积舍入），
+# 不是节点数的平方根。
 RELATIVE_TOLERANCE = 2e-5
+ATOL = 1e-5
+RTOL = 1e-5
 
 
-def compare(model, session, feeds, relative_tolerance=RELATIVE_TOLERANCE):
-    """逐样本比 torch 与 ORT，判据是相对误差。
+def compare(model, session, feeds, relative_tolerance=RELATIVE_TOLERANCE,
+            atol=ATOL, rtol=RTOL):
+    """逐样本比 torch 与 ORT。
 
-    模型输出幅值在 1.37~5.57 之间浮动，绝对误差会跟着放大，
-    用单一绝对阈值必然要么误报要么漏报。
+    三条判据见文件头注释。任何一条不过就 raise，不返回「差不多」的结果。
     """
     worst_abs = 0.0
     worst_rel = 0.0
@@ -144,13 +154,32 @@ def compare(model, session, feeds, relative_tolerance=RELATIVE_TOLERANCE):
             actual = session.run(None, {name: feed["tensors"][name] for name in INPUT_NAMES})[0]
             if actual.shape != expected.shape:
                 raise ValueError(f"形状不符：{actual.shape} vs {expected.shape}")
+
+            # 两侧都要 finite。只查 actual 是个真 bug：若 expected 含 NaN，
+            # np.abs(actual-expected).max() 得到 nan，而 Python 的 max(0.0, nan)
+            # 返回 0.0 —— 闸门会在「torch 侧算出 NaN」这种最该报警的情况下变绿。
+            if not np.isfinite(expected).all():
+                raise ValueError(f"torch 输出含 NaN/Inf：{feed['clip']} start={feed['start']}")
             if not np.isfinite(actual).all():
-                raise ValueError(f"ORT 输出含 NaN/Inf：{feed['clip']}")
+                raise ValueError(f"ORT 输出含 NaN/Inf：{feed['clip']} start={feed['start']}")
+
             delta = float(np.abs(actual - expected).max())
             scale = float(np.abs(expected).max())
             relative = delta / max(scale, 1e-12)
             worst_abs = max(worst_abs, delta)
             worst_rel = max(worst_rel, relative)
+
+            # 真正的误差界：逐元素 atol+rtol。
+            # 全局比值会放过「|x| 很小但 |Δ| 相对很大」的元素，allclose 不会。
+            if not np.allclose(actual, expected, atol=atol, rtol=rtol):
+                gap = np.abs(actual - expected)
+                limit = atol + rtol * np.abs(expected)
+                exceeded = int((gap > limit).sum())
+                raise ValueError(
+                    f"逐元素 allclose 失败：{feed['clip']} start={feed['start']} "
+                    f"offsets={feed['offsets']} 有 {exceeded} 个元素超出 "
+                    f"atol={atol:.0e} rtol={rtol:.0e}（最大 |Δ|={delta:.3e}）")
+
             details.append({
                 "split": feed["split"], "clip": feed["clip"],
                 "start": feed["start"], "offsets": feed["offsets"],
@@ -162,7 +191,7 @@ def compare(model, session, feeds, relative_tolerance=RELATIVE_TOLERANCE):
         raise ValueError(
             f"最大相对误差 {worst_rel:.3e} 超过 {relative_tolerance:.0e}"
             f"（绝对 {worst_abs:.3e}）")
-    return {"max_abs": worst_abs, "max_rel": worst_rel}, details
+    return {"max_abs": worst_abs, "max_rel": worst_rel, "atol": atol, "rtol": rtol}, details
 
 
 def export(manifest_path, checkpoint, output, *, relative_tolerance=RELATIVE_TOLERANCE,
@@ -253,14 +282,23 @@ def export(manifest_path, checkpoint, output, *, relative_tolerance=RELATIVE_TOL
         "outputs": {OUTPUT_NAME: expected_shapes["history"][:2] + [features]},
         "input_dtype": "float32",
         "batch": 1,
-        "batch_note": "静态 batch=1。多角色必须每角色一个 session——"
-                      "GRU 在非 1 batch 下会报错，这是导出时 torch 明确警告过的。",
+        "batch_note": "静态 batch=1：输入形状硬编码为 [1,24,*]，ORT 对 batch≠1 直接拒绝"
+                      "（实测报 Got invalid dimensions for input: history, index: 0 Got: 2 Expected: 1）。"
+                      "torch 导出时另有一条 warning 提示「动态 batch + GRU 有风险」，"
+                      "本模型因静态形状不涉及该风险。"
+                      "多角色建议每角色一个 session，并显式设 intra_op_num_threads=1——"
+                      "实测默认线程池下 8 角色并发 151.54 ms，限制到 1 线程后降到 5.77 ms。",
         "max_torch_vs_ort_cpu": errors["max_abs"],
         "max_rel_torch_vs_ort_cpu": errors["max_rel"],
         "relative_tolerance": relative_tolerance,
-        "criterion_note": "判据是相对误差（max_rel < 2e-5），不是绝对误差。"
-                          "实测绝对误差 1.29e-05 只有 float32 eps 的 19.4 倍，"
-                          "与 257 节点累积的理论量级吻合；单一绝对阈值 1e-5 会在正确实现上误报。",
+        "criterion_note": "三条判据并行：逐元素 allclose(atol=1e-5, rtol=1e-5)、"
+                          "全局 max|d|/max|out| < 2e-5、两侧输出均 finite。"
+                          "2e-5 的依据是 float64 真值三方对比：torch-f32 对 f64 的相对误差 3.86e-06、"
+                          "ORT-f32 对 f64 是 4.09e-06，两次独立 f32 求值的合成界 5.62e-06，"
+                          "实测 flip 5.29e-06 与之几乎相等——说明 ORT 不比 torch 差、导出无损，"
+                          "2e-5 相对这个界留了约 3.3 倍余量。"
+                          "绝对误差 1.29e-05 折成 eps 倍数的范围是 [8.1, 44.4]（随样本幅值变化），"
+                          "只能当量级参考，不能当判据。",
         "samples": len(feeds),
         "sample_detail": details,
         "environment": {

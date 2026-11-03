@@ -106,8 +106,13 @@ def test_numeric_alignment_holds(record):
 def test_mask_hard_override_survives_export(manifest):
     """mask=1 的帧必须**精确**等于 reference——这是 hard override，不是软条件。
 
-    ONNX 编译器完全可能把 torch.where 优化掉或改成近似。
-    这条测试专门守住那个语义。
+    **为什么必须塞一个非二值 mask**：如果 mask 只取 0/1，那么
+    `torch.where(mask, ref, pred)` 与 `ref*mask + pred*(1-mask)` 在 IEEE 下
+    逐位相同（1*x + 0*y ≡ x）。只用 0/1 测，这条测试**原理上无法区分**
+    Where 和 lerp——而它声称要防的正是 where 被重写成 lerp。
+
+    mask=0.5 时两者差异是 O(1)：bool(0.5) 为 True 仍取 reference，
+    而 lerp 会给出 0.5*ref + 0.5*pred。
     """
     import export_onnx as E
     import onnxruntime as ort
@@ -117,7 +122,6 @@ def test_mask_hard_override_survives_export(manifest):
                            mmap_root=Path(manifest["artifacts"]["mmap_dir"]),
                            release=Path(manifest["artifacts"]["release_dir"]),
                            limit_per_split=1)
-    # 只挑有 reference 的样本
     picked = [f for f in feeds if f["offsets"]]
     assert picked, "样本里没有带 reference 的"
 
@@ -131,12 +135,56 @@ def test_mask_hard_override_survives_export(manifest):
         delta = float(np.abs(out[0][selected] - reference[selected]).max())
         worst = max(worst, delta)
 
-    # 硬覆盖要求精确相等。实测在 torch 里是 0.0；ONNX 走 Where 算子也应当精确。
-    # 给 1e-6 的余量以防某层做了 dtype 提升，但绝不允许是 O(1e-3) 这种量级。
-    assert worst < 1e-6, f"mask=1 的帧没有精确等于 reference，最大差 {worst:.3e}——硬覆盖语义丢了"
+    # Where 是逐位精确的，所以门限就是 0，不是「小于某个小数」。
+    assert worst == 0.0, (
+        f"mask=1 的帧没有精确等于 reference，最大差 {worst:.3e}——硬覆盖语义丢了")
 
 
 @requires_onnx
+def test_mask_non_binary_proves_where_not_lerp(manifest):
+    """用一个非二值 mask 证明图里是 Where，不是 lerp。
+
+    这是上一条测试的补强：mask∈{0,1} 时 Where 与 lerp 逐位相同，无法区分。
+    把某一帧的 mask 设成 0.5，两者会分叉到 O(1)。
+    """
+    import export_onnx as E
+    import onnxruntime as ort
+
+    session = ort.InferenceSession(str(ONNX_PATH), providers=["CPUExecutionProvider"])
+    feeds = E.sample_feeds(manifest,
+                           mmap_root=Path(manifest["artifacts"]["mmap_dir"]),
+                           release=Path(manifest["artifacts"]["release_dir"]),
+                           limit_per_split=1)
+    feed = next(f for f in feeds if f["offsets"])
+    tensors = dict(feed["tensors"])
+
+    # 把第 12 帧的 mask 改成 0.5（reference 相应填上该帧真值）
+    target = 12
+    tensors["mask"] = np.zeros_like(tensors["mask"])
+    tensors["mask"][0, target, 0] = 0.5
+    reference = np.zeros_like(tensors["reference"])
+    source_ref = feed["tensors"]["reference"][0, target]
+    reference[0, target] = source_ref
+    tensors["reference"] = reference
+
+    out = session.run(None, {name: tensors[name] for name in E.INPUT_NAMES})[0]
+    where_value = out[0, target]
+
+    # 模拟 lerp：ref*mask + pred*(1-mask)。pred 用 mask=0 时的输出近似
+    plain = dict(tensors)
+    plain["mask"] = np.zeros_like(tensors["mask"])
+    pred = session.run(None, {name: plain[name] for name in E.INPUT_NAMES})[0][0, target]
+    lerp_value = source_ref * 0.5 + pred * 0.5
+
+    to_where = float(np.abs(where_value - source_ref).max())
+    to_lerp = float(np.abs(where_value - lerp_value).max())
+
+    assert to_where == 0.0, (
+        f"mask=0.5 时输出没有精确等于 reference（差 {to_where:.3e}）——不是 Where 语义")
+    assert to_lerp > 1e-3, (
+        f"mask=0.5 时输出与 lerp 只差 {to_lerp:.3e}——图里可能是 lerp 而非 Where")
+
+
 def test_batch_size_1_is_enforced(record):
     """静态 batch=1 是硬约束：GRU 在非 1 batch 下会报错，多角色必须多 session。"""
     import onnxruntime as ort
@@ -248,3 +296,46 @@ def test_all_four_inputs_actually_affect_output(manifest):
         delta = float(np.abs(changed - base).max())
         assert delta > 1e-3, (
             f"把 {name} 置零后输出只变了 {delta:.3e}——该输入可能没真正参与计算")
+
+@requires_onnx
+def test_recorded_tolerance_matches_code(record):
+    """record 里记的阈值必须就是代码里的常量。
+
+    否则有人用 --relative-tolerance 1e-2 重导，哈希对得上、
+    manifest 自述「我用 1e-2 验过」，而 CI 仍按 2e-5 判——两边不一致且无人发现。
+    """
+    import export_onnx as E
+
+    assert record["relative_tolerance"] == E.RELATIVE_TOLERANCE, (
+        "record 记的阈值与代码常量不符，说明产物是用放宽/收紧的阈值导出的"
+    )
+
+
+@requires_onnx
+def test_nan_on_torch_side_is_rejected():
+    """torch 侧产出 NaN 时必须报错，不能被静默吞掉。
+
+    这是真实 bug 的回归测试：只检查 ORT 输出 finite 不够——
+    若 torch 侧含 NaN，np.abs(actual-expected).max() 得 nan，
+    而 Python 的 max(0.0, nan) 返回 0.0，闸门会在最该报警时变绿。
+    """
+
+    class NanModel:
+        def __call__(self, *args):
+            import torch
+
+            return torch.full((1, 24, 702), float("nan"))
+
+    class ZeroSession:
+        def run(self, _names, feed):
+            return [np.zeros((1, 24, 702), dtype=np.float32)]
+
+    import export_onnx as E
+
+    shapes = {"history": 709, "root_plan": 7, "reference": 702, "mask": 1}
+    feeds = [{
+        "split": "x", "clip": "x", "start": 0, "offsets": [],
+        "tensors": {n: np.zeros((1, 24, w), dtype=np.float32) for n, w in shapes.items()},
+    }]
+    with pytest.raises(ValueError, match="torch 输出含 NaN"):
+        E.compare(NanModel(), ZeroSession(), feeds)
