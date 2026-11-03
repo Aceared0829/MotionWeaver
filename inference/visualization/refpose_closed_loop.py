@@ -25,7 +25,7 @@ POSE_W = paths.POSE_WEIGHT
 # 优先用 20 epoch 版；盘上没有就回退到早先那版。两个值必须保持不同，
 # 否则 load_models 里的 "优先 A、回退 B" 退化成「A 不存在就直接炸」。
 ROOT_W = paths.ROOT_WEIGHT
-ROOT_W2 = paths.ROOT_WEIGHT_PREV
+ROOT_W2 = paths.ROOT_WEIGHT_ALT
 OUT = ROOT / "output" / "refpose_preview" / "closed_loop"
 WINDOW = 24
 STRIDE = 8
@@ -103,7 +103,6 @@ def main():
 
     with torch.no_grad():
         for step in range(steps):
-            len(frame_root) - 1
             pose_arr = np.stack(frame_pose[-WINDOW:])
             rot_arr = np.stack(frame_rot[-WINDOW:])
             root_arr = np.stack(frame_root[-WINDOW:])

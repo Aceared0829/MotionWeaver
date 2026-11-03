@@ -25,8 +25,14 @@ CONTRACT = RELEASE / "contract" / "contract.json"
 STATS = RELEASE / "contract" / "stats"
 
 POSE_WEIGHT = DATA / "model_weight" / "refpose_v3_71k" / "best.pt"
+
+# Root 头权重有两个候选，脚本按「先 ROOT_WEIGHT、没有再用 ROOT_WEIGHT_ALT」取。
+# 历史沿革：早期版本首选 refpose_root_ep_grouped，但那个目录在本机从未存在过
+# （is_file() 恒为 False），所以实际一直加载的是 20ep_grouped——11-02 的
+# closed_loop/report.json 记的正是它。这里把两个槽位都落在真实存在的目录上，
+# 不再留一条指向空气的回退分支。
 ROOT_WEIGHT = DATA / "training_runs" / "refpose_root_20ep_grouped" / "best.pt"
-ROOT_WEIGHT_PREV = DATA / "training_runs" / "refpose_root_ep_grouped" / "best.pt"
+ROOT_WEIGHT_ALT = DATA / "training_runs" / "refpose_root_20ep_seq" / "best.pt"
 REVIEWS = DATA / "reviews" / "refpose-closed-loop"
 
 OUT_PREVIEW = ROOT / "output" / "refpose_preview"

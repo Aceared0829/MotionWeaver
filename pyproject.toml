@@ -4,3 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.ruff.lint.isort]
 known-first-party = ["data", "inference", "motionbricks", "motionweaver", "training"]
+
+[tool.ruff.lint]
+# B018 = 裸表达式。实测它只抓字面量和裸名字，抓不到 `len(x) - 1` 这种 BinOp
+# （2026-11-03 真正漏网的那处就是 BinOp）。留着当第一道粗筛，但不能拿它当
+# "没有死语句"的证据——完整检查见 tests/test_no_dead_expressions.py。
+extend-select = ["B018"]
