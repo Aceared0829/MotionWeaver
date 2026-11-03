@@ -154,7 +154,7 @@ https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/AnimGen/
 | 377 | Encoded Behavior | 「encodes the controls of some sub-behavior」 |
 | 452 | Multi Behavior | 「made up of multiple other behaviors」 |
 
-Epic 文档页另列出 `UAnimGenBehavior_TrajectoryInteraction`（「following a trajectory while also interacting with an object or prop」），本机头文件中未见同名 `DisplayName`，**以本机文件为准**。
+Epic 文档页列出 `UAnimGenBehavior_TrajectoryInteraction`（「following a trajectory while also interacting with an object or prop」）。**本机已核实存在**：`AnimGenBehavior.h:207` 的 `DisplayName = "Trajectory Interaction Behavior"`，`:208` 的 `class UAnimGenBehavior_TrajectoryInteraction`，`:529-531` 还有配套的 `MakeTrajectoryInteractionBehaviorControl`。（2026-11-03 订正：此前写「未见」，是漏查了同一文件的后半段。）
 
 **关键否证：** 对 `AnimGen\Source` 下全部 `.h` grep `in-between` / `InBetween` / `Keyframe` / `KeyFrame` / `Anchor` / `ReferencePose` / `bReference` → **全部 0 命中**。
 
@@ -172,7 +172,7 @@ Epic 文档页另列出 `UAnimGenBehavior_TrajectoryInteraction`（「following 
 
 ### B.4 与本机其他插件的关系（命令行取证）
 
-`D:\UE_5.8\Engine\Plugins\Experimental\Animation\` 下 17 个 `.uplugin`，相关者：
+`D:\UE_5.8\Engine\Plugins\Experimental\Animation\` 下 18 个 `.uplugin`，相关者：
 
 | 插件 | Description（`.uplugin` 原文） | 与我们 refpose 的关系 |
 |---|---|---|
@@ -255,7 +255,7 @@ Epic 文档页另列出 `UAnimGenBehavior_TrajectoryInteraction`（「following 
 | 4 | AnimGen 是否在 5.8 release notes 中 | **未证实** | 抓取到的发行说明页被截断在 100,000 字符，`AnimGen` 0 命中。**只能确认它不在高曝光位置，不能确认官方从未提及。** |
 | 5 | AnimNext 是否等于 UAF | **推断** | 本机无 `AnimNext` 目录，只有 `MoverAnimNext` 与 `Experimental\UAF\*`。**未找到 Epic 明文改名公告。** |
 | 6 | AnimGen 能否扩展出「锚点补间」 | **推断** | 机制上可行（`BlueprintNativeEvent` 可继承），**但未验证 control set 是否支持「逐帧可选性」语义，也未跑过训练。属可行性推断。** |
-| 7 | `UAnimGenBehavior_TrajectoryInteraction` | **不一致** | Epic 文档页列出，本机 `AnimGenBehavior.h` 中未见同名 `DisplayName` 的类。**未进一步核实。** |
+| 7 | `UAnimGenBehavior_TrajectoryInteraction` | **已核实一致** | 本机 `AnimGenBehavior.h:207` 的 `DisplayName = "Trajectory Interaction Behavior"`、`:208` 类定义、`:529-531` 控制元素工厂函数。（2026-11-03 订正，原判「未见」为漏查。） |
 | 8 | 官方 UE 插件 | **已确证「无」** | issue #131 作者回复「内部讨论中」，issue 已 closed；GitHub `motionbricks+unreal` 搜索仅 1 个第三方骨架项目。**这是查到的否定证据，不是没查到。** |
 | 9 | Move Mimic | **查不到** | arXiv 与 GitHub 均无结果。**不编造。** |
 | 10 | MotionBricks 权重的 HF 许可标签 | **未核实** | `nvidia/MotionBricks` 页面 JS 渲染，只拿到 stylesheet 级内容；tags 中无 `license:*` 字段。**只能引用 GitHub 侧明文声明。** |

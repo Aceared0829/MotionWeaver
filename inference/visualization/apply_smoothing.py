@@ -2,13 +2,13 @@
 """只平滑主链，末端指节/眼/颌保持原样（避免过度平滑）。"""
 import json
 import sys
-from pathlib import Path
 
 import numpy as np
+import paths
 from scipy.signal import savgol_filter
 from scipy.spatial.transform import Rotation
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = paths.ROOT
 sys.path.insert(0, str(ROOT/"inference"/"visualization"))
 import render_refpose_gifs as g
 
@@ -57,16 +57,21 @@ def run(tag, win, poly):
     a0, a1 = accel(before), accel(after)
     return sm, root, a0, a1, e0, e1
 
-SAVE_WIN = 11
-print(f"主链平滑（末端保持原样），保存 win={SAVE_WIN}：")
-for tag in ("p4_N1", "p4_N2"):
-    for win, poly in ((11,3),(21,3),(31,3)):
-        sm, root, a0, a1, e0, e1 = run(tag, win, poly)
-        print(f"  {tag} win={win:2d}: 加速度 {a0:5.1f} → {a1:5.1f}   误差 {e0:.2f} → {e1:.2f} cm")
-    # 保存 win=11 版本（延迟 ±46 ms，精度几乎无损）
-    sm, root, a0, a1, e0, e1 = run(tag, SAVE_WIN, 3)
-    np.savez_compressed(OUT/f"{tag}_smooth.npz",
-                        frames=sm.astype(np.float32),
-                        root_frames=root.astype(np.float32),
-                        fps=np.float32(120.0))
-print("saved")
+def main():
+    SAVE_WIN = 11
+    print(f"主链平滑（末端保持原样），保存 win={SAVE_WIN}：")
+    for tag in ("p4_N1", "p4_N2"):
+        for win, poly in ((11,3),(21,3),(31,3)):
+            sm, root, a0, a1, e0, e1 = run(tag, win, poly)
+            print(f"  {tag} win={win:2d}: 加速度 {a0:5.1f} → {a1:5.1f}   误差 {e0:.2f} → {e1:.2f} cm")
+        # 保存 win=11 版本（延迟 ±46 ms，精度几乎无损）
+        sm, root, a0, a1, e0, e1 = run(tag, SAVE_WIN, 3)
+        np.savez_compressed(OUT/f"{tag}_smooth.npz",
+                            frames=sm.astype(np.float32),
+                            root_frames=root.astype(np.float32),
+                            fps=np.float32(120.0))
+    print("saved")
+
+
+if __name__ == "__main__":
+    main()

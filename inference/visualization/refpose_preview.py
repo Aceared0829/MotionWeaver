@@ -14,12 +14,13 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import paths
 import torch
 from matplotlib import font_manager
 from PIL import Image
 from scipy.spatial.transform import Rotation
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = paths.ROOT
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
 import paths

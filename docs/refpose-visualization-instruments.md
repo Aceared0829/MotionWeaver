@@ -1,6 +1,6 @@
 # inference/visualization：这批一次性仪器的现状与边界
 
-> 这份文档解决一个具体问题：仓库里躺着 25 个 `inference/visualization/*.py`（本 PR 新增 19 个），
+> 这份文档解决一个具体问题：仓库里躺着 25 个 `inference/visualization/*.py`（本 PR 新增 20 个，含 paths.py），
 > 它们没有测试、没有 CI、路径硬编码，谁也不敢说自己能维护。
 > 本文说清它们**是什么、凭什么存在、边界在哪**，好让下一个人不用重新猜一遍。
 
@@ -60,19 +60,34 @@
 
 | 常量 | 值 | 环境变量 |
 |---|---|---|
-| `P.ROOT` | 仓库根（按 `__file__` 推，不再写死） | `MW_ROOT` |
-| `P.DATA` | 数据根 | `MW_DATA_ROOT` |
-| `P.MMAP` | `<DATA>/full_mmap` | — |
-| `P.CONTRACT` | `<DATA>/full_release/contract/contract.json` | — |
-| `P.STATS` | `<DATA>/full_release/contract/stats` | — |
-| `P.POSE_WEIGHT` | `<DATA>/model_weight/refpose_v3_71k/best.pt` | — |
-| `P.ROOT_WEIGHT` | `<DATA>/training_runs/refpose_root_20ep_grouped/best.pt` | — |
-| `P.ROOT_WEIGHT_PREV` | `<DATA>/training_runs/refpose_root_ep_grouped/best.pt` | — |
-| `P.REVIEWS` | `<DATA>/reviews/refpose-closed-loop` | — |
+| `paths.ROOT` | 仓库根（按 `__file__` 推，不再写死） | `MW_ROOT` |
+| `paths.DATA` | 数据根 | `MW_DATA_ROOT` |
+| `paths.MMAP` | `<DATA>/full_mmap` | — |
+| `paths.CONTRACT` | `<DATA>/full_release/contract/contract.json` | — |
+| `paths.STATS` | `<DATA>/full_release/contract/stats` | — |
+| `paths.POSE_WEIGHT` | `<DATA>/model_weight/refpose_v3_71k/best.pt` | — |
+| `paths.ROOT_WEIGHT` | `<DATA>/training_runs/refpose_root_20ep_grouped/best.pt` | — |
+| `paths.ROOT_WEIGHT_ALT` | `<DATA>/training_runs/refpose_root_20ep_seq/best.pt` | — |
+| `paths.RELEASE` | `<DATA>/full_release` | — |
+| `paths.REVIEWS` | `<DATA>/reviews/refpose-closed-loop` | — |
+| `paths.OUT_PREVIEW` | `<ROOT>/output/refpose_preview` | — |
 
-**验收判据（已实测）**：重构后 8 个常量与重构前逐字硬编码值**完全相等**，
-`Path(want) == got` 全部为真。`inference/visualization` 下 25 个模块 import 全部成功；
-其中 17 个文件改为引用 `paths` 常量，共 47 处（含 17 处 `ROOT` 推导）。
+**验收判据（已实测）**：
+
+- `inference/visualization` 下 25 个模块从仓库根 import 全部成功
+- `paths.py` 提供 11 个模块级常量
+- 17 个文件 `import paths`；其中 17 个文件用 `ROOT = paths.ROOT`（**ROOT 推导式
+  已彻底收进 paths.py，不再各写一份**）；`paths.*` 引用共 49 处
+- **路径值对照**：这批脚本原本未进 git，所以「重构前的字面量」没有版本历史可查。
+  可比对的只有 11-02 的运行产物：
+  - `paths.MMAP` ← `reviews/refpose-closed-loop/export-index.csv` 记录过的
+    `D:\MotionWeaverData\full_mmap\020545`
+  - `paths.ROOT_WEIGHT` ← `output/refpose_preview/closed_loop/report.json` 里的
+    `root_weights`
+  - `paths.POSE_WEIGHT` / `STATS` / `REVIEWS` 由同批产物间接佐证
+
+  `CONTRACT` / `RELEASE` / `OUT_PREVIEW` **没有重构前产物可对照**，
+  只能算「未被证伪」，不能声称「已验证相等」。这条区别不该被含糊掉。
 
 ---
 
@@ -86,8 +101,9 @@
 
 **已知的结构性问题（不在本次处理）**：
 
-1. **坐标转换仍有两份实现**：Python 的 `ue_axis.py` 与已删除的 JS `ueToGl`。
-   JS 那份已随游戏模拟层删除，Python 这份是唯一真源。
+1. **坐标转换只有一份实现**：`ue_axis.py`。已删除的游戏模拟层里**没有**做过
+   UE 轴转换（存档 html 实测 `ueToGl` / `quat` / `cont6d` / `6D` 全部 0 命中），
+   所以不存在「两份实现」的问题——此前这么写是记错了。
 2. **6D 旋转解码仍有两套约定**：训练侧 `matrix_to_cont6d` 是列拼接，
    数据侧 `r.npy` 是 row-major 交错 `(m00,m01,m10,m11,m20,m21)`。
    这条必须在阶段 0 的 manifest 里钉死，不能靠注释。

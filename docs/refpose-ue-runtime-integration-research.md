@@ -180,7 +180,7 @@ DmlFusedNode_1_4  provider=DmlExecutionProvider  dur 49-53 us
 
 ### 3.2 refpose v3 的时间尺度（关键）
 
-- 训练 fps = **120**，窗口 24 帧 → **history 200 ms，future 200 ms**。证据：`contract.json` 全库 `fps=120.0`；`window={history_frames:24, future_frames:24}`；窗口步长 `windows.jsonl` 实测 `start` 差分恒为 24（同 clip 内）。
+- 训练 fps = **120.0048**（contract.json 实测 `120.00480019200768`，不是整数 120），窗口 24 帧 → **history 199.99 ms，future 199.99 ms（≈200 ms）**。证据：`contract.json` 全库 `fps` 该值；`window={history_frames:24, future_frames:24}`；窗口步长 `windows.jsonl` 实测恒为 24。
 - 参考帧号是 **0..23 的 future 帧偏移**（`train_conditioned_pose.py:190-192`：`mask[list(offsets)] = 1`，offsets 取自 0..23），对应 0–191.7 ms 后。
 - 因此「模型必须看到 200 ms 的未来」——**这 200 ms 就是硬延迟下界**，除非把 future 侧改成「只喂已经已知的部分」。
 
@@ -382,7 +382,7 @@ RefPose 输出 (24×78 positions + 6D)
 
 1. **引擎内 ORT 1.24.1 + DirectML 1.15.4 的实际算子分配未测。** 我用的是 Python `onnxruntime-directml 1.24.4`。虽然版本接近，但**必须在 UE 内重跑一次 DML profiling**才能确认 GRU 仍落在 DML 上、仍无 CPU 回退。
 2. **120 Hz 与 30 Hz 的取舍未验证。** 目前只知道训练是 120 Hz；「把 GASP 的 30 Hz 数据上采样到 120 Hz 喂模型」是否会破坏模型质量、「把模型降到 30 Hz 用」是否需要重训，**两者都没有实验数据**。
-3. **`p[:,0]`（Root 骨）与 `k.npy`（root track）语义不一致，尚未查清原因。** 实测：某 clip 内 `Δp[:,0]=(9.30, 0, 1.82)`、`Δk=(-0.13, 0, -9.48)`，模长都是 9.48 m。两者方向不同、无法用简单轴置换对齐（最佳置换仍差 1.70）。**UE 侧转换器必须以 `k.npy`（root track）为准，忽略 `p[:,0]` 的水平分量，但这一条需要先跟数据管线确认。**
+3. **`p[:,0]`（Root 骨）与 `k.npy`（root track）语义不一致，尚未查清原因。** 在 027106 上实测：`Δp[:,0]=(-7.911, 0, 0.855)`、`Δk=(7.933, 0, 0.913)`，模长 7.957 / 7.986 m（差 0.03 m，方向相反）。两者方向不同、无法用简单轴置换对齐。**（2026-11-03 订正：此前写的 `Δp0=(9.30,0,1.82)` / `Δk=(-0.13,0,-9.48)`、「模长都是 9.48」在 000000/019534/019857/027106 四个 clip 上都复现不出，已换成 027106 的实测值。）** **UE 侧转换器必须以 `k.npy`（root track）为准，忽略 `p[:,0]` 的水平分量，但这一条需要先跟数据管线确认。**
 4. **6D 旋转是 global 还是 local 未定论。** 已确认排布（row-major 交错、前两列、正交归一到 1e-6）和「与位置通道不严格 FK 一致」（Spine1 对齐度 0.995，四肢 0.64–0.90，骨长偏差 7.7%）。**「姿态应优先用位置通道还是旋转通道驱动 UE 骨骼」需要一次专门实验**。
 5. **多角色并发性能未测。** 单流 p50 ≈ 0.9 ms，但 GRU 占 55% 且 DML 强制 sequential。N 个角色是线性放大还是更差，未知。
 6. **FootPlacement / StrideWarping 在「无 root motion 生成姿态」上的实际行为未验证。** 源码显示有 `bDisableIfMissingRootMotion`（`AnimNode_StrideWarping.h:114`）和 Manual 模式，但**「Manual 模式下自算的足速/步幅够不够好」没有实测**。
