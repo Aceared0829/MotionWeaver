@@ -146,8 +146,17 @@ Unsqueeze 5, Concat 5, Mod 3, Squeeze 3, Div 3, Softmax 3,
 Gemm 3, Relu 3, Expand 1, GRU 1, Where 1
 ```
 
-**`Where` 只有 1 个，说明 `torch.where(mask, reference, predicted)` 被完整保留，
-没有在导出时被优化掉**——这条是硬覆盖语义能在 UE 侧生效的前提。
+**`Where` 只有 1 个，而且它就是产出 `joints` 的那个节点本身**：
+
+```
+Where(inputs=[Cast_output_0, reference, Add_output_0], outputs=[joints])
+graph.output = ["joints"]
+```
+
+也就是说硬覆盖语义位于图输出路径的**末端**，没有被导出时优化掉。
+这是它在 UE 侧能生效的前提——比「图里存在 Where」更强的证据。
+
+UE 侧只需保证：mask 的 0/1 语义与 reference 的归一化域，和 manifest 一致。
 
 ## 六、已知限制
 
