@@ -64,8 +64,11 @@ def _degeneration(mmap, bones):
         "below_1e_2_count": len(below),
         "below_1e_2_bones": [{"bone": i, "name": bones[i], "min_cross_norm": float(worst[i])}
                              for i in below[:12]],
-        "note": "叶骨（*End）没有子骨，旋转本身不确定；Root 同理。"
-                "这些骨在任何 6D 表示下都不可靠，与是否误读无关。",
+        "note": "两条独立事实，别混为一谈："
+                "(a) 按**正确**排布解码时，全部 78 根骨的 |col0 x col1| 都 ≈1.0"
+                "（200 条随机 clip 实测最小 0.999999693），无一退化；"
+                "(b) 上表列的是**误读**时的后果，其中 Root 与 3 个叶骨恰好落在 0——"
+                "它们同时是「没有子骨、旋转本身不受约束」的骨，所以最容易先崩。",
     }
 
 
