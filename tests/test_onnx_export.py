@@ -160,3 +160,50 @@ def test_export_script_reads_shapes_from_manifest():
     # 常见硬编码形状不该出现
     for hardcoded in ("709", "702", "[1, 24,", "24, 78"):
         assert hardcoded not in body, f"export_onnx.py 里出现了硬编码形状 {hardcoded!r}，应改为从 manifest 读"
+
+@requires_onnx
+@pytest.mark.parametrize("mutate", [
+    # manifest 单个字段被改：内部推导与声明会对不上
+    lambda m: m["inputs"]["history"].__setitem__("shape", [24, 702]),
+    lambda m: m["skeleton"].__setitem__("bone_count", 77),
+    lambda m: m["timing"].__setitem__("history_frames", 20),
+])
+def test_export_rejects_tampered_manifest(manifest, tmp_path, mutate):
+    """manifest 被改过时，导出必须拒绝，不能产出一个形状错的 ONNX。"""
+    import copy
+
+    import export_onnx as E
+
+    tampered = copy.deepcopy(manifest)
+    mutate(tampered)
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(tampered, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises((ValueError, IndexError, KeyError)):
+        E.export(path, CHECKPOINT, tmp_path / "out")
+
+
+@requires_onnx
+def test_export_cross_checks_against_checkpoint(tmp_path):
+    """manifest 内部自洽但和权重不符时，也必须拒绝。
+
+    这条比上一条更硬：它证明导出脚本会拿 manifest 去对账**权重本身**，
+    而不只是对账 manifest 自己。
+    """
+    import copy
+
+    import export_onnx as E
+
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    # 同时改 timing 和 inputs——让 manifest 内部看起来自洽，但与真实权重不符
+    tampered = copy.deepcopy(manifest)
+    tampered["skeleton"]["bone_count"] = 77
+    tampered["skeleton"]["names"] = manifest["skeleton"]["names"][:77]
+    tampered["skeleton"]["parents"] = manifest["skeleton"]["parents"][:77]
+    features = 77 * 9
+    tampered["inputs"]["history"]["shape"] = [24, features + 7]
+    tampered["inputs"]["reference"]["shape"] = [24, features]
+    tampered["output"]["shape"] = [24, features]
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(tampered, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="骨"):
+        E.export(path, CHECKPOINT, tmp_path / "out")

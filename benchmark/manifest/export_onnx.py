@@ -186,6 +186,20 @@ def export(manifest_path, checkpoint, output, *, relative_tolerance=RELATIVE_TOL
             raise ValueError(f"manifest 里 {name} 的形状 {declared} 与推导值 {expected_shapes[name][1:]} 不符")
 
     model, ckpt = build_model(checkpoint)
+
+    # 与权重本身对账：manifest 声明 78 骨，checkpoint 里也得是 78。
+    # 只比 manifest 内部字段是自洽检查，manifest 整体写错时它发现不了。
+    if ckpt["bones"] != bone_count:
+        raise ValueError(f"manifest 说 {bone_count} 骨，checkpoint 里是 {ckpt['bones']}")
+    probe = torch.zeros(1, history_frames, features + 7)
+    with torch.no_grad():
+        produced = model(probe, torch.zeros(1, future_frames, 7),
+                         torch.zeros(1, future_frames, features),
+                         torch.zeros(1, future_frames, 1))
+    if list(produced.shape) != [1, future_frames, features]:
+        raise ValueError(
+            f"模型实际输出 {list(produced.shape)}，与 manifest 推导的 "
+            f"{[1, future_frames, features]} 不符")
     release = Path(manifest["artifacts"]["release_dir"])
     mmap_root = Path(manifest["artifacts"]["mmap_dir"])
     feeds = sample_feeds(manifest, mmap_root=mmap_root, release=release, limit_per_split=limit_per_split)
