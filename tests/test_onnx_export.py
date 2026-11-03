@@ -219,3 +219,32 @@ def test_export_supports_path_override():
     assert "MW_MMAP_DIR" in source, "应有 MW_MMAP_DIR 覆盖 mmap 路径"
     # 路径无效时应给出可操作的错误，而不是裸 FileNotFoundError
     assert "换机器时请设" in source, "错误信息应告诉用户怎么修"
+
+
+@requires_onnx
+def test_all_four_inputs_actually_affect_output(manifest):
+    """四个输入必须都真的影响输出。
+
+    这条防的是一种很难发现的失败：模型表面能跑、形状对、数值也没 NaN，
+    但某个输入在导出时被优化掉了（比如 mask 恒 0 时 reference 分支被死代码消除）。
+    那样前面所有的数值测试都会「通过」，因为两边都错得一样。
+    """
+    import export_onnx as E
+    import onnxruntime as ort
+
+    session = ort.InferenceSession(str(ONNX_PATH), providers=["CPUExecutionProvider"])
+    feeds = E.sample_feeds(manifest,
+                           mmap_root=Path(manifest["artifacts"]["mmap_dir"]),
+                           release=Path(manifest["artifacts"]["release_dir"]),
+                           limit_per_split=1)
+    feed = next(f for f in feeds if f["offsets"])
+    base = session.run(None, {n: feed["tensors"][n] for n in E.INPUT_NAMES})[0]
+
+    # 每个输入分别置零，输出必须有可观测变化
+    for name in E.INPUT_NAMES:
+        perturbed = dict(feed["tensors"])
+        perturbed[name] = np.zeros_like(perturbed[name])
+        changed = session.run(None, {n: perturbed[n] for n in E.INPUT_NAMES})[0]
+        delta = float(np.abs(changed - base).max())
+        assert delta > 1e-3, (
+            f"把 {name} 置零后输出只变了 {delta:.3e}——该输入可能没真正参与计算")
