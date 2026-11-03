@@ -13,8 +13,6 @@
 import ast
 from pathlib import Path
 
-import pytest
-
 VISUALIZATION = Path(__file__).resolve().parents[1] / "inference" / "visualization"
 
 
