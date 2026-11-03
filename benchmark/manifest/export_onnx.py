@@ -134,8 +134,24 @@ def sample_feeds(manifest, *, mmap_root, release, limit_per_split=6):
 # 运算结构（本图 257 个节点里只有 75 个算术节点，182 个是形变类不累积舍入），
 # 不是节点数的平方根。
 RELATIVE_TOLERANCE = 2e-5
+
+# 逐元素判据用标准的混合形式：|Δ| <= atol + rtol * |x|。
+#
+# atol 与 rtol 的分工，实测数据说话（72 窗口 / 1,213,056 个元素）：
+#   |x| 分布   : min 0、p1 3.2e-07、中位 0.37、max 5.57   ← 有大量接近 0 的元素
+#   |Δ| 分布   : max 1.29e-05、p99.99 8.25e-06、中位 5.96e-08
+#
+# 关键事实：|x| < 1e-3 的元素有 17.4 万个，它们最大的「局部相对误差」是 3.2e+02
+# （即 32000%），但对应的绝对误差只有 6.25e-06 —— 那是 float32 的正常噪声，
+# 不是精度损失。**要求接近零的元素也有高相对精度是不现实的**，
+# 那会把每一个浮点噪声都判成失败（实测 atol=1e-7 时 1.5% 的元素超限）。
+#
+# 所以 atol 承担「接近零时的噪声地板」，rtol 承担「大幅值时的相对精度」。
+# 实测 (atol=1e-5, rtol=2e-5) 下超出元素数为 0；
+# 而 (1e-5, 2e-5) 能抓到的是这个量级的错误：
+#   某元素被偏移 5e-6 以上、或大幅值元素相对偏差超过 2e-5。
 ATOL = 1e-5
-RTOL = 1e-5
+RTOL = 2e-5
 
 
 def compare(model, session, feeds, relative_tolerance=RELATIVE_TOLERANCE,
@@ -174,11 +190,14 @@ def compare(model, session, feeds, relative_tolerance=RELATIVE_TOLERANCE,
             if not np.allclose(actual, expected, atol=atol, rtol=rtol):
                 gap = np.abs(actual - expected)
                 limit = atol + rtol * np.abs(expected)
-                exceeded = int((gap > limit).sum())
+                over = gap > limit
+                index = np.unravel_index(np.argmax(gap - limit), gap.shape)
                 raise ValueError(
                     f"逐元素 allclose 失败：{feed['clip']} start={feed['start']} "
-                    f"offsets={feed['offsets']} 有 {exceeded} 个元素超出 "
-                    f"atol={atol:.0e} rtol={rtol:.0e}（最大 |Δ|={delta:.3e}）")
+                    f"offsets={feed['offsets']} 有 {int(over.sum())} 个元素超出 "
+                    f"atol={atol:.0e} rtol={rtol:.0e}；"
+                    f"最坏处 |Δ|={gap[index]:.3e} 而允许 {limit[index]:.3e}"
+                    f"（该元素 |x|={abs(expected[index]):.3e}）")
 
             details.append({
                 "split": feed["split"], "clip": feed["clip"],

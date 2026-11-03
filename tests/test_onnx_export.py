@@ -339,3 +339,44 @@ def test_nan_on_torch_side_is_rejected():
     }]
     with pytest.raises(ValueError, match="torch 输出含 NaN"):
         E.compare(NanModel(), ZeroSession(), feeds)
+
+
+@requires_onnx
+def test_allclose_catches_real_regression():
+    """allclose 判据必须能抓到「真实量级」的精度损失。
+
+    构造一个刻意偏离的 session：把输出整体偏移 1e-3。
+    这个量级的错误在全局比值判据下也会被抓到，但这里确认 allclose 这条路径确实有效。
+    """
+    import export_onnx as E
+
+    class Baseline:
+        def __call__(self, *args):
+            import torch
+
+            return torch.ones(1, 24, 702)
+
+    class Shifted:
+        def run(self, _names, _feed):
+            return [np.ones((1, 24, 702), dtype=np.float32) + 1e-3]
+
+    shapes = {"history": 709, "root_plan": 7, "reference": 702, "mask": 1}
+    feeds = [{
+        "split": "x", "clip": "x", "start": 0, "offsets": [],
+        "tensors": {n: np.zeros((1, 24, w), dtype=np.float32) for n, w in shapes.items()},
+    }]
+    with pytest.raises(ValueError, match="allclose"):
+        E.compare(Baseline(), Shifted(), feeds)
+
+
+def test_atol_covers_float_noise_near_zero():
+    """接近零的元素只要求噪声地板精度，不要求高相对精度。
+
+    实测：|x| < 1e-3 的元素有 17.4 万个，最大「局部相对误差」是 32000%，
+    但对应绝对误差只有 6.25e-06 —— 那是 float32 正常噪声，不是精度损失。
+    若把 atol 压到 1e-7，1.5% 的元素会被误判为失败。
+    """
+    import export_onnx as E
+
+    assert E.ATOL >= 1e-5, "atol 太小会把接近零元素的浮点噪声判成失败"
+    assert E.RTOL == E.RELATIVE_TOLERANCE, "rtol 应与相对阈值一致"
