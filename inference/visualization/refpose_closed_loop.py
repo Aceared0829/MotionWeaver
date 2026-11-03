@@ -22,8 +22,10 @@ from tools.train_root_plan import RootPlanHead
 from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
 
 POSE_W = P.POSE_WEIGHT
+# 优先用 20 epoch 版；盘上没有就回退到早先那版。两个值必须保持不同，
+# 否则 load_models 里的 "优先 A、回退 B" 退化成「A 不存在就直接炸」。
 ROOT_W = P.ROOT_WEIGHT
-ROOT_W2 = P.ROOT_WEIGHT
+ROOT_W2 = P.ROOT_WEIGHT_PREV
 OUT = ROOT / "output" / "refpose_preview" / "closed_loop"
 WINDOW = 24
 STRIDE = 8
