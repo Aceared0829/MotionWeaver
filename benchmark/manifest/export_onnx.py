@@ -23,6 +23,8 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -94,18 +96,20 @@ def sample_feeds(manifest, *, mmap_root, release, limit_per_split=6):
             span = manifest["timing"]["history_frames"] + manifest["timing"]["future_frames"]
             if total < span:
                 continue
-            start = (total - span) // 2
-            for offsets in mask_sets:
-                sample = R.build_sample(manifest, mmap_root=mmap_root, release=release,
-                                        clip_raw_file=clip["raw_file"], start=start,
-                                        reference_offsets=offsets)
-                feeds.append({
-                    "split": split,
-                    "clip": clip["raw_file"],
-                    "start": start,
-                    "offsets": list(offsets),
-                    "tensors": {name: sample[name][None] for name in INPUT_NAMES},
-                })
+            # 覆盖窗口首、中、尾三处。只取中点会完全漏掉 origin 取
+            # root[middle-1] 的 off-by-one 与末尾越界这两类边界 bug。
+            for start in ((0, (total - span) // 2, total - span)):
+                for offsets in mask_sets:
+                    sample = R.build_sample(manifest, mmap_root=mmap_root, release=release,
+                                            clip_raw_file=clip["raw_file"], start=start,
+                                            reference_offsets=offsets)
+                    feeds.append({
+                        "split": split,
+                        "clip": clip["raw_file"],
+                        "start": start,
+                        "offsets": list(offsets),
+                        "tensors": {name: sample[name][None] for name in INPUT_NAMES},
+                    })
             picked += 1
             if picked >= limit_per_split:
                 break
@@ -262,8 +266,13 @@ def export(manifest_path, checkpoint, output, *, relative_tolerance=RELATIVE_TOL
         raise FileNotFoundError(f"mmap 目录无效：{mmap_root}\n换机器时请设 MW_MMAP_DIR")
     feeds = sample_feeds(manifest, mmap_root=mmap_root, release=release, limit_per_split=limit_per_split)
 
+    # 先导到临时目录，**全部校验通过后**才替换正式产物。
+    # 直接写正式路径会留下半成品：若 compare() 抛错，磁盘上会剩一个没有
+    # onnx_manifest.json 的 model.onnx，而测试的 _available() 要求四个文件齐全，
+    # 于是整组用例静默 skip、pytest 仍显示绿色——失败被吞掉。
     output.mkdir(parents=True, exist_ok=True)
-    onnx_path = output / "model.onnx"
+    staging = Path(tempfile.mkdtemp(prefix="refpose_onnx_", dir=output))
+    onnx_path = staging / "model.onnx"
     example = tuple(torch.from_numpy(feeds[0]["tensors"][name]) for name in INPUT_NAMES)
 
     torch.manual_seed(seed)
@@ -331,8 +340,19 @@ def export(manifest_path, checkpoint, output, *, relative_tolerance=RELATIVE_TOL
                          "与 pip 包不是同一套，必须在阶段 2 的 UE 内实测。",
         },
     }
-    (output / "onnx_manifest.json").write_text(
+    (staging / "onnx_manifest.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    # 原子落地：只有前面所有校验都过了才走到这里。
+    # 顺序上先删旧 manifest、再换 model.onnx、最后写 manifest——
+    # 中途崩溃的最坏结果也只是缺 manifest（测试会 fail 而不是 skip，见测试侧改动）。
+    final_onnx = output / "model.onnx"
+    final_manifest = output / "onnx_manifest.json"
+    if final_manifest.exists():
+        final_manifest.unlink()
+    shutil.move(str(onnx_path), str(final_onnx))
+    shutil.move(str(staging / "onnx_manifest.json"), str(final_manifest))
+    shutil.rmtree(staging, ignore_errors=True)
     return record
 
 

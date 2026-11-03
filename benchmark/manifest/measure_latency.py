@@ -47,9 +47,17 @@ def _real_feeds(manifest_path, session):
     if manifest_path is None or not Path(manifest_path).is_file():
         return None, "noise"
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-    feeds = E.sample_feeds(manifest,
-                           mmap_root=Path(manifest["artifacts"]["mmap_dir"]),
-                           release=Path(manifest["artifacts"]["release_dir"]),
+    # 与 export_onnx 一致：支持环境变量覆盖，并检查路径有效性后再走真实窗口，
+    # 否则换机器时会在 sample_feeds 里抛 FileNotFoundError，而不是退回噪声。
+    import os
+
+    release = Path(os.environ.get("MW_RELEASE_DIR") or manifest["artifacts"]["release_dir"])
+    mmap_root = Path(os.environ.get("MW_MMAP_DIR") or manifest["artifacts"]["mmap_dir"])
+    if not (release / "contract" / "contract.json").is_file():
+        return None, "noise"
+    if not (mmap_root / "skeleton.json").is_file():
+        return None, "noise"
+    feeds = E.sample_feeds(manifest, mmap_root=mmap_root, release=release,
                            limit_per_split=8)
     # 多角色测试要用**各不相同**的窗口，不能同一个重放 N 次
     tensors = [{name: f["tensors"][name] for name in E.INPUT_NAMES} for f in feeds]
@@ -66,6 +74,10 @@ def _noise_feeds(session):
         feeds["root_plan"][..., 3:] = quat / np.linalg.norm(quat, axis=-1, keepdims=True)
     if "mask" in feeds:
         feeds["mask"][...] = 0.0
+    # 契约要求：未选中帧整行乘 0。噪声回退也必须遵守，
+    # 否则喂进去的是「mask 说不可见、reference 却有值」的违约输入。
+    if "reference" in feeds:
+        feeds["reference"][...] = 0.0
     return [feeds]
 
 

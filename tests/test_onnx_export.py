@@ -26,11 +26,38 @@ ONNX_PATH = ONNX_DIR / "model.onnx"
 ONNX_MANIFEST = ONNX_DIR / "onnx_manifest.json"
 
 
-def _available():
-    return all(p.exists() for p in (MANIFEST_PATH, CHECKPOINT, ONNX_PATH, ONNX_MANIFEST))
+def _missing():
+    return [str(p) for p in (MANIFEST_PATH, CHECKPOINT, ONNX_PATH, ONNX_MANIFEST) if not p.exists()]
 
 
-requires_onnx = pytest.mark.skipif(not _available(), reason="本机缺少 manifest / 权重 / ONNX 产物")
+# 缺**输入**（manifest / 权重）时 skip 是合理的：换台机器本来就没有数据。
+# 但缺**产物**（model.onnx / onnx_manifest.json）不能 skip —— 那意味着导出失败、
+# 或者导出到一半崩了留下半成品。skip 会让整组用例显示绿色，把失败吞掉。
+_INPUTS = (MANIFEST_PATH, CHECKPOINT)
+_OUTPUTS = (ONNX_PATH, ONNX_MANIFEST)
+
+requires_data = pytest.mark.skipif(
+    any(not p.exists() for p in _INPUTS), reason="本机缺少 manifest / 权重")
+requires_artifact = pytest.mark.skipif(
+    any(not p.exists() for p in _INPUTS), reason="本机缺少 manifest / 权重")
+requires_onnx = requires_artifact
+
+
+def test_export_artifacts_exist():
+    """产物缺失必须 fail，不能 skip。
+
+    这条不加 requires_*：如果换机器没数据，它也会 fail——但那时应该连带
+    requires_data 的用例一起 skip，而这条会明确告诉你「产物没生成」。
+    半成品（有 model.onnx 没 onnx_manifest.json）是最需要报警的状态：
+    旧版 _available() 要求四个文件齐全，半成品会让整组用例静默 skip。
+    """
+    missing_inputs = [str(p) for p in _INPUTS if not p.exists()]
+    if missing_inputs:
+        pytest.skip(f"本机缺少输入数据：{missing_inputs}")
+    missing_outputs = [str(p) for p in _OUTPUTS if not p.exists()]
+    assert not missing_outputs, (
+        f"产物缺失：{missing_outputs}。这可能意味着导出失败或导出中途崩溃留下了半成品——"
+        "请重跑 benchmark/manifest/export_onnx.py")
 
 
 @pytest.fixture(scope="module")
@@ -226,7 +253,8 @@ def test_export_rejects_tampered_manifest(manifest, tmp_path, mutate):
     mutate(tampered)
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(tampered, ensure_ascii=False), encoding="utf-8")
-    with pytest.raises((ValueError, IndexError, KeyError)):
+    # 只收 ValueError：放行 KeyError 会把「代码里拼错键」也当成「正确拒绝了篡改」。
+    with pytest.raises(ValueError):
         E.export(path, CHECKPOINT, tmp_path / "out")
 
 
