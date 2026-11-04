@@ -1,0 +1,20 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "MotionWeaver",
+	"Description": "MotionWeaver 动画系统基础插件。",
+	"Category": "Animation",
+	"CreatedBy": "ZhaoZining",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "MotionWeaver",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
