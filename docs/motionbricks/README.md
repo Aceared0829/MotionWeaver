@@ -2,7 +2,7 @@
 
 > **来源与修改说明：** 本目录基于 NVIDIA [GR00T-WholeBodyControl / MotionBricks](https://github.com/NVlabs/GR00T-WholeBodyControl/tree/main/motionbricks)，是 [AIAnimationSystem](../../README.md) 保留的模型基础与参考演示。本文件已由 AIAnimationSystem 维护者汉化并调整安装与演示说明，2026-09-07 补充来源和新仓库地址。原算法、权重及上游演示归原项目作者；本页效果展示不代表本项目 UE 插件的运行效果。
 
-当前分支已移除机器人控制、硬件部署和遥操作组件。G1 骨架作为已有 MotionBricks 检查点所需的参考骨架保留。UE 动画导出与训练请阅读 [专门说明](../../unreal-script/AILocomotionSystem/README.md)。
+当前分支已移除机器人控制、硬件部署和遥操作组件。G1 骨架作为已有 MotionBricks 检查点所需的参考骨架保留。UE 侧的当前范围见 [Unreal 集成](../../unreal-script/README.md)。
 
 <p align="center">
   <a href="https://nvlabs.github.io/motionbricks"><img src="https://img.shields.io/badge/项目主页-访问-blue" alt="项目主页"></a>
@@ -38,7 +38,7 @@ MotionBricks 是一个面向交互式角色动画的实时生成框架，将潜�
 
 ### 路线图
 
-AIAnimationSystem 已添加实验性 UE 导出与自定义骨架训练入口；实际资产端到端流程尚未验证，运行时适配器尚未实现。当前进度见 [项目首页](../../README.md)，第一阶段计划见 [开发方案](../../unreal-script/AILocomotionSystem/LocomotionPlan.md)。
+本项目已添加自定义骨架训练入口，训练目标是固定的 78 骨 SOMA 骨架；数据摄入不经过 UE。UE 运行时适配器尚未实现。当前进度见 [项目首页](../../README.md)，UE 侧范围见 [Unreal 集成](../../unreal-script/README.md)。
 
 ## 效果展示
 

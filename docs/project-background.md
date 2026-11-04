@@ -10,7 +10,7 @@ MotionWeaver（原 AIAnimationSystem）从 NVIDIA [GR00T-WholeBodyControl](https
 
 MuJoCo 和 Unitree G1 在此用于动画预览与参考骨架。现有预训练检查点依赖 G1 拓扑，因此保留对应资源。`motionbricks` 包名、检查点目录和 `MotionBricks.exe` 表示这条参考实现；`AIAnimationSystem` 是整个派生项目的名称。
 
-本项目增加了中文交互界面、Windows 启动器，以及实验性的 UE 动画导出和自定义骨架训练入口。运行时推理、统一人形重定向和 CMC / Mover 接入仍待实现，具体能力以 [UE 插件说明](../unreal-script/AILocomotionSystem/README.md) 为准。
+本项目增加了中文交互界面、Windows 启动器，以及自定义骨架训练入口。训练数据链路不经过 UE：跨骨架转换由离线 Python 完成，训练目标是固定的 78 骨 SOMA 骨架。UE 侧目前只保留实验宿主与空壳运行时插件，运行时推理与 CMC / Mover 接入仍待实现，见 [Unreal 集成](../unreal-script/README.md)。
 
 ## 建议学习顺序
 
@@ -20,6 +20,6 @@ MuJoCo 和 Unitree G1 在此用于动画预览与参考骨架。现有预训练�
 4. 阅读 [逐帧推理](../inference/runtime/backbone/motion_inference.py)。
 5. 阅读 [VQ-VAE](../model/MotionWeaver/tokenizer)，理解动作 Token。
 6. 按 [训练说明](motionbricks/README.md#训练) 使用合成数据理解训练任务；合成数据结果不能代表真实角色动作质量。
-7. 按 [UE 插件说明](../unreal-script/AILocomotionSystem/README.md) 接入实际动画资产，或参考 [通用数据集接入](motionbricks/adding_your_own_dataset.md)。
+7. 参考 [通用数据集接入](motionbricks/adding_your_own_dataset.md) 或 [SOMA 数据与双路径推理](soma-training-data-direction.md) 接入实际动画资产。
 
 本页由 AIAnimationSystem 维护者于 2026-09-07 从原根 README 整理并补充；上游技术内容的来源与版权保留。

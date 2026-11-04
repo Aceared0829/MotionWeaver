@@ -217,7 +217,6 @@ MotionBricks-launcher.log
 /unreal-script/**/Binaries/
 /unreal-script/**/Intermediate/
 /unreal-script/**/Saved/
-/unreal-script/MotionWeaverCMCPreview/Content/
 /unreal-script/MotionWeaver/Content/
 /unreal-sample/**/Content/
 /unreal-sample/**/Binaries/
@@ -239,7 +238,10 @@ MotionBricks-launcher.log
 /unreal-script/.clangd-stubs/
 .clangd-index/
 # UE writes local preview-lighting profiles into this file; keep functional Config/ defaults.
-/unreal-sample/UMWSamplePreview/Config/DefaultEditor.ini
+/unreal-sample/AIMotionSample/Config/DefaultEditor.ini
+# RiderLink 是 Rider 自动装入的 IDE 桥接插件（约 500 个文件 / 140 MB，内容随 Rider 版本变化），
+# 不作为项目源码维护；换机器时由 Rider 重新生成，需要时从 JetBrains 安装包取回。
+/unreal-sample/AIMotionSample/Plugins/Developer/RiderLink/
 /motionbricks/assets/
 /motionbricks/out/
 /motionbricks/unreal_data/

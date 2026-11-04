@@ -1,19 +1,15 @@
-# unreal-script 下的插件（AIAnimation、AIAnimationMotionMatching、AILocomotionDataset、
-# MotionWeaver、MotionWeaverCMCPreview）没有可用的宿主工程：AIAnimationMotionMatching
-# 硬依赖的 MotionMatchingInCpp 在本机不存在，其余也未挂到任何 .uproject，因此 UBT 无法
-# 为它们生成编译数据库（unreal-sample/UMWSamplePreview 有自己的 .clangd，互不影响）。
+# unreal-script 下只剩 MotionWeaver 插件源码，它没有挂到任何 .uproject，UBT 无法为
+# 它生成编译数据库（unreal-sample/AIMotionSample 有自己的 .clangd，互不影响）。
 #
 # 这里的 compile_commands.json 由 unreal-script/gen_compile_commands.py 生成：主工程已
-# 验证的 UE 5.8 引擎 include 路径 + Definitions 宏，加上各插件 Build.cs 声明的依赖模块
+# 验证的 UE 5.8 引擎 include 路径 + Definitions 宏，加上插件 Build.cs 声明的依赖模块
 # 路径与 *_API 宏，并为缺失的 UHT 生成头提供最小存根（.clangd-stubs/）。它让 clangd 能
 # 解析引擎类型、插件自身符号与反射宏，但它不是真实编译命令：
 #   - 源码有改动（新增文件、改 GENERATED_BODY 行号、改 Build.cs 依赖）后重跑该脚本；
 #   - 插件挂上宿主工程并编译过之后，请改用宿主自己的编译数据库，那才是权威索引。
 #
-# 已知残留，均与索引配置无关：
-#   - MotionMatchingInCpp 插件本机不存在，include 它或继承其类型的
-#     AIAnimationMotionMatchingCharacter.{h,cpp} 仍会报错，补上该插件后消失；
-#   - AIAnimationWorkbench.cpp 里 FSceneView 只拿到前向声明（UE 头之间的隐含传递包含）。
+# 2026-11：AIAnimation、AIAnimationMotionMatching、AILocomotionDataset、MotionWeaverCMCPreview
+# 已从仓库移除，此前记录的 MotionMatchingInCpp 缺失与 FSceneView 前向声明两项残留随之消失。
 CompileFlags:
   # 相对 .clangd 所在目录解析，指向脚本生成的编译数据库。
   CompilationDatabase: .

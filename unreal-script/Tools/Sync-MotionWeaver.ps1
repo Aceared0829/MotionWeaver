@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$sourceRoot = Join-Path $repositoryRoot 'unreal-sample\UMWSamplePreview\Plugins\MotionWeaver'
+$sourceRoot = Join-Path $repositoryRoot 'unreal-sample\AIMotionSample\Plugins\MotionWeaver'
 $mirrorRoot = Join-Path $repositoryRoot 'unreal-script\MotionWeaver'
 $excludedDirectories = @('Binaries', 'Intermediate', 'Saved', 'Content')
 

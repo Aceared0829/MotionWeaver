@@ -8,22 +8,19 @@ MotionWeaver（原 AIAnimationSystem）是面向 Unreal Engine 的 AI 角色动�
 > 权重封盘于 `D:\MotionWeaverData\model_weight\refpose_v3_71k\`，详见 [训练与评测记录](docs/refpose-v3-training-evaluation.md)。
 > 早期离散 Token 路线因码本塌缩已停止推进。
 >
-> **实验阶段：** 已有 UE 数据、训练与 FP32 导出工具；`AIAnimation` Inference Lab 已在独立 GASP 对照场景中验证 AnimGraph 节点、动画工作线程 DirectML 推理和连续播放修复。它不是正式游戏运行时，也未完成完整玩法、打包、多角色并发、网络或 CMC / Mover 接入。本项目不代表 NVIDIA 官方产品，也不表示获得 NVIDIA 的认可或背书。
+> **实验阶段：** 已有训练、评测与 FP32/ONNX 导出工具。UE 侧目前只保留实验宿主与空壳运行时插件；尚未完成 AnimGraph 接线、打包、多角色并发、网络或 CMC / Mover 接入。本项目不代表 NVIDIA 官方产品，也不表示获得 NVIDIA 的认可或背书。
 
 当前先完成 Locomotion、跳跃和蹲伏的数据与动画流程；项目名称覆盖更广泛的角色动画方向，后续动作范围以开发方案与实际验证为准。
 
-[UE 插件与训练](unreal-script/AILocomotionSystem/README.md) · [AIAnimation 实验推理](unreal-script/AIAnimation/README.md) · [第一阶段开发方案](unreal-script/AILocomotionSystem/LocomotionPlan.md) · [MotionBricks 演示与技术说明](docs/motionbricks/README.md) · [来源、引用与许可](引用与许可说明.md)
+[Unreal 集成](unreal-script/README.md) · [UE 实验宿主](unreal-sample/README.md) · [MotionBricks 演示与技术说明](docs/motionbricks/README.md) · [来源、引用与许可](引用与许可说明.md)
 
 ## 当前进度
 
 | 内容 | 当前状态 |
 | --- | --- |
 | MotionBricks G1 参考演示 | 保留上游模型与 MuJoCo 预览流程，增加中文界面和 Windows 启动器；不等同于 UE 运行时效果 |
-| UE 动画导出 | 已有实验性 `AILocomotionDataset` 编辑器插件，从 `AnimSequence` 导出骨架和动作数据 |
-| 自定义 UE 骨架训练 | 已有数据预处理、VQ-VAE / Pose / Root 训练、检查点保存与续训入口 |
-| 已记录的验证 | UE 5.8.2 编译与链接、程序生成动画夹具上的 CPU 小网络训练测试；详见插件说明 |
-| 真实资产与生成质量 | 历史实验见插件的 TrainingResults；本次迁移使用受控夹具验证功能，不重新评定真实动作生成质量 |
-| UE 实验推理 | `AIAnimation` 在 GASP 独立对照场景中完成 ONNX 导入、AnimGraph 重建节点、动画工作线程 DirectML 推理、延迟融合播放和性能报告；详见实验说明 |
+| UE 侧现状 | 仅保留 `unreal-sample/AIMotionSample` 实验宿主（GASP 示例工程，含 Content）与空壳 `MotionWeaver` 插件；旧的 79 骨 UE 导出插件与实验推理插件已于 2026-11 移除，理由见 [Unreal 集成](unreal-script/README.md) |
+| 已记录的验证 | 程序生成动画夹具上的 CPU 小网络训练与 ONNX 数值对齐测试；UE 内实机闭环未验证 |
 | 跑酷参考姿态实验 | 可在本地 HTML 手选关键帧，对比软条件重建与融合后硬约束；已验证单条低障碍动画的参考帧精确到位，仍有邻域连续性和姿态偏差限制 |
 | SOMA 全库训练视图 | 已建成 71,127 条 fps120 四场景（A 27,182 / B 14,235 / C 2,621 / D 27,089），训练端可直接读取四键 NPZ |
 | 分词器（VQ-VAE） | 已在全库上训练至 100,000 步，关节 RMSE 稳定在 84–86 cm；但码本在 20k 步后塌缩至 perplexity 1.000。**该路线已证否，不再是主线** |
@@ -80,17 +77,11 @@ cd MotionWeaver
 
 当前默认分支为 `main`。预训练检查点默认不自动下载；按下面的使用场景准备环境和模型。
 
-### UE 动画导出与训练
+### Unreal 侧范围
 
-将 `unreal-script/AILocomotionSystem/AILocomotionDataset/` 复制到 UE 项目的 `Plugins/AILocomotionDataset/`，编译 Editor 目标并启用 **AI Locomotion Dataset**。在编辑器中选择动画资产，通过 **工具 → AI Locomotion：导出选中动画** 生成训练数据。
+训练数据链路已不经过 UE：原始动作来自 `soma_uniform/bvh`，跨骨架转换由离线 Python 完成（`data/tools/retarget_uefn_to_soma.py`），训练契约是 78 骨 SOMA / 120 fps / 24+24 窗口。
 
-Python 训练环境使用 Python 3.12；完整安装命令、骨架要求、预处理与训练命令见 [UE 插件与训练说明](unreal-script/AILocomotionSystem/README.md)。这条路线使用自己的动画数据，不需要下载 G1 演示权重。
-
-`AILocomotionSystem` 与 `AILocomotionDataset` 目前仍是插件目录和技术标识；仓库对外名称为 **AIAnimationSystem**。
-
-### GASP 实验推理
-
-`unreal-script/AIAnimation/` 提供单独的实验插件和可重复对照场景。它使用已知 `AnimSequence` 作为输入重建 Root 相对身体姿态，当前默认采用固定 4 帧推理步长、8 帧播放延迟和窗口融合。安装、构建、GPU 数值校验、基准测试、连续性图表及边界说明见 [AIAnimation 实验说明](unreal-script/AIAnimation/README.md)。
+UE 侧目前只保留 `unreal-sample/AIMotionSample` 实验宿主与空壳 `MotionWeaver` 插件，用来承接后续 refpose v3 的 AnimNode 接线。该宿主是 GASP 示例工程的副本，尚无自有 `Source/` 与 `Plugins/`。旧的 79 骨 `AILocomotionDataset` 导出插件、`AIAnimation` 实验推理插件、Motion Matching 桥接与旧宿主 `UMWSamplePreview` 均已于 2026-11 移除，理由见 [Unreal 集成](unreal-script/README.md)。
 
 ### 手选跑酷参考姿态
 
@@ -147,7 +138,7 @@ Windows 下默认打开中文单窗口界面，其他平台在不能嵌入 MuJoC
                                       动画模型 → 骨架适配 → UE 姿态
 ```
 
-运行时部分为开发目标。多人联机、统一人形模型、重定向与接触修正的职责和验收要求见 [第一阶段开发方案](unreal-script/AILocomotionSystem/LocomotionPlan.md)。
+运行时部分为开发目标。多人联机、统一人形模型、重定向与接触修正的职责和验收要求见 [SOMA 数据与双路径推理](docs/soma-training-data-direction.md)。
 
 ## 仓库与文档
 
@@ -159,7 +150,7 @@ training/           pretrain/ · posttrain/ · common/ · models/ · evaluation/
 model/MotionWeaver/ 网络、几何、动作表示与共享实现
 model-weight/       base/motionbricks/ · 自定义发布产物
 inference/          runtime/ · export/ · profiling/ · cli/ · demo/ · assets/
-unreal-script/      AILocomotionSystem/ · python/
+unreal-script/      MotionWeaver 插件镜像与同步工具（其余 UE 插件 2026-11 移除）
 unreal-sample/      UE 推理/动画工具链实验宿主源码与资产交付边界（Content 暂缓）
 benchmark/          统一评测：recon 库、CLI 与四臂对比（唯一评测入口）
 paper/              技术报告（main.html → PDF）与软著材料
@@ -170,7 +161,7 @@ tools/compat/       历史命令与检查点导入兼容源码
 
 | 位置 | 用途 |
 | --- | --- |
-| [unreal-sample](unreal-sample/README.md) | UE 5.8 实验宿主 `UMWSamplePreview` 与 Content 暂缓发布的边界；当前项目尚未接入模型推理 |
+| [unreal-sample](unreal-sample/README.md) | UE 5.8 实验宿主 `AIMotionSample` 的边界；当前尚未接入模型推理 |
 | [unreal-script](unreal-script/README.md) | UE 插件安装、动画导出、数据约定与训练说明 |
 | [模型与参考演示说明](docs/motionbricks/README.md) | 上游模型技术说明与 G1 参考演示 |
 | [动作表示](docs/motionbricks/motion_representation.md) | 骨架、Root Motion、姿态特征和坐标约定 |

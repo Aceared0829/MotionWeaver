@@ -1,5 +1,8 @@
 # RefPose v3 → UE 导出/推理管线调研
 
+> **2026-11 注记：** 本文引用的 `unreal-script/AIAnimation/`、`AIAnimationMotionMatching/`、`AILocomotionSystem/` 与 `unreal-script/python/` 已于 2026-11 从仓库移除，文中的文件路径与行号不再可解析。这些引用保留为当时调研的取证记录；需要核对原文时从 git 历史取回（`git show e7330af:<路径>`）。
+
+
 > 调研范围：只读源码 + 在 `D:\tmp\refpose_probe2\` 下写一次性脚本做实测，未改动仓库任何源码。
 > 权重：`D:\MotionWeaverData\model_weight\refpose_v3_71k\best.pt`（SHA-256 `6d10d358…5ffc`，epoch 19，val_pose_rmse_cm 3.6539）
 > 契约：`D:\MotionWeaverData\full_release\contract\contract.json`
