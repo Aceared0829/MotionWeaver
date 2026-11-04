@@ -1,5 +1,8 @@
 # 玩家状态驱动的全身动画：数据、训练、模型与 UE 推理计划
 
+> **2026-11 注记：** 本文引用的 `unreal-script/AIAnimation/`、`AIAnimationMotionMatching/`、`AILocomotionSystem/` 与 `unreal-script/python/` 已于 2026-11 从仓库移除，文中的文件路径与行号不再可解析。这些引用保留为当时调研的取证记录；需要核对原文时从 git 历史取回（`git show e7330af:<路径>`）。
+
+
 > 状态：P0 已完成；P1 的四条 provisional 站蹲试验索引及 P2 的 B0/B1 小样本消融已执行，但完整 P1/P2、UE 玩家闭环和联机验收均未完成。创建于 2026-09-25，2026-09-28 按用户的三种 Root 模式选择纠正。本文件用于持续核对方向和验收条件；执行证据见 [P0 审计记录](experiments/2026-09-25-p0-stance-data-audit.md)与 [B0/B1 实验](experiments/2026-09-28-stance-transition-v2.md)。
 >
 > 项目：AIAnimationSystem。P0 分析基于原工作树 `884f34c`、当时的 `origin/main` `af9f9330`、E 盘审计版数据及训练归档。集成工作区从 `af9f9330` 建立，保留主线已有的数据封版、来源哈希校验和测试；开始后续阶段前仍须核对最新代码与数据身份。本计划本身不表示状态训练、UE 接入或游戏内验收已经完成。

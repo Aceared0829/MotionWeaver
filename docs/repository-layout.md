@@ -44,10 +44,9 @@ MotionWeaver/
 │   ├── demo/                     # 演示控制器、界面、MuJoCo 集成
 │   └── assets/                   # G1 骨架、网格与上游预览素材
 ├── unreal-script/
-│   ├── AILocomotionSystem/
-│   │   └── AILocomotionDataset/  # 完整可复用 UE 插件
-│   └── python/                   # UE 宿主内的重定向和验证脚本
-├── unreal-sample/                # UMWSamplePreview：UE 5.8 推理/动画工具链实验宿主源码；Content 暂缓交付
+│   ├── MotionWeaver/             # Sample 插件的同步镜像
+│   └── Tools/                    # Sync-MotionWeaver.ps1 镜像同步脚本
+├── unreal-sample/                # AIMotionSample：UE 5.8 推理/动画工具链实验宿主（GASP 副本；Content 不入库）
 ├── tests/                       # 回归测试与受控动画夹具
 ├── docs/                        # 架构、迁移与技术说明
 ├── launcher/                    # Windows 启动器源码
@@ -60,7 +59,9 @@ MotionWeaver/
 └── pyproject.toml
 ```
 
-`unreal-sample/UMWSamplePreview/` 保存实验宿主的项目 Gameplay 源码、独立 MotionWeaver 插件与文本配置，供后续接入 UE 内推理及动画工具链；不处理动作数据，也尚未接入模型或推理 AnimGraph。MotionMatchingInCpp 的 CommonGameplay 已并入项目模块，原插件已移除，默认地图与角色使用 `/Game` 下暂未发布的 Content。干净源码检出不能视作可玩示例。`unreal-script/MotionWeaver/` 为 Sample 插件的同步镜像；历史 GASP 预览插件位于 `unreal-script/MotionWeaverCMCPreview/`。边界与历史宿主的区别见 [Unreal 实验宿主说明](../unreal-sample/README.md)。
+`unreal-sample/AIMotionSample/` 是 Epic GASP 官方示例工程的副本（`EpicSampleNameHash` 1673045636），用于后续接入 UE 内推理及动画工具链；不处理动作数据，也尚未接入模型或推理 AnimGraph。当前只有 `Content/`（3,898 个文件，不入 Git）、`Config/`、`Build/`、`Binaries/`，**没有自有 `Source/` 与 `Plugins/`**，`Binaries` 仍是 `GameAnimationSample` 模块名，尚未按新工程重编译。因此干净检出或本地副本目前都不能编译出自有游戏模块。上一代宿主 `UMWSamplePreview`（52 个追踪文件，含 `Source/` 下 45 个 C++/配置与 `Plugins/MotionWeaver/`）已于 2026-11 一并移除，代码从 git 历史取回。`unreal-script/MotionWeaver/` 是当前唯一现存的 MotionWeaver 插件副本，原同步镜像关系因开发源消失而暂停。
+
+2026-11 移除了 `unreal-script/AIAnimation/`、`AIAnimationMotionMatching/`、`AILocomotionSystem/`、`python/` 与 `MotionWeaverCMCPreview/`：旧推理插件是 79 骨 / 30 fps / 单输入 VQ 重建，与当前封盘的 78 骨 SOMA / 120 fps / 四输入 refpose v3 契约不兼容；`AILocomotionDataset` 的 79 骨 UEFN JSON 产出没有下游消费者；`python/` 的 UE 内 IK Retargeter 脚本依赖的上游数据盘已不存在。数据摄入链路已完全不经过 UE，详见 [Unreal 集成](../unreal-script/README.md) 与 [Unreal 实验宿主说明](../unreal-sample/README.md)。
 
 `data/raw/`、`model-weight/pretrained/`、`finetuned/`、`exported/` 按实际产物需要创建，已配置本地忽略规则。目录名不表示训练、后训练或示例已经完成。
 
@@ -112,7 +113,7 @@ UE VQ-VAE 导出与训练评估入口分开；相关依赖隔离由 `tests/test_
 
 显式审计要求回执中的 `moves.json` 和 `artifact-inventory.json` 均存在；检查缺失文件、大小和修改时间差异，并在有差异时返回非零。它只比较历史元数据，不能据此判定内容损坏或替代 SHA-256 校验。外部数据盘离线、正常训练或恢复 LFS 权重都可能产生差异。
 
-MotionWeaver 的唯一开发源为 `unreal-sample/UMWSamplePreview/Plugins/MotionWeaver/`，`unreal-script/MotionWeaver/` 为同步镜像；同步和 `-Check` 命令见 [插件镜像说明](../unreal-script/README.md#motionweaver-插件镜像)。
+MotionWeaver 的唯一开发源原为 `unreal-sample/UMWSamplePreview/Plugins/MotionWeaver/`，随该宿主于 2026-11 移除；`unreal-script/MotionWeaver/` 现为唯一现存副本。恢复开发源/镜像工作流的步骤见 [插件镜像说明](../unreal-script/README.md#motionweaver-插件镜像)。
 
 ## 本地产物保留边界
 

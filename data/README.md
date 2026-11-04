@@ -19,7 +19,7 @@ UE 来源转统一 SOMA 的实现与目录见 [UE → SOMA 离线重定向](../d
 
 `tools/`：数据准备、格式校验、批次调度、人工审核服务和入库工具。`review_web/` 随审核服务归档。`validate_seed_training.py` 校验训练数据格式，属于数据验收，不执行梯度训练。
 
-`raw/` 与 `prepared/`：本地数据，忽略提交。当前大数据物理目录为 `E:/AIAnimationSystemData/`，包括 `BONES-SEED/`、`MotionDataLibrary/`、`UE/AILocomotionDataset/` 和 `prepared/`；旧 D 盘入口可能是兼容 Junction，不能视为第二份数据。
+`raw/` 与 `prepared/`：本地数据，忽略提交。当前大数据物理目录为 `D:/MotionWeaverData/`（训练视图 `soma_train_v1/full-v1-f32`、mmap 训练集 `full_mmap`、契约 `full_release`）与 `E:/MotionWeaverData/`（原生导入、SOMA 处理与重定向报告）。旧 `E:/AIAnimationSystemData/` 路径已不存在，其 UE 导出与 `AILocomotionDataset` 产出于 2026-11 随插件一并废弃；旧 D 盘入口可能是兼容 Junction，不能视为第二份数据。
 
 `tools/migrate_motion_storage_to_e.py` 是 Windows 本机的一次性存储迁移工具。默认只生成清单，`--execute` 才执行复制及切换旧路径；使用前停止修改来源数据的程序。它检查目录与链接边界、共享目标中的同名冲突，并以 SHA-256 验证复制结果，再删除已验证且未改变的来源文件、建立兼容 Junction。已有不同内容的目标文件、链接或再次迁移已切换的路径均会拒绝；校验读取全部数据，耗时和磁盘 I/O 随数据量增长。每次复制失败会保留来源，应根据清单与 Robocopy 日志恢复，不能将目录大小当作内容完整性证明。
 

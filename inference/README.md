@@ -15,7 +15,7 @@ python -m inference.profiling.compare_unreal_streaming --help
 python -m inference.cli.interactive_demo_g1 --help
 ```
 
-`export_unreal_inference` 保留 PyTorch 导出包。`export_unreal_animgraph` 为 `AIAnimation` Inference Lab 导出固定窗口 ONNX、骨架契约和数值验证夹具；它接收 Root 相对的已知源姿态，不是玩家意图驱动的动作生成。`evaluate_unreal_streaming` 在 CPU 数值路径上对齐相同源时间区间，评估末帧与延迟融合播放的姿态和连续性；它不测 UE GPU 性能。完整 UE 导入、DirectML 校验和实验边界见 [AIAnimation 实验说明](../unreal-script/AIAnimation/README.md)。G1 演示仍需安装 `.[demo]` 并准备对应权重。
+`export_unreal_inference` 保留 PyTorch 导出包。`export_unreal_animgraph` 导出固定窗口 ONNX、骨架契约和数值验证夹具，对应已移除的 `AIAnimation` Inference Lab 的单输入 79 骨契约；当前 refpose v3 主线使用四输入 78 骨 SOMA 契约，导出入口见 `benchmark/manifest/export_onnx.py`。`evaluate_unreal_streaming` 在 CPU 数值路径上对齐相同源时间区间，评估末帧与延迟融合播放的姿态和连续性；它不测 UE GPU 性能。G1 演示仍需安装 `.[demo]` 并准备对应权重。
 
 2026-09-12 已在当前 `.venv` 补齐 MuJoCo 与 G1 权重，并通过实际生成、渲染和中文窗口验收，见 [G1 演示验收](../docs/g1-demo-acceptance.md)。
 
@@ -28,7 +28,7 @@ python -m inference.cli.interactive_demo_g1 --help
 - [操作、硬约束算法及实测](profiling/pose-reference-lab.md)
 - [阶段候选与条件遵守审计](profiling/phase-reference-results.md)
 - [已知代理动画与手选参考](profiling/proxy-reference-results.md)
-- [具体问题姿态与短片对照](../unreal-script/AIAnimation/docs/targeted-pose-reference-evaluation.md)
+- 具体问题姿态与短片对照：原记录位于已移除的 `unreal-script/AIAnimation/docs/targeted-pose-reference-evaluation.md`，需要时从 git 历史取回（`git show e7330af:unreal-script/AIAnimation/docs/targeted-pose-reference-evaluation.md`）
 - [本轮审查修复与验证](profiling/pose-reference-review.md)
 
 自动选择脚本用于历史消融及诊断，页面手选不会调用自动选择器。GPU 批量实验脚本需要 CUDA；交互实验室和硬约束对照支持 CUDA 或 CPU。检查点和准备数据均需本地提供。

@@ -1,4 +1,7 @@
 # RefPose v3 接入 UE 5.8：运行时形态、推理后端、延迟、脚滑补偿与可视化验收调研
+
+> **2026-11 注记：** 本文引用的 `unreal-script/AIAnimation/`、`AIAnimationMotionMatching/`、`AILocomotionSystem/` 与 `unreal-script/python/` 已于 2026-11 从仓库移除，文中的文件路径与行号不再可解析。这些引用保留为当时调研的取证记录；需要核对原文时从 git 历史取回（`git show e7330af:<路径>`）。
+
 > **Lead 复核（2026-11-02）**
 > - 6D 行交织已由 lead 在 `full_mmap/000000/r.npy` 复核：前两列各自为单位向量（最小范数 0.9999999），按列拼接会在骨 14/42/70/75 退化。
 > - 本节「6 条 clip、RMSE 2.62 cm、接触脚速比 1.39×」是小样本探针，**不能替代**封盘评测的 test split 257,171 窗口：`no_reference` RMSE 5.28 cm、脚滑 6.9×。两套口径不要混用。
