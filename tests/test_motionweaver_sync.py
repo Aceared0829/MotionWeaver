@@ -19,7 +19,7 @@ class MotionWeaverSyncTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="motionweaver-sync-test-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.source = self.root / "unreal-sample/UMWSamplePreview/Plugins/MotionWeaver"
+        self.source = self.root / "unreal-sample/AIMotionSample/Plugins/MotionWeaver"
         self.mirror = self.root / "unreal-script/MotionWeaver"
         self.script = self.root / "unreal-script/Tools/Sync-MotionWeaver.ps1"
         self.script.parent.mkdir(parents=True)

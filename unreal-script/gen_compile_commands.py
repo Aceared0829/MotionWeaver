@@ -1,10 +1,11 @@
 """为 unreal-script 下没有宿主工程的 UE 插件生成 fallback 编译数据库。
 
-这几个插件（AIAnimation、AIAnimationMotionMatching、AILocomotionDataset、
-MotionWeaver、MotionWeaverCMCPreview）没有挂到任何 .uproject，UBT 无法为它们
-产出 compile_commands.json，clangd 因此找不到引擎类型、也找不到插件自己的头。
-本脚本复用主工程 UMWSamplePreview 已验证的引擎 include 清单与 Definitions 宏
-（来自 UBT 生成的 .rsp），拼出一份"够 clangd 用"的编译数据库：
+MotionWeaver 插件没有挂到任何 .uproject，UBT 无法为它产出
+compile_commands.json，clangd 因此找不到引擎类型、也找不到插件自己的头。
+本脚本复用主工程已验证的引擎 include 清单与 Definitions 宏（来自 UBT 生成的
+.rsp），拼出一份"够 clangd 用"的编译数据库。注意：主工程已由 UMWSamplePreview
+换为 AIMotionSample，而 AIMotionSample 目前还没有 Source/ 与 Plugins/，也尚未
+产生 RSP/Definitions 产物，因此本脚本当前找不到输入、会直接退出。
 
     python unreal-script/gen_compile_commands.py
 
@@ -29,13 +30,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(BS, "
 UE = os.environ.get("UE_ROOT", "D:/UE_5.8").replace(BS, "/")
 ENGINE_SRC = f"{UE}/Engine/Source"
 # 主工程的编译数据库产物，提供引擎 include 清单与 Definitions 宏。
+# 2026-11：主工程由 UMWSamplePreview 更名为 AIMotionSample。新工程尚未包含 Source/
+# 与 Plugins/，也尚未用 UBT 生成过 RSP 与 Definitions 头，因此这两个路径暂时都不存在；
+# 等新工程编译出第一次 Editor 目标后再跑本脚本即可。
+PROJECT = "AIMotionSample"
 RSP = (
-    ROOT + "/unreal-sample/UMWSamplePreview/.vscode/"
-    "compileCommands_UMWSamplePreview/UMWSamplePreview.0.rsp"
+    ROOT + f"/unreal-sample/{PROJECT}/.vscode/"
+    f"compileCommands_{PROJECT}/{PROJECT}.0.rsp"
 )
 DEFS_H = (
-    ROOT + "/unreal-sample/UMWSamplePreview/Intermediate/Build/Win64/x64/"
-    "UnrealEditor/Development/UMWSamplePreview/Definitions.UMWSamplePreview.h"
+    ROOT + f"/unreal-sample/{PROJECT}/Intermediate/Build/Win64/x64/"
+    f"UnrealEditor/Development/{PROJECT}/Definitions.{PROJECT}.h"
 )
 
 
@@ -62,11 +67,7 @@ engine_dirs = extract_dirs(RSP)
 print("engine include dirs:", len(engine_dirs), flush=True)
 
 plugin_roots = [
-    "AIAnimation",
-    "AIAnimationMotionMatching",
-    "AILocomotionSystem/AILocomotionDataset",
     "MotionWeaver",
-    "MotionWeaverCMCPreview",
 ]
 module_names = []
 plugin_includes = []

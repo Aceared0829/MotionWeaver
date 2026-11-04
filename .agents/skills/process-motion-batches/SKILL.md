@@ -5,7 +5,9 @@ description: 处理本项目 BONES-SEED 到 UEFN 的 UE 重定向、每 500 条�
 
 # 动作批次处理
 
-代码在 `data/tools`（宿主内脚本在 `unreal-script/python`），数据库在 `D:/MotionDataLibrary`，源在 `D:/BONES-SEED`。使用 `D:/GameAnimationSample` 和 `D:/UE_5.8`。既有示例项目与 1722 条旧训练数据不属于清理对象。
+代码在 `data/tools`，使用 `D:/GameAnimationSample` 和 `D:/UE_5.8`。既有示例项目与 1722 条旧训练数据不属于清理对象。
+
+> **2026-11 状态：本工作流的宿主内脚本 `unreal-script/python` 已移除，上游 `D:/MotionDataLibrary` 与 `D:/BONES-SEED` 在本机也不存在。`unreal_scripts()` 现在会直接抛错而不是返回失效路径。恢复本工作流前需先从 git 历史取回脚本并恢复数据盘；在那之前本 skill 的 UE 段不可执行。**
 
 ## 固定工作流
 
