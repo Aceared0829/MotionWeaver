@@ -15,7 +15,7 @@ class UMaterialInterface;
  * 姿势代理资产：一段动画在某一暂停帧上的全身姿态，独立存成一个 .uasset。
  *
  * 这份资产是给模型读取的输入原料，不参与任何动画图求值。
- * 拖进关卡时会生成 APoseProxyActor，用这里记录的预览网格与材质把姿态显示出来。
+ * 拖进关卡时会生成 AMotionWeaverPoseActor，用这里记录的预览网格与材质把姿态显示出来。
  */
 UCLASS(BlueprintType)
 class MOTIONWEAVER_API UMotionWeaverPoseAsset final : public UDataAsset
@@ -43,9 +43,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Pose")
 	int32 GetBoneCount() const { return Snapshot.BoneNames.Num(); }
 
-	/** 姿态数据是否自洽（骨名与变换数量一致且非空）。 */
+	/** 姿态数据是否可用：版本受支持、骨名与变换数量一致且非空。 */
 	UFUNCTION(BlueprintPure, Category = "Pose")
-	bool IsValidPose() const { return Snapshot.IsConsistent() && Snapshot.BoneNames.Num() > 0; }
+	bool IsValidPose() const
+	{
+		return Snapshot.IsSupportedVersion() && Snapshot.IsConsistent() && Snapshot.BoneNames.Num() > 0;
+	}
 
 #if WITH_EDITOR
 	/** 编辑器显示用的资产描述，出现在内容浏览器与详情面板标题。 */

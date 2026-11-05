@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Framework/MultiBox/MultiBoxExtender.h"
+#include "IAnimationEditorModule.h"
 
 class IAnimationEditor;
 
@@ -32,6 +33,12 @@ private:
 	/** 是否允许点击：正在播放时禁用。同样按值接收。 */
 	static bool CanExtractClicked(TWeakPtr<IAnimationEditor> WeakAnimationEditor);
 
-	/** 延展器在模块列表中的位置，用于关闭时撤销注册；INDEX_NONE 表示未注册。 */
-	static int32 ExtenderIndex;
+	/**
+	 * 已注册的延展器副本。
+	 *
+	 * 不用下标登记：模块返回的是普通 TArray<委托>，没有句柄语义。
+	 * 别的插件在我们的槽位之前增删条目，或者模块热重载重建数组，
+	 * 下标都会失效并删错别人的项。按值保存、按值删除才与下标无关。
+	 */
+	static IAnimationEditorModule::FAnimationEditorToolbarExtender RegisteredExtender;
 };

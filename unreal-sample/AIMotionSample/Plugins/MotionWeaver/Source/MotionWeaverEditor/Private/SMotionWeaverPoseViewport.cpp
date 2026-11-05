@@ -7,10 +7,6 @@
 #include "MotionWeaverPoseViewportClient.h"
 
 #include "AdvancedPreviewScene.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "Editor/EditorEngine.h"
-#include "Engine/SkeletalMesh.h"
-#include "Materials/MaterialInterface.h"
 #include "SEditorViewport.h"
 
 #define LOCTEXT_NAMESPACE "SMotionWeaverPoseViewport"
@@ -49,20 +45,8 @@ void SMotionWeaverPoseViewport::RefreshPreview()
 
 	PreviewComponent->ApplyPoseAsset(PoseAsset);
 
-	if (PoseAsset == nullptr)
-	{
-		return;
-	}
-
-	// 用抽取时记录的材质覆盖还原外观，让预览和抽帧时的画面一致。
-	const TArray<TSoftObjectPtr<UMaterialInterface>>& Materials = PoseAsset->PreviewMaterials;
-	for (int32 SlotIndex = 0; SlotIndex < Materials.Num(); ++SlotIndex)
-	{
-		if (UMaterialInterface* Material = Materials[SlotIndex].LoadSynchronous())
-		{
-			PreviewComponent->SetMaterial(SlotIndex, Material);
-		}
-	}
+	// 与关卡实例共用同一份材质还原实现，保证预览和摆进关卡的画面一致。
+	PreviewComponent->ApplyPreviewMaterials();
 }
 
 TSharedRef<FEditorViewportClient> SMotionWeaverPoseViewport::MakeEditorViewportClient()

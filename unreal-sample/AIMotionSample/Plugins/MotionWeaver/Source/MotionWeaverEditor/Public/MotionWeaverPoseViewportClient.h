@@ -17,8 +17,4 @@ class FMotionWeaverPoseViewportClient final : public FEditorViewportClient
 {
 public:
 	FMotionWeaverPoseViewportClient(FPreviewScene* InPreviewScene, const TSharedRef<SEditorViewport>& InViewport);
-
-	//~ Begin FEditorViewportClient Interface
-	virtual void Tick(float DeltaSeconds) override;
-	//~ End FEditorViewportClient Interface
 };

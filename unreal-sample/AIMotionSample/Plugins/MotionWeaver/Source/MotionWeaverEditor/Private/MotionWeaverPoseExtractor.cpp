@@ -9,7 +9,6 @@
 #include "AnimationEditorUtils.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/DebugSkelMeshComponent.h"
-#include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
 #include "Engine/SkeletalMesh.h"
 #include "IPersonaToolkit.h"
@@ -17,7 +16,6 @@
 #include "Misc/PackageName.h"
 #include "Modules/ModuleManager.h"
 #include "ReferenceSkeleton.h"
-#include "ScopedTransaction.h"
 
 #define LOCTEXT_NAMESPACE "MotionWeaverPoseExtractor"
 
@@ -78,6 +76,17 @@ UMotionWeaverPoseAsset* FMotionWeaverPoseExtractor::ExtractToNewAsset(
 		return nullptr;
 	}
 
+	// 必须先确认预览里有真实动画序列。
+	// 只判断 IsPlaying() 不够：没有序列时抽出来的是参考姿态，
+	// 那是"合法但没用"的产物，UI 还会报成功，比直接失败更糟。
+	UAnimPreviewInstance* PreviewInstance = PreviewComponent->PreviewInstance;
+	const UAnimSequence* Sequence = PreviewInstance != nullptr ? PreviewInstance->GetAnimSequence() : nullptr;
+	if (Sequence == nullptr)
+	{
+		OutError = LOCTEXT("NoSequence", "当前预览没有动画序列，抽出来只会是参考姿态；请先选择一段动画。");
+		return nullptr;
+	}
+
 	const FReferenceSkeleton& RefSkeleton = PreviewMesh->GetRefSkeleton();
 	const int32 BoneCount = RefSkeleton.GetNum();
 
@@ -89,9 +98,10 @@ UMotionWeaverPoseAsset* FMotionWeaverPoseExtractor::ExtractToNewAsset(
 		return nullptr;
 	}
 
-	// 事务对象必须可写：创建失败时要显式 Cancel。
-	FScopedTransaction Transaction(LOCTEXT("ExtractPoseTransaction", "抽取姿势代理"));
-
+	// 这里不包 FScopedTransaction：建资产不是可撤销的用户编辑。
+	// AssetTools::CreateAsset 内部会 NewObject(RF_Transactional) 并登记 AssetRegistry，
+	// 引擎的建资产流程也都不包事务——包了以后 Ctrl+Z 会销毁对象但留下包与注册表记录，
+	// 变成一个点不开的空资产。
 	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
 
 	FString PackageName;
@@ -109,7 +119,6 @@ UMotionWeaverPoseAsset* FMotionWeaverPoseExtractor::ExtractToNewAsset(
 	if (NewAsset == nullptr)
 	{
 		OutError = LOCTEXT("CreateFailed", "创建姿势代理资产失败。");
-		Transaction.Cancel();
 		return nullptr;
 	}
 
@@ -131,16 +140,14 @@ UMotionWeaverPoseAsset* FMotionWeaverPoseExtractor::ExtractToNewAsset(
 		const FTransform& Self = ComponentSpace[BoneIndex];
 		const int32 ParentIndex = RefSkeleton.GetParentIndex(BoneIndex);
 
-		// 局部 = 自身组件空间 * 父骨组件空间的逆；根骨没有父骨，组件空间即局部空间。
+		// 局部 = 自身组件空间相对父骨组件空间；GetRelativeTransform 语义即 this * Other⁻¹，
+		// 与引擎 AnimationRuntime 的 Local*Parent 互为逆运算。根骨没有父骨，组件空间即局部空间。
 		Snapshot.LocalTransforms.Add(
-			ParentIndex >= 0 ? Self * ComponentSpace[ParentIndex].Inverse() : Self);
+			ParentIndex >= 0 ? Self.GetRelativeTransform(ComponentSpace[ParentIndex]) : Self);
 	}
 
-	// 出处元数据：能拿到具体序列时才记帧号，避免记出无法复现的信息。
-	UAnimPreviewInstance* PreviewInstance = PreviewComponent->PreviewInstance;
-	const UAnimSequence* Sequence = PreviewInstance != nullptr ? PreviewInstance->GetAnimSequence() : nullptr;
-
-	if (Sequence != nullptr && Sequence->GetNumberOfSampledKeys() > 0)
+	// 出处元数据：前面已确认 Sequence 非空，这里只判断有没有采样帧。
+	if (Sequence->GetNumberOfSampledKeys() > 0)
 	{
 		const FFrameRate SamplingRate = Sequence->GetSamplingFrameRate();
 
@@ -151,7 +158,13 @@ UMotionWeaverPoseAsset* FMotionWeaverPoseExtractor::ExtractToNewAsset(
 		Snapshot.SourceFrame = FMath::RoundToInt(Snapshot.SourceTime * Snapshot.SourceFrameRate);
 	}
 
-	NewAsset->Skeleton = PreviewMesh->GetSkeleton();
+	// GetSkeleton() 返回 const 指针，与 TSoftObjectPtr 的非 const 赋值重载不匹配，
+	// 直接赋会触发 C4996 弃用警告（UE 5.5 起）。这里显式去掉 const 再赋。
+	if (const USkeleton* Skeleton = PreviewMesh->GetSkeleton())
+	{
+		NewAsset->Skeleton = const_cast<USkeleton*>(Skeleton);
+	}
+
 	NewAsset->PreviewMesh = const_cast<USkeletalMesh*>(PreviewMesh);
 
 	// 记录材质覆盖，拖入关卡时按同一槽位顺序还原。
@@ -160,8 +173,7 @@ UMotionWeaverPoseAsset* FMotionWeaverPoseExtractor::ExtractToNewAsset(
 		NewAsset->PreviewMaterials.Add(Material);
 	}
 
-	NewAsset->MarkPackageDirty();
-	FAssetRegistryModule::AssetCreated(NewAsset);
+	// MarkPackageDirty 与 AssetCreated 已由 AssetTools::CreateAsset 内部完成，不重复调用。
 
 	return NewAsset;
 }

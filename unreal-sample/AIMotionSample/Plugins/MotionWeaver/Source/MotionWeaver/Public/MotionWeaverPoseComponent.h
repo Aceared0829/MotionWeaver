@@ -35,6 +35,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Pose")
 	void RefreshFromAsset();
 
+	/** 按资产记录的槽位顺序还原预览材质。关卡实例与编辑器视口共用这一份实现。 */
+	UFUNCTION(BlueprintCallable, Category = "Pose")
+	void ApplyPreviewMaterials();
+
 protected:
 	//~ Begin UActorComponent Interface
 	virtual void OnRegister() override;

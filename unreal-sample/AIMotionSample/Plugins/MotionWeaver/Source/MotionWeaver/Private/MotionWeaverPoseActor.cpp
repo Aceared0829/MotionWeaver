@@ -4,8 +4,6 @@
 
 #include "MotionWeaverPoseAsset.h"
 #include "MotionWeaverPoseComponent.h"
-#include "Engine/SkeletalMesh.h"
-#include "Materials/MaterialInterface.h"
 
 AMotionWeaverPoseActor::AMotionWeaverPoseActor()
 {
@@ -37,23 +35,9 @@ void AMotionWeaverPoseActor::SetPoseAsset(UMotionWeaverPoseAsset* InPoseAsset)
 		return;
 	}
 
+	// 组件是唯一真值持有者；Actor 侧这个字段只是镜像，方便在 Actor 上直接指定。
 	PoseComponent->ApplyPoseAsset(PoseAsset);
-
-	if (PoseAsset == nullptr)
-	{
-		return;
-	}
-
-	// 还原抽取时预览网格上的材质覆盖，顺序与来源一致。
-	// 这里需要槽位索引，所以用带下标的遍历而不是直接取元素。
-	for (int32 SlotIndex = 0; SlotIndex < PoseAsset->PreviewMaterials.Num(); ++SlotIndex)
-	{
-		UMaterialInterface* Material = PoseAsset->PreviewMaterials[SlotIndex].LoadSynchronous();
-		if (Material != nullptr)
-		{
-			PoseComponent->SetMaterial(SlotIndex, Material);
-		}
-	}
+	PoseComponent->ApplyPreviewMaterials();
 }
 
 #if WITH_EDITOR

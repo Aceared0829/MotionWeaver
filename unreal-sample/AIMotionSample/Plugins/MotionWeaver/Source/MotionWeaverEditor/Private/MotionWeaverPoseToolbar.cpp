@@ -20,7 +20,7 @@
 
 #define LOCTEXT_NAMESPACE "MotionWeaverPoseToolbar"
 
-int32 FMotionWeaverPoseToolbar::ExtenderIndex = INDEX_NONE;
+IAnimationEditorModule::FAnimationEditorToolbarExtender FMotionWeaverPoseToolbar::RegisteredExtender;
 
 namespace
 {
@@ -141,37 +141,49 @@ namespace
 
 void FMotionWeaverPoseToolbar::Register()
 {
-	if (ExtenderIndex != INDEX_NONE)
+	if (RegisteredExtender.IsBound())
 	{
 		return;
 	}
 
 	IAnimationEditorModule& Module = FModuleManager::LoadModuleChecked<IAnimationEditorModule>("AnimationEditor");
 
-	// 列表存的是普通委托，Add 返回的是下标而不是句柄，退订按同一位置移除。
-	ExtenderIndex = Module.GetAllAnimationEditorToolbarExtenders().Add(
-		IAnimationEditorModule::FAnimationEditorToolbarExtender::CreateStatic(&FMotionWeaverPoseToolbar::ExtendToolbar));
+	// 模块返回的是普通 TArray<委托>，没有句柄；按值保留一份副本，退订时按值删除，
+	// 这样别人在我们的槽位之前增删条目也不会牵连到我们。
+	RegisteredExtender = IAnimationEditorModule::FAnimationEditorToolbarExtender::CreateStatic(
+		&FMotionWeaverPoseToolbar::ExtendToolbar);
+
+	Module.GetAllAnimationEditorToolbarExtenders().Add(RegisteredExtender);
 }
 
 void FMotionWeaverPoseToolbar::Unregister()
 {
-	if (ExtenderIndex == INDEX_NONE)
+	if (!RegisteredExtender.IsBound())
 	{
 		return;
 	}
 
 	if (IAnimationEditorModule* Module = FModuleManager::GetModulePtr<IAnimationEditorModule>("AnimationEditor"))
 	{
+		// TDelegate 没有 operator==，按句柄比对定位我们的那一项。
+		// 句柄唯一标识「哪个委托实例」，比下标稳：别人增删不会让我们删错。
 		TArray<IAnimationEditorModule::FAnimationEditorToolbarExtender>& Extenders =
 			Module->GetAllAnimationEditorToolbarExtenders();
 
-		if (Extenders.IsValidIndex(ExtenderIndex))
+		const FDelegateHandle OurHandle = RegisteredExtender.GetHandle();
+		const int32 FoundIndex = Extenders.IndexOfByPredicate(
+			[OurHandle](const IAnimationEditorModule::FAnimationEditorToolbarExtender& Extender)
+			{
+				return Extender.GetHandle() == OurHandle;
+			});
+
+		if (FoundIndex != INDEX_NONE)
 		{
-			Extenders.RemoveAt(ExtenderIndex);
+			Extenders.RemoveAt(FoundIndex);
 		}
 	}
 
-	ExtenderIndex = INDEX_NONE;
+	RegisteredExtender.Unbind();
 }
 
 TSharedRef<FExtender> FMotionWeaverPoseToolbar::ExtendToolbar(

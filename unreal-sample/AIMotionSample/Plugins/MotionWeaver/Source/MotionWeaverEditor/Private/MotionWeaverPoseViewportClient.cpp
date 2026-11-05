@@ -9,7 +9,7 @@ FMotionWeaverPoseViewportClient::FMotionWeaverPoseViewportClient(
 	FPreviewScene* InPreviewScene, const TSharedRef<SEditorViewport>& InViewport)
 	: FEditorViewportClient(nullptr, InPreviewScene, InViewport)
 {
-	// 姿态是静态的，不需要实时渲染之外的任何时钟推进。
+	// 姿态是静态的，不需要在实时渲染之外推进任何时钟。
 	SetRealtime(true);
 
 	// 初始视角对准角色正面，离得比默认近一点，方便看姿态细节。
@@ -18,9 +18,4 @@ FMotionWeaverPoseViewportClient::FMotionWeaverPoseViewportClient(
 
 	DrawHelper.bDrawGrid = false;
 	EngineShowFlags.SetGrid(false);
-}
-
-void FMotionWeaverPoseViewportClient::Tick(float DeltaSeconds)
-{
-	FEditorViewportClient::Tick(DeltaSeconds);
 }

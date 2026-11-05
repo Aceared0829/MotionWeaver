@@ -62,6 +62,12 @@ struct MOTIONWEAVER_API FMotionWeaverPoseSnapshot
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pose")
 	TArray<FTransform> LocalTransforms;
 
+	/** 当前代码认识的最高格式版本。读到更高版本时应当拒绝而不是硬解。 */
+	static constexpr int32 CurrentFormatVersion = 1;
+
+	/** 格式版本是否是本代码支持的。 */
+	bool IsSupportedVersion() const { return FormatVersion <= CurrentFormatVersion; }
+
 	/** 骨骼数量是否与变换数量一致。 */
 	bool IsConsistent() const { return BoneNames.Num() == LocalTransforms.Num(); }
 

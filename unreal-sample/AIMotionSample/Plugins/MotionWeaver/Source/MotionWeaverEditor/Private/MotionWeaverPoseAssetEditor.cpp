@@ -90,6 +90,9 @@ void FMotionWeaverPoseAssetEditor::UnregisterTabSpawners(const TSharedRef<FTabMa
 
 TSharedRef<SDockTab> FMotionWeaverPoseAssetEditor::SpawnTab_Viewport(const FSpawnTabArgs& Args)
 {
+	// 控件在 Init 阶段无条件创建；这里断言是为了将来把创建挪进条件分支时能立刻暴露。
+	ensureMsgf(ViewportWidget.IsValid(), TEXT("ViewportWidget 未在 Init 阶段创建。"));
+
 	return SNew(SDockTab)
 		.Label(LOCTEXT("ViewportTabTitle", "姿态视口"))
 		[
@@ -99,6 +102,8 @@ TSharedRef<SDockTab> FMotionWeaverPoseAssetEditor::SpawnTab_Viewport(const FSpaw
 
 TSharedRef<SDockTab> FMotionWeaverPoseAssetEditor::SpawnTab_Details(const FSpawnTabArgs& Args)
 {
+	ensureMsgf(DetailsView.IsValid(), TEXT("DetailsView 未在 Init 阶段创建。"));
+
 	return SNew(SDockTab)
 		.Label(LOCTEXT("DetailsTabTitle", "姿势数据"))
 		[
