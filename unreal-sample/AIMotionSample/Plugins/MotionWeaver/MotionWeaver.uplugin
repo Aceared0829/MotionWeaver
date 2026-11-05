@@ -15,6 +15,11 @@
 			"Name": "MotionWeaver",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "MotionWeaverEditor",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default"
 		}
 	]
 }
