@@ -37,8 +37,8 @@ private:
 	 * 已注册的延展器副本。
 	 *
 	 * 不用下标登记：模块返回的是普通 TArray<委托>，没有句柄语义。
-	 * 别的插件在我们的槽位之前增删条目，或者模块热重载重建数组，
-	 * 下标都会失效并删错别人的项。按值保存、按值删除才与下标无关。
+	 * 别人在我们的槽位之前增删条目、或模块热重载重建数组，下标都会失效并删错别人的项。
+	 * 因此保留一份副本，退订时按它的 GetHandle() 定位（TDelegate 没有 operator==）。
 	 */
 	static IAnimationEditorModule::FAnimationEditorToolbarExtender RegisteredExtender;
 };

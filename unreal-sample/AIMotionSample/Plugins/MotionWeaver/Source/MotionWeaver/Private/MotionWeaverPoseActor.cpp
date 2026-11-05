@@ -14,20 +14,15 @@ AMotionWeaverPoseActor::AMotionWeaverPoseActor()
 	RootComponent = PoseComponent;
 }
 
-void AMotionWeaverPoseActor::OnConstruction(const FTransform& Transform)
+UMotionWeaverPoseAsset* AMotionWeaverPoseActor::GetPoseAsset() const
 {
-	Super::OnConstruction(Transform);
-	SetPoseAsset(PoseAsset);
-}
-
-void AMotionWeaverPoseActor::PostLoad()
-{
-	Super::PostLoad();
-	SetPoseAsset(PoseAsset);
+	// 以组件为准：组件才是真正解析姿态、驱动骨骼的那一方。
+	return PoseComponent != nullptr ? PoseComponent->PoseAsset : PoseAsset;
 }
 
 void AMotionWeaverPoseActor::SetPoseAsset(UMotionWeaverPoseAsset* InPoseAsset)
 {
+	// 属性本身也存一份，是为了让细节面板的 Getter 在组件尚未创建时仍能显示。
 	PoseAsset = InPoseAsset;
 
 	if (PoseComponent == nullptr)
@@ -35,19 +30,20 @@ void AMotionWeaverPoseActor::SetPoseAsset(UMotionWeaverPoseAsset* InPoseAsset)
 		return;
 	}
 
-	// 组件是唯一真值持有者；Actor 侧这个字段只是镜像，方便在 Actor 上直接指定。
-	PoseComponent->ApplyPoseAsset(PoseAsset);
+	PoseComponent->ApplyPoseAsset(InPoseAsset);
 	PoseComponent->ApplyPreviewMaterials();
 }
 
-#if WITH_EDITOR
-void AMotionWeaverPoseActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+void AMotionWeaverPoseActor::OnConstruction(const FTransform& Transform)
 {
-	Super::PostEditChangeProperty(PropertyChangedEvent);
+	Super::OnConstruction(Transform);
 
-	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(AMotionWeaverPoseActor, PoseAsset))
-	{
-		SetPoseAsset(PoseAsset);
-	}
+	// 构造期把资产灌进组件；构造脚本可能刚改过 PoseAsset。
+	SetPoseAsset(PoseAsset);
 }
-#endif
+
+void AMotionWeaverPoseActor::PostLoad()
+{
+	Super::PostLoad();
+	// 姿态应用留给组件的 OnRegister：那时渲染资源才就绪。
+}
