@@ -16,8 +16,9 @@ class UMotionWeaverPoseComponent;
  * 区别是它显示的不是网格资产而是某段动画某一帧的骨骼姿态。
  * 不参与 Tick，也不参与任何动画图求值。
  *
- * 姿态数据只存在组件上。这里的 PoseAsset 属性是转发访问器，
- * 不单独存一份，避免两处真值互相失配。
+ * 姿态数据由组件持有。这里的 PoseAsset 属性带 Getter/Setter：
+ * 读取一律取组件那份，写入会同步灌进组件，因此不存在两处真值互相失配。
+ * 字段本身仍作为序列化镜像保存（组件尚未创建时 Getter 需要它）。
  */
 UCLASS(BlueprintType, meta = (DisplayName = "MotionWeaver Pose Proxy"))
 class MOTIONWEAVER_API AMotionWeaverPoseActor final : public AActor

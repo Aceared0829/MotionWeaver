@@ -31,7 +31,6 @@ public class MotionWeaverEditor : ModuleRules
 			"AdvancedPreviewScene",
 			"EditorFramework",
 			"ContentBrowser",
-			"AssetRegistry",
 		});
 	}
 }

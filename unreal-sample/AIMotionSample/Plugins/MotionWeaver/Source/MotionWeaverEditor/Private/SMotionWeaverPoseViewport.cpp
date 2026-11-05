@@ -43,10 +43,8 @@ void SMotionWeaverPoseViewport::RefreshPreview()
 		return;
 	}
 
+	// ApplyPoseAsset 内部已经一并还原材质，这里不需要再调一次。
 	PreviewComponent->ApplyPoseAsset(PoseAsset);
-
-	// 与关卡实例共用同一份材质还原实现，保证预览和摆进关卡的画面一致。
-	PreviewComponent->ApplyPreviewMaterials();
 }
 
 TSharedRef<FEditorViewportClient> SMotionWeaverPoseViewport::MakeEditorViewportClient()

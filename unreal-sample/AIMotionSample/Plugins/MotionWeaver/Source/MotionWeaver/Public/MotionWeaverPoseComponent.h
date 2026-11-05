@@ -27,9 +27,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pose")
 	TObjectPtr<UMotionWeaverPoseAsset> PoseAsset;
 
-	/** 把资产的姿态写进骨骼。资产为空或数据不自洽时回退到参考姿态。 */
+	/** 把资产的姿态写进骨骼并还原材质。资产为空或数据不自洽时回退到参考姿态。 */
 	UFUNCTION(BlueprintCallable, Category = "Pose")
 	void ApplyPoseAsset(UMotionWeaverPoseAsset* InPoseAsset);
+
+	/**
+	 * 只登记资产，不做渲染侧工作。
+	 * 用于属性 setter：细节面板提交后紧跟着会重跑构造脚本重注册组件，
+	 * 在那里做实现会重复劳动，实际应用交给 OnConstruction / OnRegister。
+	 */
+	void SetPoseAssetDeferred(UMotionWeaverPoseAsset* InPoseAsset);
 
 	/** 重新应用当前资产，例如资产在编辑器里被改动之后。 */
 	UFUNCTION(BlueprintCallable, Category = "Pose")

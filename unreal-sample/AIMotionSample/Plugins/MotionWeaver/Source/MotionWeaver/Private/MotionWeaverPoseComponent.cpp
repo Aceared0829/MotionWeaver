@@ -50,6 +50,18 @@ void UMotionWeaverPoseComponent::ApplyPoseAsset(UMotionWeaverPoseAsset* InPoseAs
 	}
 
 	ApplySnapshotToBones();
+
+	// 材质必须在这里一并应用，不能只挂在调用方的构造路径上。
+	// 打包构建（cooked）下 World 不重跑构造脚本（World.cpp:2764 的
+	// bRerunConstructionScripts = !RequiresCookedData()），从关卡反序列化出来的
+	// Actor 只走 OnRegister——那时若只灌骨骼不灌材质，外观就会退回网格默认材质。
+	ApplyPreviewMaterials();
+}
+
+void UMotionWeaverPoseComponent::SetPoseAssetDeferred(UMotionWeaverPoseAsset* InPoseAsset)
+{
+	// 仅登记，不触碰渲染状态；应用留给 OnConstruction / OnRegister。
+	PoseAsset = InPoseAsset;
 }
 
 void UMotionWeaverPoseComponent::RefreshFromAsset()
@@ -84,16 +96,23 @@ void UMotionWeaverPoseComponent::ApplySnapshotToBones()
 		return;
 	}
 
-	if (BoneSpaceTransforms.IsEmpty())
-	{
-		return;
-	}
-
 	// 名字不能叫 SkinnedAsset：USkinnedMeshComponent 有同名成员，会触发 C4458 声明遮蔽。
 	const USkinnedAsset* CurrentSkinnedAsset = GetSkinnedAsset();
 	if (CurrentSkinnedAsset == nullptr)
 	{
 		// 没有网格就没有参考骨架，这时写任何骨骼都没有依据。
+		return;
+	}
+
+	// 骨骼数组在 AllocateTransformData 里分配，而后者只在组件已注册时执行
+	// （SkinnedMeshComponent.cpp:2793 的 IsRegistered() || IsPreRegistering()）。
+	// 构造脚本阶段组件尚未注册，所以这里可能是空的——真正生效靠随后的 OnRegister。
+	// 一旦将来有人在 OnRegister 之前换网格，这条链路会静默失效，因此留一条可查的痕迹。
+	if (BoneSpaceTransforms.Num() != CurrentSkinnedAsset->GetRefSkeleton().GetNum())
+	{
+		UE_LOG(LogMotionWeaver, Verbose,
+			TEXT("[%s] 骨骼数组尚未按当前网格分配（%d vs %d），本次不写入姿态，等待 OnRegister。"),
+			*GetName(), BoneSpaceTransforms.Num(), CurrentSkinnedAsset->GetRefSkeleton().GetNum());
 		return;
 	}
 
@@ -129,12 +148,36 @@ void UMotionWeaverPoseComponent::ApplySnapshotToBones()
 	}
 
 	// 静默产出半套姿态是最坏的结果：调用方无法察觉，下游会把错误数据当成真值。
-	// 因此命中不满时明确告警，而不是悄悄跳过。
+	// 因此命中不满时明确告警——但只在结果发生变化时打一次：
+	// OnRegister 与构造脚本重跑都会走到这里，无条件打印会刷屏。
+	struct FLastMismatchReport
+	{
+		const UObject* Component = nullptr;
+		const UObject* Asset = nullptr;
+		int32 MissingCount = 0;
+	};
+	static FLastMismatchReport LastMismatch;
+
 	if (MatchedCount < BoneSlotCount)
 	{
-		UE_LOG(LogMotionWeaver, Warning,
-			TEXT("[%s] 姿势资产 %s 有 %d/%d 根骨骼在当前网格上找不到，这些骨骼保持参考姿态。"),
-			*GetName(), *PoseAsset->GetName(), BoneSlotCount - MatchedCount, BoneSlotCount);
+		const int32 MissingCount = BoneSlotCount - MatchedCount;
+		const bool bAlreadyReported =
+			LastMismatch.Component == this &&
+			LastMismatch.Asset == PoseAsset &&
+			LastMismatch.MissingCount == MissingCount;
+
+		if (!bAlreadyReported)
+		{
+			UE_LOG(LogMotionWeaver, Warning,
+				TEXT("[%s] 姿势资产 %s 有 %d/%d 根骨骼在当前网格上找不到，这些骨骼保持参考姿态。"),
+				*GetName(), *PoseAsset->GetName(), MissingCount, BoneSlotCount);
+
+			LastMismatch = { this, PoseAsset, MissingCount };
+		}
+	}
+	else
+	{
+		LastMismatch = FLastMismatchReport();
 	}
 
 	// 通知组件骨骼已改动，重建组件空间矩阵。
