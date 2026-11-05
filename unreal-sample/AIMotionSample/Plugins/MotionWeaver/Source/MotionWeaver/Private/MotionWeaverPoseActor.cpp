@@ -30,25 +30,28 @@ void AMotionWeaverPoseActor::SetPoseAsset(UMotionWeaverPoseAsset* InPoseAsset)
 		return;
 	}
 
-	// 这里只登记，不做渲染侧的重活。
-	// 细节面板提交会走 Setter，紧接着 AActor::PostEditChangeProperty 又会 RerunConstructionScripts
-	// 把组件整个注销重注册一遍；若在此处直接 SetSkinnedAssetAndUpdate + RefreshBoneTransforms，
-	// 同一次编辑会把渲染侧工作做两遍，而且夹在事务提交中间。
-	// 实际应用由 OnConstruction / OnRegister 收口。
-	PoseComponent->SetPoseAssetDeferred(InPoseAsset);
+	// 组件已注册 = 渲染侧就绪，可以直接应用（运行时换资产、PIE、编辑器里手动刷新都走这条）。
+	// 未注册 = 正处于构造/反序列化阶段，此刻做 SetSkinnedAssetAndUpdate 会因
+	// SkinnedMeshComponent.cpp:2793 的注册检查而跳过骨骼分配；且细节面板提交后
+	// 紧接着 PostEditChangeProperty 会重跑构造脚本把组件注销重注册一遍，做了也是白做。
+	// 这种情况只登记，交给随后的 OnConstruction / OnRegister。
+	if (PoseComponent->IsRegistered())
+	{
+		PoseComponent->ApplyPoseAsset(InPoseAsset);
+	}
+	else
+	{
+		PoseComponent->SetPoseAssetDeferred(InPoseAsset);
+	}
 }
 
 void AMotionWeaverPoseActor::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	// 构造脚本可能刚改过 PoseAsset，这里正式落地一次（Setter 只做登记）。
+	// 构造脚本可能刚改过 PoseAsset。此处组件尚未注册，Setter 只会登记，
+	// 真正的应用由随后的 OnRegister 完成，因此这里不需要再手动应用一次。
 	SetPoseAsset(PoseAsset);
-
-	if (PoseComponent != nullptr)
-	{
-		PoseComponent->ApplyPoseAsset(PoseComponent->PoseAsset);
-	}
 }
 
 void AMotionWeaverPoseActor::PostLoad()
