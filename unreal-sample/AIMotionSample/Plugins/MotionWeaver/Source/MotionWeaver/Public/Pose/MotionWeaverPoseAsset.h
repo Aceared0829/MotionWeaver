@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
-#include "MotionWeaverPoseTypes.h"
+#include "Pose/MotionWeaverPoseTypes.h"
 #include "MotionWeaverPoseAsset.generated.h"
 
 class USkeletalMesh;

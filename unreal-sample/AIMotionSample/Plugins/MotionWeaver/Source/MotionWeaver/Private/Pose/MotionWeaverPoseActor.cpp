@@ -1,9 +1,9 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "MotionWeaverPoseActor.h"
+#include "Pose/MotionWeaverPoseActor.h"
 
-#include "MotionWeaverPoseAsset.h"
-#include "MotionWeaverPoseComponent.h"
+#include "Pose/MotionWeaverPoseAsset.h"
+#include "Pose/MotionWeaverPoseComponent.h"
 
 AMotionWeaverPoseActor::AMotionWeaverPoseActor()
 {

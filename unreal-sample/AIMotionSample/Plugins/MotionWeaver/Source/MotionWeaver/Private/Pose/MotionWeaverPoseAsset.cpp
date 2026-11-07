@@ -1,6 +1,6 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "MotionWeaverPoseAsset.h"
+#include "Pose/MotionWeaverPoseAsset.h"
 
 #if WITH_EDITOR
 FString UMotionWeaverPoseAsset::GetDesc()

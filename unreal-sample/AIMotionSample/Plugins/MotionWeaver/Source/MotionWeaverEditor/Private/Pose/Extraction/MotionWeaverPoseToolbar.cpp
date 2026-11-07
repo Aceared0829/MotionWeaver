@@ -1,9 +1,9 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "MotionWeaverPoseToolbar.h"
+#include "Pose/Extraction/MotionWeaverPoseToolbar.h"
 
-#include "MotionWeaverPoseAsset.h"
-#include "MotionWeaverPoseExtractor.h"
+#include "Pose/MotionWeaverPoseAsset.h"
+#include "Pose/Extraction/MotionWeaverPoseExtractor.h"
 
 #include "ContentBrowserModule.h"
 #include "Editor.h"

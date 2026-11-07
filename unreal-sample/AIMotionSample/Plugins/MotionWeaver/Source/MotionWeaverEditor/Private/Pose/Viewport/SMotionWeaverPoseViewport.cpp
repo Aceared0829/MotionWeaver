@@ -1,10 +1,10 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "SMotionWeaverPoseViewport.h"
+#include "Pose/Viewport/SMotionWeaverPoseViewport.h"
 
-#include "MotionWeaverPoseAsset.h"
-#include "MotionWeaverPoseComponent.h"
-#include "MotionWeaverPoseViewportClient.h"
+#include "Pose/MotionWeaverPoseAsset.h"
+#include "Pose/MotionWeaverPoseComponent.h"
+#include "Pose/Viewport/MotionWeaverPoseViewportClient.h"
 
 #include "AdvancedPreviewScene.h"
 #include "SEditorViewport.h"

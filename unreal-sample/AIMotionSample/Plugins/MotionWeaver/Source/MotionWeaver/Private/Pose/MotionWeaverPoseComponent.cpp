@@ -1,9 +1,9 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "MotionWeaverPoseComponent.h"
+#include "Pose/MotionWeaverPoseComponent.h"
 
-#include "MotionWeaverLog.h"
-#include "MotionWeaverPoseAsset.h"
+#include "Core/MotionWeaverLog.h"
+#include "Pose/MotionWeaverPoseAsset.h"
 #include "Engine/SkeletalMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "ReferenceSkeleton.h"
