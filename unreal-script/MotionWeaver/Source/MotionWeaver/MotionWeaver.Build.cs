@@ -9,6 +9,11 @@ public class MotionWeaver : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		IWYUSupport = IWYUSupport.Full;
 
-		PublicDependencyModuleNames.Add("Core");
+		PublicDependencyModuleNames.AddRange(new[]
+		{
+			"Core",
+			"CoreUObject",
+			"Engine",
+		});
 	}
 }
