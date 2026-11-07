@@ -1,9 +1,9 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "MotionWeaverPoseAssetEditor.h"
+#include "Pose/Assets/MotionWeaverPoseAssetEditor.h"
 
-#include "MotionWeaverPoseAsset.h"
-#include "SMotionWeaverPoseViewport.h"
+#include "Pose/MotionWeaverPoseAsset.h"
+#include "Pose/Viewport/SMotionWeaverPoseViewport.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Modules/ModuleManager.h"

@@ -1,9 +1,9 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "MotionWeaverPoseAssetTypeActions.h"
+#include "Pose/Assets/MotionWeaverPoseAssetTypeActions.h"
 
-#include "MotionWeaverPoseAsset.h"
-#include "MotionWeaverPoseAssetEditor.h"
+#include "Pose/MotionWeaverPoseAsset.h"
+#include "Pose/Assets/MotionWeaverPoseAssetEditor.h"
 
 #include "Toolkits/IToolkitHost.h"
 

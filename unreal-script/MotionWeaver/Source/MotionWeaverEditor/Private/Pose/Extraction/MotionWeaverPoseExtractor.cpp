@@ -1,9 +1,9 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "MotionWeaverPoseExtractor.h"
+#include "Pose/Extraction/MotionWeaverPoseExtractor.h"
 
-#include "MotionWeaverPoseAsset.h"
-#include "MotionWeaverPoseTypes.h"
+#include "Pose/MotionWeaverPoseAsset.h"
+#include "Pose/MotionWeaverPoseTypes.h"
 
 #include "AnimPreviewInstance.h"
 #include "AnimationEditorUtils.h"

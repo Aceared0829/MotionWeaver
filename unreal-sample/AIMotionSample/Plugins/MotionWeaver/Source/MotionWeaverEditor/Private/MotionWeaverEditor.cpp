@@ -2,8 +2,8 @@
 
 #include "MotionWeaverEditor.h"
 
-#include "MotionWeaverPoseAssetTypeActions.h"
-#include "MotionWeaverPoseToolbar.h"
+#include "Pose/Assets/MotionWeaverPoseAssetTypeActions.h"
+#include "Pose/Extraction/MotionWeaverPoseToolbar.h"
 
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"

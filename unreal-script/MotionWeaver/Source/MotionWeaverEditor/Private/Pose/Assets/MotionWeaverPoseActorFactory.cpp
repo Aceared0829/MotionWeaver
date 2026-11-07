@@ -1,9 +1,9 @@
 // Copyright ZhaoZining. All Rights Reserved.
 
-#include "MotionWeaverPoseActorFactory.h"
+#include "Pose/Assets/MotionWeaverPoseActorFactory.h"
 
-#include "MotionWeaverPoseActor.h"
-#include "MotionWeaverPoseAsset.h"
+#include "Pose/MotionWeaverPoseActor.h"
+#include "Pose/MotionWeaverPoseAsset.h"
 
 #define LOCTEXT_NAMESPACE "MotionWeaverPoseActorFactory"
 
