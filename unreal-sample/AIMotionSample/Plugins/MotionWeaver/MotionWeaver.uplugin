@@ -19,7 +19,7 @@
 		{
 			"Name": "MotionWeaverEditor",
 			"Type": "UncookedOnly",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "PostEngineInit"
 		}
 	]
 }

@@ -19,6 +19,7 @@ public class MotionWeaverEditor : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new[]
 		{
 			"AssetTools",
+			"ComponentVisualizers",
 			"UnrealEd",
 			"Persona",
 			"AnimationEditor",

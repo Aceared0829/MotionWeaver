@@ -20,6 +20,12 @@ public:
 	virtual FColor GetTypeColor() const override;
 	virtual UClass* GetSupportedClass() const override;
 	virtual uint32 GetCategories() override;
+	/**
+	 * 二级分组名。引擎把「一级分类 + 这里的文本」合成为「动画 → 神经网络」。
+	 * 参考引擎自己的做法：AssetTypeActions_AnimBoneCompressionSettings::GetSubMenus
+	 * 用同一套机制给出「动画 → 高级」。
+	 */
+	virtual const TArray<FText>& GetSubMenus() const override;
 	virtual void OpenAssetEditor(const TArray<UObject*>& InObjects, TSharedPtr<IToolkitHost> EditWithinLevelEditor) override;
 	//~ End IAssetTypeActions Interface
 };

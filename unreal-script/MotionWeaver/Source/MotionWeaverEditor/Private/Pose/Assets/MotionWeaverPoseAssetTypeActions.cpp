@@ -26,7 +26,19 @@ UClass* FMotionWeaverPoseAssetTypeActions::GetSupportedClass() const
 
 uint32 FMotionWeaverPoseAssetTypeActions::GetCategories()
 {
+	// 放在「动画」下：用户明确要求与动画蓝图同级。
 	return EAssetTypeCategories::Animation;
+}
+
+const TArray<FText>& FMotionWeaverPoseAssetTypeActions::GetSubMenus() const
+{
+	// 二级菜单名。与姿势代理组共用同一个名字，两项会并排落在
+	// 「动画 → 神经网络」里，而不是散落在「基本属性」。
+	static const TArray<FText> SubMenus
+	{
+		LOCTEXT("MotionWeaverSubMenu", "神经网络")
+	};
+	return SubMenus;
 }
 
 void FMotionWeaverPoseAssetTypeActions::OpenAssetEditor(
