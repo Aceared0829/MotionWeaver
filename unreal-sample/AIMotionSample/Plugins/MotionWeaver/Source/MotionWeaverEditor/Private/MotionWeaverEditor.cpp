@@ -2,10 +2,10 @@
 
 #include "MotionWeaverEditor.h"
 
-#include "Pose/Assets/MotionWeaverPoseAssetTypeActions.h"
-#include "Pose/Assets/MotionWeaverPoseGroupAssetTypeActions.h"
-#include "Pose/Extraction/MotionWeaverPoseToolbar.h"
-#include "Pose/Proxy/MotionWeaverPoseChainDragDropHandler.h"
+#include "Pose/Assets/PoseProxyAssetTypeActions.h"
+#include "Pose/Assets/PoseGroupProxyAssetTypeActions.h"
+#include "Pose/Extraction/PoseToolbar.h"
+#include "Pose/Proxy/PoseChainDragDropHandler.h"
 
 #include "AssetToolsModule.h"
 #include "Editor.h"
@@ -37,23 +37,23 @@ void FMotionWeaverEditorModule::StartupModule()
 	// 不用自己挂菜单：之前试过 GetAllAssetContextMenuExtenders + AddSubMenu，
 	// 结果是入口落在顶部「创建」区，与「新建文件夹」并列，位置不对。
 
-	const TSharedRef<FMotionWeaverPoseAssetTypeActions> PoseAssetActions = MakeShared<FMotionWeaverPoseAssetTypeActions>();
+	const TSharedRef<FPoseProxyAssetTypeActions> PoseAssetActions = MakeShared<FPoseProxyAssetTypeActions>();
 	AssetTools.RegisterAssetTypeActions(PoseAssetActions);
 	RegisteredAssetTypeActions.Add(PoseAssetActions);
 
 	// 姿势代理组：跑酷这类复合运动的容器资产，与单帧姿势代理并列。
-	const TSharedRef<FMotionWeaverPoseGroupAssetTypeActions> PoseGroupAssetActions =
-		MakeShared<FMotionWeaverPoseGroupAssetTypeActions>();
+	const TSharedRef<FPoseGroupProxyAssetTypeActions> PoseGroupAssetActions =
+		MakeShared<FPoseGroupProxyAssetTypeActions>();
 	AssetTools.RegisterAssetTypeActions(PoseGroupAssetActions);
 	RegisteredAssetTypeActions.Add(PoseGroupAssetActions);
 
 	// 工具栏入口：动画编辑器里的「抽取姿势代理」。
-	FMotionWeaverPoseToolbar::Register();
+	FPoseToolbar::Register();
 
 	// 姿态链的视口编辑不再走组件可视化器。
 	// 旧做法是把一个 10cm 的命中球挂在蒙皮组件上，点身体命中的仍是 HActor，
 	// 而组件选中被 CanCreateBlueprintOfClass 挡死（链 Actor 是 final + BlueprintType），
-	// 那条路走不通。现在由 AMotionWeaverPoseChainKeyProxy 接管：
+	// 那条路走不通。现在由 APoseChainKeyProxy 接管：
 	// 每个 key 在编辑器里就是一个真正的 Actor，点它就是点普通 Actor。
 	// 因此这里不再注册任何可视化器。
 
@@ -64,8 +64,8 @@ void FMotionWeaverEditorModule::StartupModule()
 		GEditor->OnCreateLevelEditorDragDropHandler().BindLambda(
 			[]() -> ULevelEditorDragDropHandler*
 			{
-				return NewObject<UMotionWeaverPoseChainDragDropHandler>(
-					GEditor, UMotionWeaverPoseChainDragDropHandler::StaticClass());
+				return NewObject<UPoseChainDragDropHandler>(
+					GEditor, UPoseChainDragDropHandler::StaticClass());
 			});
 		bPoseChainDragDropHandlerBound = true;
 	}
@@ -73,7 +73,7 @@ void FMotionWeaverEditorModule::StartupModule()
 
 void FMotionWeaverEditorModule::ShutdownModule()
 {
-	FMotionWeaverPoseToolbar::Unregister();
+	FPoseToolbar::Unregister();
 
 	if (bPoseChainDragDropHandlerBound && GEditor != nullptr)
 	{
@@ -84,7 +84,7 @@ void FMotionWeaverEditorModule::ShutdownModule()
 		// 否则下次 GetLevelEditorDragDropHandler 还会拿到我们那个已失效的对象。
 		if (ULevelEditorDragDropHandler* Cached = GEditor->GetLevelEditorDragDropHandler())
 		{
-			if (Cached->IsA(UMotionWeaverPoseChainDragDropHandler::StaticClass()))
+			if (Cached->IsA(UPoseChainDragDropHandler::StaticClass()))
 			{
 				Cached->MarkAsGarbage();
 			}
