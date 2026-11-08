@@ -23,13 +23,13 @@ uint32 UPoseGroupProxyFactory::GetMenuCategories() const
 
 FText UPoseGroupProxyFactory::GetDisplayName() const
 {
-	return LOCTEXT("DisplayName", "MotionWeaver 姿势代理组");
+	return LOCTEXT("DisplayName", "姿态代理组");
 }
 
 FText UPoseGroupProxyFactory::GetToolTip() const
 {
 	return LOCTEXT("ToolTip",
-		"把一串姿势代理串成一段可复用的复合运动（跑酷、翻越、起身）。");
+		"把一串姿态代理串成一段可复用的复合运动（跑酷、翻越、起身）。");
 }
 
 UObject* UPoseGroupProxyFactory::FactoryCreateNew(

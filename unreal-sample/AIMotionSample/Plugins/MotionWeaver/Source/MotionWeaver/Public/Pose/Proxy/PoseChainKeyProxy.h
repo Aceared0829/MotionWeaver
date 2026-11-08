@@ -33,7 +33,7 @@ class UPoseComponent;
  * 要持有与生成它，而 Runtime 依赖 Editor 会形成反向依赖。
  * 真正只在编辑器里发生的部分（生成时机）用 WITH_EDITORONLY_DATA 隔开。
  */
-UCLASS(NotBlueprintable, meta = (DisplayName = "MotionWeaver Pose Chain Key Proxy"))
+UCLASS(NotBlueprintable, meta = (DisplayName = "Pose Chain Key Proxy"))
 class MOTIONWEAVER_API APoseChainKeyProxy final : public AActor
 {
 	GENERATED_BODY()

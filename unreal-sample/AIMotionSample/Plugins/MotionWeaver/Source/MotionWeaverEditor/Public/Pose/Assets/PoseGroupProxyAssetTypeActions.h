@@ -6,7 +6,7 @@
 #include "AssetTypeActions_Base.h"
 
 /**
- * 姿势代理组资产在内容浏览器里的表现。
+ * 姿态代理组资产在内容浏览器里的表现。
  * 没有独立编辑界面：所有配置都在细节面板完成。
  */
 class FPoseGroupProxyAssetTypeActions final : public FAssetTypeActions_Base

@@ -9,7 +9,7 @@
 class UPoseProxyAsset;
 
 /**
- * 姿势代理的显示组件。
+ * 姿态代理的显示组件。
  *
  * 用 PoseableMeshComponent 而不是 SkeletalMeshComponent：我们不做动画求值，
  * 只把一份静态姿态写进骨骼，跳过整条动画图与动画实例的求值流程。

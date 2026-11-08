@@ -31,7 +31,7 @@ class UPoseProxyAsset;
  *    没有代理时（打包构建）退回链自己持有的 UPoseComponent。
  * 两者都不 Tick、不求值动画图——姿态是直接写进骨骼的静态数据。
  */
-UCLASS(BlueprintType, meta = (DisplayName = "MotionWeaver Pose Chain"))
+UCLASS(BlueprintType, meta = (DisplayName = "Pose Chain"))
 class MOTIONWEAVER_API APoseChainActor final : public AActor
 {
 	GENERATED_BODY()

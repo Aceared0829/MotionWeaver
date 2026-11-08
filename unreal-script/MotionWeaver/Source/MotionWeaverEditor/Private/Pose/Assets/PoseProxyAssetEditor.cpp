@@ -105,7 +105,7 @@ TSharedRef<SDockTab> FPoseProxyAssetEditor::SpawnTab_Details(const FSpawnTabArgs
 	ensureMsgf(DetailsView.IsValid(), TEXT("DetailsView 未在 Init 阶段创建。"));
 
 	return SNew(SDockTab)
-		.Label(LOCTEXT("DetailsTabTitle", "姿势数据"))
+		.Label(LOCTEXT("DetailsTabTitle", "姿态数据"))
 		[
 			DetailsView.ToSharedRef()
 		];

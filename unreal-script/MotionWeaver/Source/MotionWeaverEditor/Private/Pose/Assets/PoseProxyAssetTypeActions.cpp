@@ -32,7 +32,7 @@ uint32 FPoseProxyAssetTypeActions::GetCategories()
 
 const TArray<FText>& FPoseProxyAssetTypeActions::GetSubMenus() const
 {
-	// 二级菜单名。与姿势代理组共用同一个名字，两项会并排落在
+	// 二级菜单名。与姿态代理组共用同一个名字，两项会并排落在
 	// 「动画 → 神经网络」里，而不是散落在「基本属性」。
 	static const TArray<FText> SubMenus
 	{

@@ -111,7 +111,7 @@ namespace
 		{
 			Info.ButtonDetails.Add(FNotificationButtonInfo(
 				LOCTEXT("OpenPoseAssetButton", "打开"),
-				LOCTEXT("OpenPoseAssetButtonTip", "在姿势代理编辑器里打开这个资产。"),
+				LOCTEXT("OpenPoseAssetButtonTip", "在姿态代理编辑器里打开这个资产。"),
 				FSimpleDelegate::CreateStatic(&OpenPoseAsset, NewAsset),
 				VisibleState));
 
@@ -204,8 +204,8 @@ TSharedRef<FExtender> FPoseToolbar::ExtendToolbar(
 						FExecuteAction::CreateStatic(&FPoseToolbar::OnExtractClicked, WeakEditor),
 						FCanExecuteAction::CreateStatic(&FPoseToolbar::CanExtractClicked, WeakEditor)),
 					NAME_None,
-					LOCTEXT("ExtractPoseLabel", "抽取姿势代理"),
-					LOCTEXT("ExtractPoseTooltip", "把当前暂停帧的全身姿态抽成一个姿势代理资产。"),
+					LOCTEXT("ExtractPoseLabel", "抽取姿态代理"),
+					LOCTEXT("ExtractPoseTooltip", "把当前暂停帧的全身姿态抽成一个姿态代理资产。"),
 					FSlateIcon(FAppStyle::GetAppStyleSetName(), "Persona.CreateAsset"));
 			}));
 
@@ -243,7 +243,7 @@ void FPoseToolbar::OnExtractClicked(TWeakPtr<IAnimationEditor> WeakAnimationEdit
 	}
 
 	NotifyExtraction(
-		FText::Format(LOCTEXT("ExtractSucceeded", "已生成姿势代理：{0}"), FText::FromString(NewAsset->GetName())),
+		FText::Format(LOCTEXT("ExtractSucceeded", "已生成姿态代理：{0}"), FText::FromString(NewAsset->GetName())),
 		/*bSuccess*/ true,
 		TWeakObjectPtr<UPoseProxyAsset>(NewAsset));
 }

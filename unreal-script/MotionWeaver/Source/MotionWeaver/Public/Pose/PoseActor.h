@@ -10,7 +10,7 @@ class UPoseProxyAsset;
 class UPoseComponent;
 
 /**
- * 姿势代理：关卡里可摆放的一帧姿态。
+ * 姿态代理：关卡里可摆放的一帧姿态。
  *
  * 行为上和静态网格体 Actor 一致——能被拖进场景、能摆变换、能被序列化进关卡；
  * 区别是它显示的不是网格资产而是某段动画某一帧的骨骼姿态。
@@ -20,7 +20,7 @@ class UPoseComponent;
  * 读取一律取组件那份，写入会同步灌进组件，因此不存在两处真值互相失配。
  * 字段本身仍作为序列化镜像保存（组件尚未创建时 Getter 需要它）。
  */
-UCLASS(BlueprintType, meta = (DisplayName = "MotionWeaver Pose Proxy"))
+UCLASS(BlueprintType, meta = (DisplayName = "Pose Proxy"))
 class MOTIONWEAVER_API APoseActor final : public AActor
 {
 	GENERATED_BODY()

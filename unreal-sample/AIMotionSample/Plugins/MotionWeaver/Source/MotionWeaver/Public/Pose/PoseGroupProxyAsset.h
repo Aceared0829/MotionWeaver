@@ -11,7 +11,7 @@
 class UPoseProxyAsset;
 
 /**
- * 姿势代理组：把一串有序的姿势代理打成一个可复用的运动单元。
+ * 姿态代理组：把一串有序的姿态代理打成一个可复用的运动单元。
  *
  * 为什么需要它，而不是直接用关卡里的链 Actor：
  *  - 链 Actor 活在一个关卡里，换个关卡就得重摆一遍；跑酷这种动作是要复用的；
@@ -23,11 +23,11 @@ class UPoseProxyAsset;
  * 资产是唯一真值，Actor 负责求解与显示。两者的字段刻意保持一致，
  * 但不要互相复制——需要改数据时改资产，再让 Actor 重新加载。
  *
- * 与单帧姿势代理的区别：UPoseProxyAsset 是「某一帧长什么样」，
+ * 与单帧姿态代理的区别：UPoseProxyAsset 是「某一帧长什么样」，
  * 这里描述的是「这些帧按什么时间与位移串起来」。跑酷、翻越这类复合运动
  * 靠的是后者，单帧资产单独拿出来只能当静态摆件。
  */
-UCLASS(BlueprintType, meta = (DisplayName = "MotionWeaver Pose Group"))
+UCLASS(BlueprintType, meta = (DisplayName = "Pose Group Proxy"))
 class MOTIONWEAVER_API UPoseGroupProxyAsset final : public UDataAsset
 {
 	GENERATED_BODY()

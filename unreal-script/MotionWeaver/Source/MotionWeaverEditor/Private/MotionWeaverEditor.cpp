@@ -28,7 +28,7 @@ namespace
 
 void FMotionWeaverEditorModule::StartupModule()
 {
-	// 资产类型动作：让姿势代理资产在内容浏览器里有图标、分类与拖放能力。
+	// 资产类型动作：让姿态代理资产在内容浏览器里有图标、分类与拖放能力。
 	// 用 LoadModuleChecked 而不是先判断已加载：跳过注册会让功能凭空消失且不留痕迹。
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
 
@@ -41,13 +41,13 @@ void FMotionWeaverEditorModule::StartupModule()
 	AssetTools.RegisterAssetTypeActions(PoseAssetActions);
 	RegisteredAssetTypeActions.Add(PoseAssetActions);
 
-	// 姿势代理组：跑酷这类复合运动的容器资产，与单帧姿势代理并列。
+	// 姿态代理组：跑酷这类复合运动的容器资产，与单帧姿态代理并列。
 	const TSharedRef<FPoseGroupProxyAssetTypeActions> PoseGroupAssetActions =
 		MakeShared<FPoseGroupProxyAssetTypeActions>();
 	AssetTools.RegisterAssetTypeActions(PoseGroupAssetActions);
 	RegisteredAssetTypeActions.Add(PoseGroupAssetActions);
 
-	// 工具栏入口：动画编辑器里的「抽取姿势代理」。
+	// 工具栏入口：动画编辑器里的「抽取姿态代理」。
 	FPoseToolbar::Register();
 
 	// 姿态链的视口编辑不再走组件可视化器。

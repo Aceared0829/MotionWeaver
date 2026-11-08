@@ -118,7 +118,7 @@ UPoseProxyAsset* FPoseExtractor::ExtractToNewAsset(
 
 	if (NewAsset == nullptr)
 	{
-		OutError = LOCTEXT("CreateFailed", "创建姿势代理资产失败。");
+		OutError = LOCTEXT("CreateFailed", "创建姿态代理资产失败。");
 		return nullptr;
 	}
 

@@ -10,12 +10,12 @@
 
 FText FPoseGroupProxyAssetTypeActions::GetName() const
 {
-	return LOCTEXT("Name", "MotionWeaver 姿势代理组");
+	return LOCTEXT("Name", "姿态代理组");
 }
 
 FColor FPoseGroupProxyAssetTypeActions::GetTypeColor() const
 {
-	// 橙色：与单帧姿势代理的蓝色区分开，一眼看出这是「一段运动」而不是「一帧」。
+	// 橙色：与单帧姿态代理的蓝色区分开，一眼看出这是「一段运动」而不是「一帧」。
 	return FColor(255, 170, 60);
 }
 
@@ -31,7 +31,7 @@ uint32 FPoseGroupProxyAssetTypeActions::GetCategories()
 
 const TArray<FText>& FPoseGroupProxyAssetTypeActions::GetSubMenus() const
 {
-	// 与姿势代理同一个二级菜单名，两项并排。
+	// 与姿态代理同一个二级菜单名，两项并排。
 	static const TArray<FText> SubMenus
 	{
 		LOCTEXT("PoseChainSubMenu", "神经网络")

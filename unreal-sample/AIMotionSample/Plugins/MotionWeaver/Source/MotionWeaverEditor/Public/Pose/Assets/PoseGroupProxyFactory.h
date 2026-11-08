@@ -7,9 +7,9 @@
 #include "PoseGroupProxyFactory.generated.h"
 
 /**
- * 内容浏览器「动画 → MotionWeaver 姿势代理组」的创建入口。
+ * 内容浏览器「动画 → 姿态代理组」的创建入口。
  *
- * 与单帧姿势代理并列放，因为它们是同一层的两种东西：
+ * 与单帧姿态代理并列放，因为它们是同一层的两种东西：
  * 一个是「这一帧长什么样」，一个是「这些帧怎么串成一段跑酷」。
  */
 UCLASS(HideCategories = Object, MinimalAPI)

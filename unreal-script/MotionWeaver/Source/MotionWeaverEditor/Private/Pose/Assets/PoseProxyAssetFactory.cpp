@@ -24,13 +24,13 @@ uint32 UPoseProxyAssetFactory::GetMenuCategories() const
 
 FText UPoseProxyAssetFactory::GetDisplayName() const
 {
-	return LOCTEXT("DisplayName", "MotionWeaver 姿势代理");
+	return LOCTEXT("DisplayName", "姿态代理");
 }
 
 FText UPoseProxyAssetFactory::GetToolTip() const
 {
 	return LOCTEXT("ToolTip",
-		"新建一帧姿态资产。内容可用动画编辑器里的「抽取姿势代理」从暂停帧灌入。");
+		"新建一帧姿态资产。内容可用动画编辑器里的「抽取姿态代理」从暂停帧灌入。");
 }
 
 UObject* UPoseProxyAssetFactory::FactoryCreateNew(
