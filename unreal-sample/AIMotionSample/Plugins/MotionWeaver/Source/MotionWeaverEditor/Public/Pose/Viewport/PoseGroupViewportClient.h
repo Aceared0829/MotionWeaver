@@ -115,6 +115,9 @@ private:
 	/** 记录首条拖拽日志，避免每帧刷屏。 */
 	bool bLoggedDrag = false;
 
+	/** 记录首条 InputWidgetDelta 入口日志，用于判断门控在哪一步被拦。 */
+	bool bLoggedDeltaEntry = false;
+
 	/**
 	 * 视口是否已完成初始化。
 	 * 视角与手柄模式必须在 Tick 里设，不能放构造函数：

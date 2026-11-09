@@ -32,10 +32,13 @@ FPoseGroupViewportClient::FPoseGroupViewportClient(
 	FPreviewScene* InPreviewScene, const TSharedRef<SEditorViewport>& InViewport)
 	: FEditorViewportClient(nullptr, InPreviewScene, InViewport)
 {
-	// 构造里只碰「不依赖 Slate 应用、不依赖 ModeTools」的东西。
-	// 参照 FSCSEditorViewportClient 的构造函数：它在这里设的是
-	// WidgetMode / WidgetCoordSystem 这两个纯成员变量，而不是调 SetWidgetMode。
-	WidgetMode = UE::Widget::WM_Translate;
+	// 这里不设 WidgetMode 成员。
+	//
+	// 之前把成员初值设为 WM_Translate，而 SetWidgetMode 里做了「同值短路」，
+	// 结果第一次按 W 就被短路掉，ModeTools 永远停在 WM_None：
+	// FWidget::Render 读的是 InViewportClient->GetWidgetMode()，
+	// 拿到 WM_None 就一个轴都不画，视口里只剩一圈空手柄。
+	// 模式统一在首次 Tick 里通过 SetWidgetMode 真正写入 ModeTools。
 	WidgetCoordSystem = COORD_Local;
 
 	SetRealtime(true);
@@ -89,8 +92,18 @@ void FPoseGroupViewportClient::Tick(float DeltaSeconds)
 			Widget->SetSnapEnabled(true);
 		}
 
-		// 不把模式转给 ModeTools：WidgetMode 是本类自己维护的成员
-		// （见 SetWidgetMode / GetWidgetMode），转手反而会与它失配。
+		// ModeWidgets 是 FWidget 能否画出来的开关，默认是关闭的。
+		//
+		// ShowFlags.h:190  Init(ESFIM_Game)
+		// ShowFlags.h:471  SetModeWidgets(InitMode == ESFIM_Editor)
+		// 视口的 EngineShowFlags 从 ESFIM_Game 初始化，ModeWidgets 因此为 false；
+		// 而 UnrealWidgetRender.cpp:186 第一道判定就是它。false 时不画轴，
+		// 顺手也不生成手柄的命中代理，于是鼠标永远点不中轴、CurrentAxis 恒为 None。
+		EngineShowFlags.SetModeWidgets(true);
+
+		// 首次 Tick 把模式真正写进 ModeTools：FWidget 渲染与命中都读
+		// ModeTools->GetWidgetMode()，只写自己的成员等于没设。
+		SetWidgetMode(UE::Widget::WM_Translate);
 
 		// 选中轮廓：让「当前在动哪一帧」有视觉反馈。
 		// 蓝图 SCS 视口读的是 ULevelEditorViewportSettings::bUseSelectionOutline，
@@ -103,10 +116,9 @@ void FPoseGroupViewportClient::Tick(float DeltaSeconds)
 		{
 			bLoggedInit = true;
 			UE_LOG(LogTemp, Warning,
-				TEXT("[PoseGroupViewport] 初始化：Widget=%s ModeTools=%s Snap=%d Mode=%d Coord=%d DragTarget=%s"),
+				TEXT("[PoseGroupViewport] 初始化：Widget=%s ModeWidgets=%d Mode=%d Coord=%d DragTarget=%s"),
 				Widget != nullptr ? TEXT("有") : TEXT("空"),
-				ModeTools != nullptr ? TEXT("有") : TEXT("空"),
-				Widget != nullptr ? 1 : 0,
+				EngineShowFlags.ModeWidgets ? 1 : 0,
 				static_cast<int32>(WidgetMode),
 				static_cast<int32>(WidgetCoordSystem),
 				DragTarget != nullptr ? TEXT("有") : TEXT("无"));
@@ -148,17 +160,15 @@ FVector FPoseGroupViewportClient::GetWidgetLocation() const
 
 void FPoseGroupViewportClient::SetWidgetMode(UE::Widget::EWidgetMode NewMode)
 {
-	// 已处于目标模式就直接返回：SetWidgetMode 会触发 Invalidate 与
-	// hit proxy 重建，在相机移动中重复触发会打断导航。
-	if (WidgetMode == NewMode)
-	{
-		return;
-	}
-
+	// 两处都要写，且不做「同值短路」。
+	//
+	// 之前为了避开相机导航被打断而加了短路，副作用是：成员初值就是
+	// WM_Translate 时，第一次以及后续每次按 W 都被短路，ModeTools 永远
+	// 停在 WM_None，手柄一个轴都不画。
+	// 打断导航的真正原因在 InputKey 的门控（未按右键才接管），
+	// 不该靠短路来防。
 	WidgetMode = NewMode;
 
-	// 自己存一份给鼠标位移换算使用，同时让引擎也知道模式。
-	// 只写字段会出现「界面看似切换了，实际拖拽仍按旧模式走」。
 	if (ModeTools != nullptr)
 	{
 		ModeTools->SetWidgetMode(NewMode);
@@ -169,6 +179,13 @@ void FPoseGroupViewportClient::SetWidgetMode(UE::Widget::EWidgetMode NewMode)
 
 UE::Widget::EWidgetMode FPoseGroupViewportClient::GetWidgetMode() const
 {
+	// 以 ModeTools 为准：FWidget::Render / DrawHUD / 命中测试读的都是这个返回值，
+	// 它与 ModeTools 不一致时手柄会画不出来或画错。
+	if (ModeTools != nullptr)
+	{
+		return ModeTools->GetWidgetMode();
+	}
+
 	return WidgetMode;
 }
 
@@ -181,7 +198,12 @@ FMatrix FPoseGroupViewportClient::GetWidgetCoordSystem() const
 	{
 		if (const FPoseKey* Selected = GetSelectedKeyPtr())
 		{
-			return FRotationMatrix(FRotator(0.0, Selected->BodyRotation.Yaw, 0.0));
+			// 只取朝向建坐标系，并清掉平移分量：
+			// Widget 用它决定三根轴的方向，带位移会让轴整体偏移。
+			FMatrix RotationOnly =
+				FRotationMatrix(FRotator(0.0, Selected->BodyRotation.Yaw, 0.0));
+			RotationOnly.SetOrigin(FVector::ZeroVector);
+			return RotationOnly;
 		}
 	}
 
@@ -210,6 +232,22 @@ bool FPoseGroupViewportClient::InputWidgetDelta(
 	FVector& Drag, FRotator& Rot, FVector& Scale)
 {
 	const FPoseKey* Selected = GetSelectedKeyPtr();
+
+	// 入口探针：先记下真实取值，再判断要不要接管。
+	// 「拖了没反应」可能是四件事之一——没有选中帧、没有拖拽目标、
+	// 没进入操纵状态、没有轴。不打印就只能猜。
+	if (!bLoggedDeltaEntry && !Drag.IsNearlyZero())
+	{
+		bLoggedDeltaEntry = true;
+		UE_LOG(LogTemp, Warning,
+			TEXT("[PoseGroupViewport] Delta入口：选中=%d 有帧=%d 目标=%d 操纵中=%d 轴=%d 平移=(%.2f,%.2f,%.2f)"),
+			SelectedKeyIndex,
+			Selected != nullptr ? 1 : 0,
+			DragTarget != nullptr ? 1 : 0,
+			bIsManipulating ? 1 : 0,
+			static_cast<int32>(CurrentAxis),
+			Drag.X, Drag.Y, Drag.Z);
+	}
 
 	// 蓝图视口的门控：只有手柄真正被拖动、且有明确轴时才改对象。
 	// 缺了这个条件，普通视口鼠标操作也可能把 key 改掉。
@@ -334,12 +372,18 @@ void FPoseGroupViewportClient::TrackingStarted(
 {
 	FEditorViewportClient::TrackingStarted(InInputState, bIsDraggingWidget, bNudge);
 
+	UE_LOG(LogTemp, Warning,
+		TEXT("[PoseGroupViewport] TrackingStarted：拖手柄=%d 轴=%d"),
+		bIsDraggingWidget ? 1 : 0,
+		static_cast<int32>(Widget != nullptr ? Widget->GetCurrentAxis() : EAxisList::None));
+
 	if (bIsDraggingWidget)
 	{
 		// 拖手柄才开事务；普通点击不开，否则每点一下撤销栈就多一层。
 		bIsManipulating = true;
 		bHasDragStart = true;
 		bLoggedDrag = false;
+		bLoggedDeltaEntry = false;
 		OnDragStarted.ExecuteIfBound();
 	}
 }
