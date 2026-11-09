@@ -19,6 +19,7 @@ public class MotionWeaverEditor : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new[]
 		{
 			"AssetTools",
+			"ComponentVisualizers",
 			"UnrealEd",
 			"Persona",
 			"AnimationEditor",
@@ -31,6 +32,12 @@ public class MotionWeaverEditor : ModuleRules
 			"AdvancedPreviewScene",
 			"EditorFramework",
 			"ContentBrowser",
+			// EKeys::* 定义在 InputCore；SListView / STableRow 展开后要用到它，
+			// 少了这个模块会在链接期报一堆 EKeys 未解析。
+			"InputCore",
+			// 变换手柄只驱动 Typed Element；选择集与元素接口都在这两个模块里。
+			"TypedElementFramework",
+			"TypedElementRuntime",
 		});
 	}
 }

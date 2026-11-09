@@ -2,14 +2,20 @@
 
 #include "MotionWeaver.h"
 
+#include "Pose/Elements/PoseKeyElementRegistry.h"
+
 void FMotionWeaverModule::StartupModule()
 {
-	// 当前插件只验证模块生命周期，不注册功能或资源。
+	// 把「姿态关键帧」注册成引擎认识的一种 Typed Element 类型。
+	//
+	// 这一步是编辑器里能用三轴手柄的前提：ITF 的变换手柄只驱动 Typed Element，
+	// 我们的编辑单位是资产里的结构体，不注册它，手柄永远不会为它出现。
+	FPoseKeyElementRegistry::Register();
 }
 
 void FMotionWeaverModule::ShutdownModule()
 {
-	// 当前插件没有需要释放的运行时状态。
+	FPoseKeyElementRegistry::Unregister();
 }
 
 IMPLEMENT_MODULE(FMotionWeaverModule, MotionWeaver)
