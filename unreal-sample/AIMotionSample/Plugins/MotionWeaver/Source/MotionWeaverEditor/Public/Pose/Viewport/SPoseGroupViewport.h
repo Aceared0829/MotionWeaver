@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AdvancedPreviewScene.h"
+#include "Pose/Proxy/PoseChainTypes.h"
 #include "SAssetEditorViewport.h"
 #include "UObject/GCObject.h"
 
@@ -33,6 +34,15 @@ public:
 	/** 切到某一帧并刷新蒙皮。 */
 	void SetSelectedKey(int32 KeyIndex);
 
+	/** 视口里拖拽产生的改动。由编辑器接走，避免控件直接改资产。 */
+	DECLARE_DELEGATE_OneParam(FOnPoseKeyDragged, const FPoseKey& /*NewKeyValue*/);
+	FOnPoseKeyDragged OnKeyDragged;
+
+	/** 拖拽开始/结束，供编辑器开合事务。 */
+	DECLARE_DELEGATE(FOnPoseDragStateChanged);
+	FOnPoseDragStateChanged OnDragStarted;
+	FOnPoseDragStateChanged OnDragFinished;
+
 	//~ Begin FGCObject Interface
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
 	virtual FString GetReferencerName() const override { return TEXT("SPoseGroupViewport"); }
@@ -46,6 +56,13 @@ protected:
 private:
 	/** 把当前选中帧的姿态灌进预览组件。 */
 	void ApplySelectedPose();
+
+	/** 拖动过程中的即时预览：只动组件，不碰资产。 */
+	void ApplyDragPreview(const FPoseKey& NewKeyValue);
+
+	void HandleKeyDragged(const FPoseKey& NewKeyValue);
+	void HandleDragStarted();
+	void HandleDragFinished();
 
 	TSharedPtr<FAdvancedPreviewScene> PreviewScene;
 	TObjectPtr<UPoseComponent> PreviewComponent;

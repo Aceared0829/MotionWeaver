@@ -6,6 +6,7 @@
 #include "Pose/Viewport/SPoseKeyTimeline.h"
 #include "Pose/Viewport/SPoseGroupViewport.h"
 
+#include "Editor.h"
 #include "Framework/Docking/TabManager.h"
 #include "Modules/ModuleManager.h"
 #include "PropertyEditorModule.h"
@@ -25,6 +26,11 @@ void FPoseGroupProxyAssetEditor::InitPoseGroupProxyAssetEditor(
 	GroupAsset = InAsset;
 
 	ViewportWidget = SNew(SPoseGroupViewport).GroupAsset(GroupAsset);
+
+	// 视口的拖拽结果回到这里：写值、开合事务、松手求解。
+	ViewportWidget->OnKeyDragged.BindSP(this, &FPoseGroupProxyAssetEditor::ApplyDraggedKey);
+	ViewportWidget->OnDragStarted.BindSP(this, &FPoseGroupProxyAssetEditor::BeginDragTransaction);
+	ViewportWidget->OnDragFinished.BindSP(this, &FPoseGroupProxyAssetEditor::EndDragTransaction);
 	TimelineWidget = SNew(SPoseKeyTimeline).Editor(SharedThis(this));
 
 	FPropertyEditorModule& PropertyEditorModule =
@@ -246,6 +252,65 @@ void FPoseGroupProxyAssetEditor::SetSelectedKeyFrame(int32 NewFrame)
 	GroupAsset->MarkPackageDirty();
 
 	RefreshFromAsset();
+}
+
+void FPoseGroupProxyAssetEditor::ApplyDraggedKey(const FPoseKey& NewKeyValue)
+{
+	if (GroupAsset == nullptr || !GroupAsset->Keys.IsValidIndex(SelectedKeyIndex))
+	{
+		return;
+	}
+
+	FPoseKey& Key = GroupAsset->Keys[SelectedKeyIndex];
+
+	// 数值没变就不重算：拖拽每帧都会回调，无差别求解会把拖动拖成卡顿。
+	const bool bChanged =
+		!Key.LocalLocation.Equals(NewKeyValue.LocalLocation, 0.01) ||
+		!Key.BodyRotation.Equals(NewKeyValue.BodyRotation, 0.05);
+
+	if (!bChanged)
+	{
+		return;
+	}
+
+	Key.LocalLocation = NewKeyValue.LocalLocation;
+	Key.SetBodyRotation(NewKeyValue.BodyRotation);
+
+	// 拖拽期间不重解整条链——作者还在动，只有松手才需要最终结果。
+	// 但资产要标脏，松手时统一 Solve。
+	GroupAsset->MarkPackageDirty();
+}
+
+void FPoseGroupProxyAssetEditor::BeginDragTransaction()
+{
+	if (GroupAsset == nullptr)
+	{
+		return;
+	}
+
+	// 整段拖动一个事务：撤销一次回到拖动前，而不是退一帧。
+	if (!bDragTransactionOpen)
+	{
+		GEditor->BeginTransaction(LOCTEXT("DragPoseKey", "拖动关键帧"));
+		GroupAsset->Modify();
+		bDragTransactionOpen = true;
+	}
+}
+
+void FPoseGroupProxyAssetEditor::EndDragTransaction()
+{
+	if (bDragTransactionOpen)
+	{
+		GEditor->EndTransaction();
+		bDragTransactionOpen = false;
+	}
+
+	// 松手才求解：拖动过程中重算会让手感发涩，而且中间结果没人看。
+	if (GroupAsset != nullptr)
+	{
+		GroupAsset->Solve();
+		RefreshFromAsset();
+	}
 }
 
 FName FPoseGroupProxyAssetEditor::GetToolkitFName() const

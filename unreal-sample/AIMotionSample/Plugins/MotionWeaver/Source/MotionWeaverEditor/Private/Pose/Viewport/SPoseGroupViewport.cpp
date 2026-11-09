@@ -86,7 +86,49 @@ TSharedRef<FEditorViewportClient> SPoseGroupViewport::MakeEditorViewportClient()
 		MakeShared<FPoseGroupViewportClient>(PreviewScene.Get(), SharedThis(this));
 	NewClient->SetGroupAsset(GroupAsset);
 	NewClient->SetSelectedKey(SelectedKeyIndex);
+
+	// 拖拽结果交给外部（编辑器）：资产改动要走事务、要求解、要让时间轴刷新，
+	// 那些都在编辑器里，视口只负责把新值算出来。
+	NewClient->SetOnKeyDragged(FPoseGroupViewportClient::FOnKeyDragged::CreateSP(
+		this, &SPoseGroupViewport::HandleKeyDragged));
+	NewClient->SetOnDragStarted(FPoseGroupViewportClient::FOnDragStateChanged::CreateSP(
+		this, &SPoseGroupViewport::HandleDragStarted));
+	NewClient->SetOnDragFinished(FPoseGroupViewportClient::FOnDragStateChanged::CreateSP(
+		this, &SPoseGroupViewport::HandleDragFinished));
+
 	return NewClient;
+}
+
+void SPoseGroupViewport::HandleKeyDragged(const FPoseKey& NewKeyValue)
+{
+	OnKeyDragged.ExecuteIfBound(NewKeyValue);
+
+	// 拖动过程中也让预览组件跟着走，作者才看得到自己在动什么。
+	ApplyDragPreview(NewKeyValue);
+}
+
+void SPoseGroupViewport::ApplyDragPreview(const FPoseKey& NewKeyValue)
+{
+	if (PreviewComponent == nullptr)
+	{
+		return;
+	}
+
+	PreviewComponent->SetRelativeLocationAndRotation(NewKeyValue.LocalLocation, NewKeyValue.BodyRotation);
+}
+
+void SPoseGroupViewport::HandleDragStarted()
+{
+	OnDragStarted.ExecuteIfBound();
+}
+
+void SPoseGroupViewport::HandleDragFinished()
+{
+	OnDragFinished.ExecuteIfBound();
+
+	// 松手后从资产重新读一次：拖动期间预览用的是临时值，
+	// 资产已经被编辑器写回并求解过，这里对齐一次避免残留中间态。
+	ApplySelectedPose();
 }
 
 void SPoseGroupViewport::AddReferencedObjects(FReferenceCollector& Collector)

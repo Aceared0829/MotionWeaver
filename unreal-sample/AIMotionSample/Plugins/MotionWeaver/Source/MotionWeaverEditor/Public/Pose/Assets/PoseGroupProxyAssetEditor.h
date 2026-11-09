@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Pose/Proxy/PoseChainTypes.h"
 #include "Toolkits/AssetEditorToolkit.h"
 
 class UPoseGroupProxyAsset;
@@ -65,6 +66,13 @@ public:
 	/** 把选中帧的帧号改动写回资产并重解。 */
 	void SetSelectedKeyFrame(int32 NewFrame);
 
+	/** 视口拖拽：把新值写回选中帧并重解。 */
+	void ApplyDraggedKey(const FPoseKey& NewKeyValue);
+
+	/** 拖拽开始/结束：整段拖动算一个撤销单元。 */
+	void BeginDragTransaction();
+	void EndDragTransaction();
+
 private:
 	TSharedRef<SDockTab> SpawnTab_Viewport(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_Timeline(const FSpawnTabArgs& Args);
@@ -81,4 +89,7 @@ private:
 	TSharedPtr<IDetailsView> DetailsView;
 
 	int32 SelectedKeyIndex = INDEX_NONE;
+
+	/** 拖动事务是否已开。EndTransaction 必须与 BeginTransaction 配对。 */
+	bool bDragTransactionOpen = false;
 };
