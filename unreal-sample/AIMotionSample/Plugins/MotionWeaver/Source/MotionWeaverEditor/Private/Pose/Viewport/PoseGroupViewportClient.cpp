@@ -7,6 +7,7 @@
 #include "Pose/Proxy/PoseChainDebugComponent.h"
 
 #include "EditorViewportClient.h"
+#include "EditorModeManager.h"
 #include "SEditorViewport.h"
 #include "SceneManagement.h"
 #include "UnrealWidget.h"
@@ -95,6 +96,20 @@ void FPoseGroupViewportClient::Tick(float DeltaSeconds)
 		// 这里跟随同一项设置，用户在关卡里关掉轮廓时这里也一致。
 		EngineShowFlags.SetSelectionOutline(
 			GetDefault<ULevelEditorViewportSettings>()->bUseSelectionOutline);
+
+		// 自检日志：只打一次，用来分清「没生效」和「生效了但表现不同」。
+		if (!bLoggedInit)
+		{
+			bLoggedInit = true;
+			UE_LOG(LogTemp, Warning,
+				TEXT("[PoseGroupViewport] 初始化：Widget=%s ModeTools=%s Snap=%d Mode=%d Coord=%d DragTarget=%s"),
+				Widget != nullptr ? TEXT("有") : TEXT("空"),
+				ModeTools != nullptr ? TEXT("有") : TEXT("空"),
+				Widget != nullptr ? 1 : 0,
+				static_cast<int32>(WidgetMode),
+				static_cast<int32>(WidgetCoordSystem),
+				DragTarget != nullptr ? TEXT("有") : TEXT("无"));
+		}
 	}
 
 	// 预览世界的 Tick：引擎的视口客户端每帧推进一次自己的预览场景，
@@ -132,10 +147,15 @@ FVector FPoseGroupViewportClient::GetWidgetLocation() const
 
 void FPoseGroupViewportClient::SetWidgetMode(UE::Widget::EWidgetMode NewMode)
 {
-	// 只存成员，不转手给 ModeTools：
-	// 父类实现会访问 ModeTools 并触发 hit proxy 失效，在视口未完全就绪时
-	// 会踩空。蓝图 SCS 视口也是这么做的（SCSEditorViewportClient.cpp:885）。
 	WidgetMode = NewMode;
+
+	// 自己存一份给鼠标位移换算使用，同时让引擎也知道模式。
+	// 只写字段会出现「界面看似切换了，实际拖拽仍按旧模式走」。
+	if (ModeTools != nullptr)
+	{
+		ModeTools->SetWidgetMode(NewMode);
+	}
+
 	Invalidate();
 }
 
@@ -168,6 +188,12 @@ ECoordSystem FPoseGroupViewportClient::GetWidgetCoordSystemSpace() const
 void FPoseGroupViewportClient::SetWidgetCoordSystemSpace(ECoordSystem NewCoordSystem)
 {
 	WidgetCoordSystem = NewCoordSystem;
+
+	if (ModeTools != nullptr)
+	{
+		ModeTools->SetCoordSystem(NewCoordSystem);
+	}
+
 	Invalidate();
 }
 
@@ -176,9 +202,13 @@ bool FPoseGroupViewportClient::InputWidgetDelta(
 	FVector& Drag, FRotator& Rot, FVector& Scale)
 {
 	const FPoseKey* Selected = GetSelectedKeyPtr();
-	if (Selected == nullptr || DragTarget == nullptr)
+
+	// 蓝图视口的门控：只有手柄真正被拖动、且有明确轴时才改对象。
+	// 缺了这个条件，普通视口鼠标操作也可能把 key 改掉。
+	if (Selected == nullptr || DragTarget == nullptr
+		|| !bIsManipulating || CurrentAxis == EAxisList::None)
 	{
-		return false;
+		return FEditorViewportClient::InputWidgetDelta(InViewport, CurrentAxis, Drag, Rot, Scale);
 	}
 
 	// 交给引擎处理，不自己算：
@@ -197,13 +227,27 @@ bool FPoseGroupViewportClient::InputWidgetDelta(
 	FPoseKey NewKey = *Selected;
 	NewKey.LocalLocation = DragTarget->GetRelativeLocation();
 
-	// 旋转只保留偏航：这个系统的朝向语义就是 Yaw。
-	// Pitch/Roll 能在 BodyRotation 里存，但旋转手柄的圆弧拖动在这里
-	// 容易误操作，等有明确需求再开放。
-	const FRotator ComponentRotation = DragTarget->GetRelativeRotation();
-	NewKey.BodyRotation = FRotator(
-		ComponentRotation.Pitch, ComponentRotation.Yaw, ComponentRotation.Roll);
-	NewKey.HeadingDegrees = NewKey.BodyRotation.Yaw;
+	if (!Rot.IsNearlyZero())
+	{
+		// 旋转只改偏航，保留这一帧原有的 Pitch/Roll。
+		//
+		// ApplyDeltaToComponent 接收的是欧拉增量并做四元数组合，
+		// 直接把组件的完整旋转写回会顺带改变侧倾和俯仰，
+		// 表现就是「拖一下旋转，角色侧翻躺地上」。
+		NewKey.BodyRotation = FRotator(
+			Selected->BodyRotation.Pitch,
+			Selected->BodyRotation.Yaw + Rot.Yaw,
+			Selected->BodyRotation.Roll);
+		NewKey.HeadingDegrees = NewKey.BodyRotation.Yaw;
+	}
+
+	if (!bLoggedDrag)
+	{
+		bLoggedDrag = true;
+		UE_LOG(LogTemp, Warning,
+			TEXT("[PoseGroupViewport] 拖拽：轴=%d 平移=(%.2f,%.2f,%.2f) Yaw增量=%.2f 新Yaw=%.2f"),
+			static_cast<int32>(CurrentAxis), Drag.X, Drag.Y, Drag.Z, Rot.Yaw, NewKey.BodyRotation.Yaw);
+	}
 
 	OnKeyDragged.ExecuteIfBound(NewKey);
 	return true;
@@ -244,7 +288,9 @@ void FPoseGroupViewportClient::TrackingStarted(
 	if (bIsDraggingWidget)
 	{
 		// 拖手柄才开事务；普通点击不开，否则每点一下撤销栈就多一层。
-		bHasDragStart = false;
+		bIsManipulating = true;
+		bHasDragStart = true;
+		bLoggedDrag = false;
 		OnDragStarted.ExecuteIfBound();
 	}
 }
@@ -253,8 +299,9 @@ void FPoseGroupViewportClient::TrackingStopped()
 {
 	FEditorViewportClient::TrackingStopped();
 
-	if (bHasDragStart)
+	if (bIsManipulating)
 	{
+		bIsManipulating = false;
 		bHasDragStart = false;
 		OnDragFinished.ExecuteIfBound();
 	}
@@ -271,6 +318,17 @@ void FPoseGroupViewportClient::Draw(const FSceneView* View, FPrimitiveDrawInterf
 
 	DrawTrajectory(PDI);
 	DrawGhostKeys(PDI);
+
+	if (!bLoggedWidget && DragTarget != nullptr)
+	{
+		bLoggedWidget = true;
+		UE_LOG(LogTemp, Warning,
+			TEXT("[PoseGroupViewport] 手柄=%s 组件=%s 选中帧=%d 资产Key数=%d"),
+			*GetWidgetLocation().ToString(),
+			*DragTarget->GetComponentLocation().ToString(),
+			SelectedKeyIndex,
+			GroupAsset.IsValid() ? GroupAsset->Keys.Num() : -1);
+	}
 }
 
 void FPoseGroupViewportClient::DrawTrajectory(FPrimitiveDrawInterface* PDI) const

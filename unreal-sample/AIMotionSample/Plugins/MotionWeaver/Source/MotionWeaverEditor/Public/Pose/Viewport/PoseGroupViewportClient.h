@@ -100,11 +100,17 @@ private:
 	int32 SelectedKeyIndex = INDEX_NONE;
 
 	/**
-	 * 拖拽是否已经开始。
-	 * 不需要记「起始值」：变换由引擎的 ApplyDeltaToComponent 增量应用到
-	 * 预览组件上，组件本身就是基准，自己再存一份反而会与它失配。
+	 * 当前是否正在拖动手柄。
+	 * 蓝图 SCS 视口只有在 bIsManipulating 且 CurrentAxis != None 时才改对象。
+	 * 之前没有这个状态门控，任何鼠标路径都可能触发 ApplyDeltaToComponent。
 	 */
+	bool bIsManipulating = false;
+
+	/** 是否正处于按键拖动事务中。 */
 	bool bHasDragStart = false;
+
+	/** 记录首条拖拽日志，避免每帧刷屏。 */
+	bool bLoggedDrag = false;
 
 	/**
 	 * 视口是否已完成初始化。
@@ -113,6 +119,14 @@ private:
 	 * SetWidgetMode 依赖 ModeTools，两者在构造期都还没就绪。
 	 */
 	bool bViewportInitialized = false;
+
+	/**
+	 * 自检日志是否已打过。
+	 * 视口「看起来没变化」时只能靠数值判断是没生效还是表现不同，
+	 * 这两条日志只打一次，不刷屏。
+	 */
+	bool bLoggedInit = false;
+	bool bLoggedWidget = false;
 
 	FOnKeyDragged OnKeyDragged;
 	FOnDragStateChanged OnDragStarted;
