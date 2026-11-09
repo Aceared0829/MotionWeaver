@@ -148,6 +148,13 @@ FVector FPoseGroupViewportClient::GetWidgetLocation() const
 
 void FPoseGroupViewportClient::SetWidgetMode(UE::Widget::EWidgetMode NewMode)
 {
+	// 已处于目标模式就直接返回：SetWidgetMode 会触发 Invalidate 与
+	// hit proxy 重建，在相机移动中重复触发会打断导航。
+	if (WidgetMode == NewMode)
+	{
+		return;
+	}
+
 	WidgetMode = NewMode;
 
 	// 自己存一份给鼠标位移换算使用，同时让引擎也知道模式。
@@ -277,10 +284,27 @@ bool FPoseGroupViewportClient::InputKey(const FInputKeyEventArgs& EventArgs)
 		&& !bMouseLooking
 		&& !bIsManipulating;
 
-	// 空格循环模式：与关卡编辑器一致，且空格不参与相机导航。
-	if (bCanUseShortcuts && EventArgs.Key == EKeys::SpaceBar)
+	// Q/W/E：与关卡编辑器完全一致的三种模式（EditorViewportCommands.cpp:154-156
+	// SelectMode=Q、TranslateMode=W、RotateMode=E）。
+	//
+	// 引擎那边它们是 UI 命令，命令系统在视口拿到按键之前就处理掉，且执行条件
+	// 自动排除右键导航期；我们这里没有命令系统，就按同样的规则自己判：
+	// 按住右键时一律不接管，让 WASDQE 继续当相机导航。
+	if (bCanUseShortcuts && EventArgs.Key == EKeys::Q)
 	{
-		CycleWidgetMode();
+		// 选择模式：这个系统里没有"选择"以外的可操作状态——
+		// 手柄收起，只保留点选，与关卡里按 Q 后不出 gizmo 一致。
+		SetWidgetMode(UE::Widget::WM_None);
+		return true;
+	}
+	if (bCanUseShortcuts && EventArgs.Key == EKeys::W)
+	{
+		SetWidgetMode(UE::Widget::WM_Translate);
+		return true;
+	}
+	if (bCanUseShortcuts && EventArgs.Key == EKeys::E)
+	{
+		SetWidgetMode(UE::Widget::WM_Rotate);
 		return true;
 	}
 
