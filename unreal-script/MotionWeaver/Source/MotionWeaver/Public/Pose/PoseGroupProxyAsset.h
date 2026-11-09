@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Pose/Proxy/PoseChainTypes.h"
+#include "UObject/SoftObjectPtr.h"
 #include "Misc/DataValidation.h"
 #include "PoseGroupProxyAsset.generated.h"
 
@@ -76,7 +77,47 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Group")
 	double GetDurationSeconds() const;
 
+	/**
+	 * 重算并缓存轨迹。
+	 *
+	 * 资产是唯一真值，所以求解必须发生在这里——关卡里的 Actor 只是读者。
+	 * 缓存结果而不是每次现算，是因为：
+	 *  - 下游导出（训练、推理）要能在没有编辑器、没有问题的情况下读到同一份轨迹；
+	 *  - 打开资产编辑器时要立刻能画，不能等一次求解。
+	 * 编辑器里改任何字段都会触发本函数（见 PostEditChangeProperty）。
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Group|Solve")
+	void Solve();
+
+	/** 缓存的稠密轨迹。为空表示还没算过或算失败了，看 Diagnostics。 */
+	UFUNCTION(BlueprintPure, Category = "Group|Solve")
+	const TArray<FChainTrajectorySample>& GetSamples() const { return Result.Samples; }
+
+	/** 缓存求解的体检报告。 */
+	UFUNCTION(BlueprintPure, Category = "Group|Solve")
+	const FChainDiagnostics& GetDiagnostics() const { return Result.Diagnostics; }
+
+	/** 最近一次求解的完整结果。 */
+	UFUNCTION(BlueprintPure, Category = "Group|Solve")
+	const FChainResult& GetResult() const { return Result; }
+
+	//~ Begin UObject Interface
+	virtual void PostLoad() override;
+	//~ End UObject Interface
+
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
+
+private:
+	/**
+	 * 求解结果缓存。
+	 *
+	 * 标 Transient：它是 Keys 与 Settings 的派生值，不该被存进 .uasset。
+	 * 存下来会出现「资产里的轨迹和当前 Keys 对不上」的情况，
+	 * 而那种不一致在编辑器里看不出来，只有下游读到错数据时才会发现。
+	 */
+	UPROPERTY(Transient)
+	FChainResult Result;
 };

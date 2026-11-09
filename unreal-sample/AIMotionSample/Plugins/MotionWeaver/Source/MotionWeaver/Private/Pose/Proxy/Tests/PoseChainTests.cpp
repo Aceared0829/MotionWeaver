@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
+#include "Pose/PoseGroupProxyAsset.h"
 #include "Pose/Proxy/PoseChain.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -493,6 +494,54 @@ bool FChainRotationConsistencyTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(ResultA.Samples[Index].HeadingDegrees, ResultB.Samples[Index].HeadingDegrees, 1e-9);
 	}
 	TestTrue(TEXT("pitch/roll never affect root trajectory"), bTrajectoryIdentical);
+
+	return true;
+}
+
+// 资产是唯一真值后，求解必须发生在资产里。
+// 这条测试锁的是「资产 Solve() 与直接调求解器得到同一份结果」——
+// 如果资产偷偷做了额外处理（归一化、排序、滤波），这里会立刻对不上。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPoseGroupAssetSolveTest,
+	"MotionWeaver.PoseChain.GroupAssetSolve",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FPoseGroupAssetSolveTest::RunTest(const FString& Parameters)
+{
+	UPoseGroupProxyAsset* Asset = NewObject<UPoseGroupProxyAsset>(GetTransientPackage());
+	TestNotNull(TEXT("asset created"), Asset);
+
+	Asset->Settings = MakeSettings();
+	Asset->Keys.Add(MakeKey(0, FVector(0.0, 0.0, 0.0), 0.0));
+	Asset->Keys.Add(MakeKey(60, FVector(120.0, 0.0, 0.0), 30.0));
+
+	Asset->Solve();
+
+	const TArray<FChainTrajectorySample>& AssetSamples = Asset->GetSamples();
+	TestTrue(TEXT("asset solved to samples"), AssetSamples.Num() > 1);
+
+	// 同一份输入直接喂求解器，结果必须逐帧一致。
+	FChainResult Direct;
+	FPoseChainSolver::Solve(Asset->Keys, Asset->Settings, Direct);
+
+	TestEqual(TEXT("sample count matches direct solve"), AssetSamples.Num(), Direct.Samples.Num());
+	TestEqual(TEXT("diagnostics valid"), Asset->GetDiagnostics().IsValid(), Direct.Diagnostics.IsValid());
+
+	bool bIdentical = AssetSamples.Num() == Direct.Samples.Num();
+	for (int32 Index = 0; bIdentical && Index < AssetSamples.Num(); ++Index)
+	{
+		bIdentical =
+			AssetSamples[Index].LocalLocation.Equals(Direct.Samples[Index].LocalLocation, 1e-9) &&
+			FMath::IsNearlyEqual(AssetSamples[Index].HeadingDegrees, Direct.Samples[Index].HeadingDegrees, 1e-9);
+	}
+	TestTrue(TEXT("asset solve identical to direct solve"), bIdentical);
+
+	// 改数据后重算要能反映新数据，而不是沿用旧缓存。
+	Asset->Keys[1].LocalLocation = FVector(300.0, 0.0, 0.0);
+	Asset->Solve();
+	TestTrue(TEXT("re-solve picks up new data"),
+		Asset->GetSamples().Num() > 0 &&
+		Asset->GetSamples().Last().LocalLocation.Equals(FVector(300.0, 0.0, 0.0), 1.0));
 
 	return true;
 }
