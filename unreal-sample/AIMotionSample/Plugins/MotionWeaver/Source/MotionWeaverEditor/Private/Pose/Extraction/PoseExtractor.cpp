@@ -89,13 +89,43 @@ namespace
 				continue;
 			}
 
+			// 首字母大写只对 ASCII 做。
+			//
+			// FChar::ToUpper 是按单个 TCHAR 处理的，中文/日文动画名
+			// （M_角色_跑）的首字符是多字节序列的一部分，
+			// 强行转大写会把编码写坏，得到乱码资产名。
 			FString Part = Segment;
-			Part[0] = FChar::ToUpper(Part[0]);
+			if (Part.Len() > 0 && Part[0] < 128)
+			{
+				Part[0] = FChar::ToUpper(Part[0]);
+			}
 			Stem += Part;
+
+			// 资产名要能落在文件路径里，过长会在 CreateAsset 阶段失败。
+			//
+			// 上限按「字符数」而不是「字节数」：中文名一个字算一个字符，
+			// 但实际 32 个汉字已经有 96 字节，路径限制是按字节算的。
+			// 这里保守取 24 字符，纯 ASCII 与宽字符都在安全范围内，
+			// 同时仍然足够区分不同运动（8 个英文单词或 24 个汉字）。
+			if (Stem.Len() >= 24)
+			{
+				break;
+			}
 		}
 
-		// 全被过滤掉时退回原名，至少不要生成「Pose_」这种空名字。
-		return Stem.IsEmpty() ? Sequence->GetName() : Stem;
+		// fallback 分两级，不能直接用 Sequence->GetName()：
+		//
+		// 1. 用剥过前缀的 Name（M_1_2_3 剥完是 1_2_3，至少不带那个类型前缀）
+		// 2. Name 也会空（理论上不会，但空名字真的出现过），最后兜底 Unknown
+		//
+		// 之前直接返回 GetName()：动画名叫 M_1_2_3 时会拼出
+		// Pose_M_1_2_3_F012——前缀又回来了，等于前面的剥前缀白做。
+		if (!Stem.IsEmpty())
+		{
+			return Stem;
+		}
+
+		return Name.IsEmpty() ? TEXT("Unknown") : Name;
 	}
 
 	/** 取预览组件并确认处于暂停状态；不满足时填好原因。 */
