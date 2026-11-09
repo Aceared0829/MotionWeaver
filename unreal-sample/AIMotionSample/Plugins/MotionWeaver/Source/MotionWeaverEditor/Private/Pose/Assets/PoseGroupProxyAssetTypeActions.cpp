@@ -2,9 +2,11 @@
 
 #include "Pose/Assets/PoseGroupProxyAssetTypeActions.h"
 
+#include "Pose/Assets/PoseGroupProxyAssetEditor.h"
 #include "Pose/PoseGroupProxyAsset.h"
 
 #include "AssetTypeCategories.h"
+#include "Toolkits/IToolkitHost.h"
 
 #define LOCTEXT_NAMESPACE "PoseGroupProxyAssetTypeActions"
 
@@ -37,6 +39,23 @@ const TArray<FText>& FPoseGroupProxyAssetTypeActions::GetSubMenus() const
 		LOCTEXT("PoseChainSubMenu", "神经网络")
 	};
 	return SubMenus;
+}
+
+void FPoseGroupProxyAssetTypeActions::OpenAssetEditor(
+	const TArray<UObject*>& InObjects, TSharedPtr<IToolkitHost> EditWithinLevelEditor)
+{
+	// 双击资产直接进带视口的编辑器，不必先拖进关卡。
+	const EToolkitMode::Type Mode =
+		EditWithinLevelEditor.IsValid() ? EToolkitMode::WorldCentric : EToolkitMode::Standalone;
+
+	for (UObject* Object : InObjects)
+	{
+		if (UPoseGroupProxyAsset* GroupAsset = Cast<UPoseGroupProxyAsset>(Object))
+		{
+			const TSharedRef<FPoseGroupProxyAssetEditor> NewEditor = MakeShared<FPoseGroupProxyAssetEditor>();
+			NewEditor->InitPoseGroupProxyAssetEditor(Mode, EditWithinLevelEditor, GroupAsset);
+		}
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

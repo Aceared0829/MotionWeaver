@@ -18,6 +18,10 @@ public:
 	virtual UClass* GetSupportedClass() const override;
 	virtual uint32 GetCategories() override;
 	virtual const TArray<FText>& GetSubMenus() const override;
+	/** 双击文档时打开带视口与时间轴的编辑器，而不是裸属性页。 */
+	virtual void OpenAssetEditor(
+		const TArray<UObject*>& InObjects,
+		TSharedPtr<IToolkitHost> EditWithinLevelEditor) override;
 	virtual bool HasActions(const TArray<UObject*>& InObjects) const override { return false; }
 	//~ End IAssetTypeActions Interface
 };
