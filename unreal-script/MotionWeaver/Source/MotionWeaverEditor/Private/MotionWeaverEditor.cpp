@@ -54,6 +54,13 @@ void FMotionWeaverEditorModule::StartupModule()
 	FPoseKeyElementRegistry::RegisterWorldInterface(
 		NewObject<UPoseKeyElementWorldInterface>());
 
+	// 动画编辑器的工具栏入口：「抽取姿态代理」。
+	//
+	// 它是从动画暂停帧生成单帧姿态资产的唯一入口。
+	// 少了这一句，工具栏上不会有那个按钮，而且不会报任何错——
+	// 因为扩展委托根本没被加进 AnimationEditor 的列表里。
+	FPoseToolbar::Register();
+
 	// 姿态代理组的编辑模式。
 	//
 	// 这不是可选项：FWidget（引擎三轴手柄）的绘制与命中都经 ModeTools 询问

@@ -21,6 +21,60 @@
 
 namespace
 {
+	/**
+	 * 从动画名生成资产名的主干。
+	 *
+	 * 动画名通常很长（M_Neutral_Traversal_Mantle_1_0_stand_F_foot），
+	 * 直接塞进资产名会超出可读长度。这里做三件事：
+	 *  - 去掉常见前缀 M_ / A_ / AM_ / Anim_
+	 *  - 把剩余的下划线分段里纯数字与连续重复段丢掉，避免 F_foot 里的重复
+	 *  - 每段首字母大写后拼接，得到 NeutralTraversalMantle 这种紧凑形式
+	 *
+	 * 去掉数字段是有意的：那些多半是版本号与站位编号（_1_0_），
+	 * 对「这段动画是什么」没有信息量。
+	 */
+	FString BuildAnimationStem(const UAnimSequence* Sequence)
+	{
+		if (Sequence == nullptr)
+		{
+			return TEXT("Unknown");
+		}
+
+		FString Name = Sequence->GetName();
+
+		// 剥掉常见前缀。
+		static const TCHAR* Prefixes[] = { TEXT("AM_"), TEXT("Anim_"), TEXT("M_"), TEXT("A_") };
+		for (const TCHAR* Prefix : Prefixes)
+		{
+			if (Name.StartsWith(Prefix, ESearchCase::CaseSensitive))
+			{
+				Name.RightChopInline(FCString::Strlen(Prefix));
+				break;
+			}
+		}
+
+		// 按下划线切段，丢掉空段、纯数字段与单字母段（如 F_foot 里的 F）。
+		TArray<FString> RawSegments;
+		Name.ParseIntoArray(RawSegments, TEXT("_"), /*InCullEmpty*/ true);
+
+		FString Stem;
+		for (const FString& Segment : RawSegments)
+		{
+			if (Segment.IsEmpty() || Segment.IsNumeric() || Segment.Len() <= 1)
+			{
+				continue;
+			}
+
+			// 首字母大写、其余保持原样，拼成驼峰式。
+			FString Part = Segment;
+			Part[0] = FChar::ToUpper(Part[0]);
+			Stem += Part;
+		}
+
+		// 全被过滤掉时退回原名，至少不要生成「Pose_」这种空名字。
+		return Stem.IsEmpty() ? Sequence->GetName() : Stem;
+	}
+
 	/** 取预览组件并确认处于暂停状态；不满足时填好原因。 */
 	UDebugSkelMeshComponent* GetPausedPreviewComponent(IPersonaToolkit& Toolkit, FText& OutReason)
 	{
@@ -106,8 +160,29 @@ UPoseProxyAsset* FPoseExtractor::ExtractToNewAsset(
 
 	FString PackageName;
 	FString AssetName;
+
+	// 命名规则：Pose_<动画名>_F<帧号>（冲突时引擎自动加 _1 _2）。
+	//
+	// 为什么不用网格名：之前是 <网格名>_Pose，于是同一个角色抽十帧就得到
+	// SKM_UEFN_Mannequin_Pose、_Pose1、_Pose2……在内容浏览器里完全分不出
+	// 哪个是哪一帧、来自哪段动画，等于没有名字。
+	//
+	// 前缀 Pose_ 让这类资产在列表里成组出现，也便于按类型筛。
+	// 帧号补零到三位，保证按名字排序时顺序正确（F009 排在 F010 前面）。
+	// 帧号要在命名之前算出来：资产名里带它，否则只能叫 Pose_XXX。
+	// 算法与下面写进快照的那份保持一致（时间 × 采样帧率）。
+	int32 SnapshotFrameForName = 0;
+	{
+		const FFrameRate SamplingRate = Sequence->GetSamplingFrameRate();
+		const double CurrentTime = PreviewInstance->GetCurrentTime();
+		SnapshotFrameForName = FMath::RoundToInt(CurrentTime * SamplingRate.AsDecimal());
+	}
+
+	const FString AnimationStem = BuildAnimationStem(Sequence);
+	const FString FrameSuffix = FString::Printf(TEXT("_F%03d"), SnapshotFrameForName);
+
 	AnimationEditorUtils::CreateUniqueAssetName(
-		OuterPackagePath / PreviewMesh->GetName(), TEXT("_Pose"), PackageName, AssetName);
+		OuterPackagePath / (TEXT("Pose_") + AnimationStem), FrameSuffix, PackageName, AssetName);
 
 	UPoseProxyAsset* NewAsset = Cast<UPoseProxyAsset>(
 		AssetToolsModule.Get().CreateAsset(
