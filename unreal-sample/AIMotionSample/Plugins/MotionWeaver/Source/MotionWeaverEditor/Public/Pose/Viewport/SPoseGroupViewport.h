@@ -10,12 +10,14 @@
 
 class UPoseGroupProxyAsset;
 class UPoseComponent;
+class FPoseGroupViewportClient;
 
 /**
  * 姿态代理组的预览视口。
  *
  * 持有一个独立预览场景：只显示「当前选中帧」的真蒙皮，
  * 其余帧与轨迹由 FPoseGroupViewportClient 直接画线。
+ * 三轴手柄由 FPoseGroupEditMode 提供——那是引擎给资产编辑器留的位置。
  */
 class SPoseGroupViewport final
 	: public SAssetEditorViewport
@@ -38,10 +40,9 @@ public:
 	DECLARE_DELEGATE_OneParam(FOnPoseKeyDragged, const FPoseKey& /*NewKeyValue*/);
 	FOnPoseKeyDragged OnKeyDragged;
 
-	/** 拖拽开始/结束，供编辑器开合事务。 */
-	DECLARE_DELEGATE(FOnPoseDragStateChanged);
-	FOnPoseDragStateChanged OnDragStarted;
-	FOnPoseDragStateChanged OnDragFinished;
+	/** 拖拽结束：松手时才求解。 */
+	DECLARE_DELEGATE(FOnPoseDragFinished);
+	FOnPoseDragFinished OnDragFinished;
 
 	//~ Begin FGCObject Interface
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
@@ -57,8 +58,10 @@ private:
 	/** 把当前选中帧的姿态灌进预览组件。 */
 	void ApplySelectedPose();
 
+	/** 取本视口的客户端，未就绪时返回 nullptr。 */
+	FPoseGroupViewportClient* GetPoseViewportClient() const;
+
 	void HandleKeyDragged(const FPoseKey& NewKeyValue);
-	void HandleDragStarted();
 	void HandleDragFinished();
 
 	TSharedPtr<FAdvancedPreviewScene> PreviewScene;
@@ -66,5 +69,6 @@ private:
 
 	/** 裸指针：FGCObject 已经登记了它，这里只需要能读。 */
 	UPoseGroupProxyAsset* GroupAsset = nullptr;
+
 	int32 SelectedKeyIndex = INDEX_NONE;
 };

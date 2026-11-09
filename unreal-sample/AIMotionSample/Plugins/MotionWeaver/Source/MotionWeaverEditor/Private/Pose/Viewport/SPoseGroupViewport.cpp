@@ -26,19 +26,21 @@ void SPoseGroupViewport::Construct(const FArguments& InArgs)
 	SetSelectedKey(GroupAsset != nullptr && GroupAsset->Keys.Num() > 0 ? 0 : INDEX_NONE);
 }
 
+FPoseGroupViewportClient* SPoseGroupViewport::GetPoseViewportClient() const
+{
+	// GetViewportClient 在 Construct 早期可能还没有：
+	// 那时控件尚未完成初始化，不能强转后调用。
+	const TSharedPtr<FEditorViewportClient> Handle = GetViewportClient();
+	return Handle.IsValid() ? static_cast<FPoseGroupViewportClient*>(Handle.Get()) : nullptr;
+}
+
 void SPoseGroupViewport::SetGroupAsset(UPoseGroupProxyAsset* InAsset)
 {
 	GroupAsset = InAsset;
 
-	// GetViewportClient 在 Construct 早期可能还没有：
-	// 那时控件尚未完成初始化，不能强转后调用。
-	if (const TSharedPtr<FEditorViewportClient> ViewportClientHandle = GetViewportClient())
+	if (FPoseGroupViewportClient* ViewportClientPtr = GetPoseViewportClient())
 	{
-		if (FPoseGroupViewportClient* ViewportClientPtr =
-			static_cast<FPoseGroupViewportClient*>(Client.Get()))
-		{
-			ViewportClientPtr->SetGroupAsset(InAsset);
-		}
+		ViewportClientPtr->SetGroupAsset(InAsset);
 	}
 
 	SetSelectedKey(InAsset != nullptr && InAsset->Keys.Num() > 0 ? 0 : INDEX_NONE);
@@ -48,14 +50,10 @@ void SPoseGroupViewport::SetSelectedKey(int32 KeyIndex)
 {
 	SelectedKeyIndex = KeyIndex;
 
-	if (const TSharedPtr<FEditorViewportClient> ViewportClientHandle = GetViewportClient())
+	if (FPoseGroupViewportClient* ViewportClientPtr = GetPoseViewportClient())
 	{
-		if (FPoseGroupViewportClient* ViewportClientPtr =
-			static_cast<FPoseGroupViewportClient*>(ViewportClientHandle.Get()))
-		{
-			ViewportClientPtr->SetSelectedKey(KeyIndex);
-			ViewportClientPtr->SetDragTarget(PreviewComponent);
-		}
+		ViewportClientPtr->SetSelectedKey(KeyIndex);
+		ViewportClientPtr->SetPreviewComponent(PreviewComponent);
 	}
 
 	ApplySelectedPose();
@@ -63,7 +61,6 @@ void SPoseGroupViewport::SetSelectedKey(int32 KeyIndex)
 
 void SPoseGroupViewport::ApplySelectedPose()
 {
-	const TSharedPtr<FEditorViewportClient> ViewportClientHandle = GetViewportClient();
 	const bool bHasPreview = PreviewComponent != nullptr;
 
 	// 没有可显示的帧就清掉姿态，别留下上一帧的影子。
@@ -102,45 +99,34 @@ TSharedRef<FEditorViewportClient> SPoseGroupViewport::MakeEditorViewportClient()
 	NewClient->SetGroupAsset(GroupAsset);
 	NewClient->SetSelectedKey(SelectedKeyIndex);
 
-	// 预览组件就是被拖的对象：引擎的 ApplyDeltaToComponent 直接作用在它身上，
+	// 预览组件就是被拖的对象：编辑模式把它交给 ApplyDeltaToComponent，
 	// 所有副作用（标脏、通知移动、刷新面板）都是真发生的。
-	NewClient->SetDragTarget(PreviewComponent);
+	NewClient->SetPreviewComponent(PreviewComponent);
 
-	// 拖拽结果交给外部（编辑器）：资产改动要走事务、要求解、要让时间轴刷新，
-	// 那些都在编辑器里，视口只负责把新值算出来。
+	// 模式拖出来的值回到编辑器：写资产、开合事务、松手求解都在那边。
 	NewClient->SetOnKeyDragged(FPoseGroupViewportClient::FOnKeyDragged::CreateSP(
 		this, &SPoseGroupViewport::HandleKeyDragged));
-	NewClient->SetOnDragStarted(FPoseGroupViewportClient::FOnDragStateChanged::CreateSP(
-		this, &SPoseGroupViewport::HandleDragStarted));
-	NewClient->SetOnDragFinished(FPoseGroupViewportClient::FOnDragStateChanged::CreateSP(
+
+	NewClient->SetOnDragFinished(FPoseGroupViewportClient::FOnDragFinished::CreateSP(
 		this, &SPoseGroupViewport::HandleDragFinished));
 
 	return NewClient;
-}
-
-void SPoseGroupViewport::HandleKeyDragged(const FPoseKey& NewKeyValue)
-{
-	// 这里不再回写预览组件。
-	//
-	// 组件的变换本来就是引擎 ApplyDeltaToComponent 刚写好的，
-	// 再拿 key 里的值覆盖一次会把它拉回到「上一帧读出的那个数」，
-	// 表现为拖动时角色一顿一顿地往回弹。显示已经是正确的，
-	// 这里只把新值交给编辑器写进资产。
-	OnKeyDragged.ExecuteIfBound(NewKeyValue);
-}
-
-void SPoseGroupViewport::HandleDragStarted()
-{
-	OnDragStarted.ExecuteIfBound();
 }
 
 void SPoseGroupViewport::HandleDragFinished()
 {
 	OnDragFinished.ExecuteIfBound();
 
-	// 松手后从资产重新读一次：拖动期间预览用的是临时值，
-	// 资产已经被编辑器写回并求解过，这里对齐一次避免残留中间态。
+	// 松手后从资产重新读一次：拖动期间预览用的是组件当前值，
+	// 资产可能已被求解改写，这里对齐一次避免残留中间态。
 	ApplySelectedPose();
+}
+
+void SPoseGroupViewport::HandleKeyDragged(const FPoseKey& NewKeyValue)
+{
+	// 不回写预览组件：它的变换本来就是 ApplyDeltaToComponent 刚写好的，
+	// 再拿 key 里的值覆盖一次会把它拉回上一帧的数，表现为拖动时往回荡。
+	OnKeyDragged.ExecuteIfBound(NewKeyValue);
 }
 
 void SPoseGroupViewport::AddReferencedObjects(FReferenceCollector& Collector)

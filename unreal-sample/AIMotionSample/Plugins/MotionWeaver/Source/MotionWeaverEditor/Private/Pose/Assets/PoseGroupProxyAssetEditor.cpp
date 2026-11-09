@@ -3,6 +3,10 @@
 #include "Pose/Assets/PoseGroupProxyAssetEditor.h"
 
 #include "Pose/PoseGroupProxyAsset.h"
+#include "Pose/Elements/PoseKeyAssetEditorContext.h"
+#include "Pose/Elements/PoseKeyElementWorldInterface.h"
+#include "Core/MotionWeaverLog.h"
+#include "EditorModeManager.h"
 #include "Pose/Viewport/SPoseKeyTimeline.h"
 #include "Pose/Viewport/SPoseGroupViewport.h"
 
@@ -25,12 +29,39 @@ void FPoseGroupProxyAssetEditor::InitPoseGroupProxyAssetEditor(
 {
 	GroupAsset = InAsset;
 
+	// 选择集提供者：变换手柄通过它找到「当前要操作哪一帧」。
+	// Outer 用资产而不是 this：FAssetEditorToolkit 不是 UObject，不能当 Outer；
+	// 挂在资产上还有个好处——资产一关，这个对象跟着回收。
+	if (GroupAsset != nullptr)
+	{
+		ElementContext = NewObject<UPoseKeyAssetEditorContext>(GroupAsset);
+		ElementContext->SetAsset(GroupAsset);
+	}
+
+	BindElementMovement();
+
+	// 订阅撤销/重做：撤销改的是资产数据，视图不会自动知道。
+	// 引擎的广播点是 FEditorDelegates::PostUndoRedo（Editor.h:235），
+	// 不是 GEditor 上的成员。
+	{
+		TWeakPtr<FPoseGroupProxyAssetEditor> WeakSelf = SharedThis(this);
+
+		UndoRedoHandle = FEditorDelegates::PostUndoRedo.AddLambda([WeakSelf]()
+		{
+			if (const TSharedPtr<FPoseGroupProxyAssetEditor> Pinned = WeakSelf.Pin())
+			{
+				Pinned->OnPostUndoRedo();
+			}
+		});
+	}
+
 	ViewportWidget = SNew(SPoseGroupViewport).GroupAsset(GroupAsset);
 
 	// 视口的拖拽结果回到这里：写值、开合事务、松手求解。
+	// 只接拖拽结果。事务与操纵状态现在由 FPoseGroupEditMode 负责
+	// （StartTracking/EndTracking），这里不再重复开合。
 	ViewportWidget->OnKeyDragged.BindSP(this, &FPoseGroupProxyAssetEditor::ApplyDraggedKey);
-	ViewportWidget->OnDragStarted.BindSP(this, &FPoseGroupProxyAssetEditor::BeginDragTransaction);
-	ViewportWidget->OnDragFinished.BindSP(this, &FPoseGroupProxyAssetEditor::EndDragTransaction);
+	ViewportWidget->OnDragFinished.BindSP(this, &FPoseGroupProxyAssetEditor::FinishDrag);
 	TimelineWidget = SNew(SPoseKeyTimeline).Editor(SharedThis(this));
 
 	FPropertyEditorModule& PropertyEditorModule =
@@ -151,6 +182,12 @@ void FPoseGroupProxyAssetEditor::SetSelectedKeyIndex(int32 InKeyIndex)
 	if (TimelineWidget.IsValid())
 	{
 		TimelineWidget->SetSelectedIndex(SelectedKeyIndex);
+	}
+
+	// 让选择集跟着选中帧走：手柄据此判断该操作哪一帧。
+	if (ElementContext != nullptr)
+	{
+		ElementContext->SetSelectedKey(SelectedKeyIndex);
 	}
 }
 
@@ -273,6 +310,23 @@ void FPoseGroupProxyAssetEditor::ApplyDraggedKey(const FPoseKey& NewKeyValue)
 		return;
 	}
 
+	// 第一次真正改数据时开事务，整段拖动合成一个撤销点。
+	//
+	// 两个前提缺一不可：
+	//   1. 资产要带 RF_Transactional（构造函数里补的），否则 Modify 只标脏不进栈；
+	//   2. 不能调 DisableDeltaModification，那会把 Modify 挡在事务缓冲之外。
+	if (!bMovementTransactionOpen)
+	{
+		if (GEditor != nullptr)
+		{
+			GEditor->BeginTransaction(LOCTEXT("DragPoseKey", "拖动关键帧"));
+			bMovementTransactionOpen = true;
+		}
+	}
+
+	// 开完事务再 Modify，快照才会进撤销栈。
+	GroupAsset->Modify();
+
 	Key.LocalLocation = NewKeyValue.LocalLocation;
 	Key.SetBodyRotation(NewKeyValue.BodyRotation);
 
@@ -281,43 +335,144 @@ void FPoseGroupProxyAssetEditor::ApplyDraggedKey(const FPoseKey& NewKeyValue)
 	GroupAsset->MarkPackageDirty();
 }
 
-void FPoseGroupProxyAssetEditor::BeginDragTransaction()
+void FPoseGroupProxyAssetEditor::FinishDrag()
 {
 	if (GroupAsset == nullptr)
 	{
 		return;
 	}
 
-	// 整段拖动一个事务：撤销一次回到拖动前，而不是退一帧。
-	// GEditor 在纯命令行上下文里可能为空，判一下再开事务。
-	if (!bDragTransactionOpen)
-	{
-		if (GEditor != nullptr)
-		{
-			GEditor->BeginTransaction(LOCTEXT("DragPoseKey", "拖动关键帧"));
-		}
-		GroupAsset->Modify();
-		bDragTransactionOpen = true;
-	}
-}
-
-void FPoseGroupProxyAssetEditor::EndDragTransaction()
-{
-	if (bDragTransactionOpen)
+	if (bMovementTransactionOpen)
 	{
 		if (GEditor != nullptr)
 		{
 			GEditor->EndTransaction();
 		}
-		bDragTransactionOpen = false;
+		bMovementTransactionOpen = false;
 	}
 
-	// 松手才求解：拖动过程中重算会让手感发涩，而且中间结果没人看。
-	if (GroupAsset != nullptr)
+	GroupAsset->Solve();
+	RefreshFromAsset();
+}
+
+void FPoseGroupProxyAssetEditor::SyncPreviewFromAsset()
+{
+	// 拖拽过程中元素层改的是资产里的 FPoseKey，
+	// 预览组件不会自己动；这里把新位置推给它，画面才跟手。
+	if (ViewportWidget.IsValid())
 	{
-		GroupAsset->Solve();
-		RefreshFromAsset();
+		ViewportWidget->SetSelectedKey(SelectedKeyIndex);
 	}
+}
+
+void FPoseGroupProxyAssetEditor::BindElementMovement()
+{
+	UnbindElementMovement();
+
+	// 元素层用的是静态委托（接口实例由 Registry 持有，拿不到它），
+	// 所以这里用弱引用防止编辑器先销毁后回调。
+	TWeakPtr<FPoseGroupProxyAssetEditor> WeakThis = SharedThis(this);
+
+	MovementHandles.Add(UPoseKeyElementWorldInterface::OnMovementStarted().AddLambda(
+		[WeakThis]()
+		{
+			// 这里不开事务：实际拖动不走这条链路。
+			// 事务统一在 ApplyDraggedKey / FinishDrag 里开合，
+			// 那是真正被调用的写入路径。
+			if (const TSharedPtr<FPoseGroupProxyAssetEditor> Pinned = WeakThis.Pin())
+			{
+				if (Pinned->GroupAsset != nullptr)
+				{
+					Pinned->GroupAsset->Modify();
+				}
+			}
+		}));
+
+	MovementHandles.Add(UPoseKeyElementWorldInterface::OnMovementOngoing().AddLambda(
+		[WeakThis]()
+		{
+			if (const TSharedPtr<FPoseGroupProxyAssetEditor> Pinned = WeakThis.Pin())
+			{
+				Pinned->SyncPreviewFromAsset();
+			}
+		}));
+
+	MovementHandles.Add(UPoseKeyElementWorldInterface::OnMovementEnded().AddLambda(
+		[WeakThis]()
+		{
+			// FinishDrag 里会收尾事务与求解，这里不重复。
+			if (const TSharedPtr<FPoseGroupProxyAssetEditor> Pinned = WeakThis.Pin())
+			{
+				Pinned->FinishDrag();
+			}
+		}));
+}
+
+void FPoseGroupProxyAssetEditor::OnPostUndoRedo()
+{
+	// 撤销改的是资产里的 FPoseKey，视图不会自己知道。
+	// 这里重新求解一次并刷新三方，蒙皮与轨迹才会跟上回滚后的数据。
+	if (GroupAsset == nullptr)
+	{
+		return;
+	}
+
+	GroupAsset->Solve();
+	RefreshFromAsset();
+
+	// 蒙皮是按 Key 重新贴的，SetSelectedKey 会触发 ApplySelectedPose。
+	if (ViewportWidget.IsValid())
+	{
+		ViewportWidget->SetSelectedKey(SelectedKeyIndex);
+	}
+}
+
+void FPoseGroupProxyAssetEditor::UnbindElementMovement()
+{
+	// 拖动中途解绑（比如直接关编辑器）时事务还开着，这里要收掉，
+	// 否则会留下一个永不结束的全局事务。
+	if (bMovementTransactionOpen)
+	{
+		if (GEditor != nullptr)
+		{
+			GEditor->EndTransaction();
+		}
+		bMovementTransactionOpen = false;
+	}
+
+	if (MovementHandles.IsValidIndex(0))
+	{
+		UPoseKeyElementWorldInterface::OnMovementStarted().Remove(MovementHandles[0]);
+	}
+	if (MovementHandles.IsValidIndex(1))
+	{
+		UPoseKeyElementWorldInterface::OnMovementOngoing().Remove(MovementHandles[1]);
+	}
+	if (MovementHandles.IsValidIndex(2))
+	{
+		UPoseKeyElementWorldInterface::OnMovementEnded().Remove(MovementHandles[2]);
+	}
+	MovementHandles.Reset();
+}
+
+void FPoseGroupProxyAssetEditor::OnClose()
+{
+	// 元素层的委托是静态的，不解绑会留下悬空回调。
+	UnbindElementMovement();
+
+	if (UndoRedoHandle.IsValid())
+	{
+		FEditorDelegates::PostUndoRedo.Remove(UndoRedoHandle);
+		UndoRedoHandle.Reset();
+	}
+
+	// 清掉选择集里那个元素句柄，避免编辑器关掉后 owner 悬着。
+	if (ElementContext != nullptr)
+	{
+		ElementContext->SetSelectedKey(INDEX_NONE);
+	}
+
+	FAssetEditorToolkit::OnClose();
 }
 
 FName FPoseGroupProxyAssetEditor::GetToolkitFName() const

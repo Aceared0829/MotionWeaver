@@ -5,10 +5,16 @@
 #include "Pose/Assets/PoseProxyAssetTypeActions.h"
 #include "Pose/Assets/PoseGroupProxyAssetTypeActions.h"
 #include "Pose/Extraction/PoseToolbar.h"
+#include "Pose/PoseGroupEditMode.h"
+#include "Pose/Elements/PoseKeyElementWorldInterface.h"
+#include "Pose/Elements/PoseKeyElementRegistry.h"
 
 #include "AssetToolsModule.h"
+#include "EditorModeRegistry.h"
 #include "IAssetTools.h"
 #include "Modules/ModuleManager.h"
+
+#define LOCTEXT_NAMESPACE "MotionWeaverEditor"
 
 namespace
 {
@@ -40,8 +46,27 @@ void FMotionWeaverEditorModule::StartupModule()
 	AssetTools.RegisterAssetTypeActions(PoseGroupAssetActions);
 	RegisteredAssetTypeActions.Add(PoseGroupAssetActions);
 
-	// 工具栏入口：动画编辑器里的「抽取姿态代理」。
-	FPoseToolbar::Register();
+	// 把「世界变换接口」挂到 PoseKey 元素类型上。
+	//
+	// 这个接口的实现要用 GEditor，只能放在编辑器模块；
+	// 元素类型本身在运行时模块启动时就注册好了。
+	// 顺序有要求：必须等运行时模块先跑完 Register()。
+	FPoseKeyElementRegistry::RegisterWorldInterface(
+		NewObject<UPoseKeyElementWorldInterface>());
+
+	// 姿态代理组的编辑模式。
+	//
+	// 这不是可选项：FWidget（引擎三轴手柄）的绘制与命中都经 ModeTools 询问
+	// EdMode——UnrealWidgetRender.cpp:187 走 GetShowWidget()（遍历 EdMode 取
+	// ShouldDrawWidget 的或），:218 又要求 UsesTransformWidget() 为真。
+	// 资产编辑器默认没有 EdMode，于是手柄不画、鼠标也点不中。
+	// Persona 走的就是这条注册路（PersonaModule.cpp:161），
+	// 而不是去硬改 EngineShowFlags。
+	FEditorModeRegistry::Get().RegisterMode<FPoseGroupEditMode>(
+		PoseGroupEditModeID,
+		LOCTEXT("PoseGroupEditModeName", "姿态代理组编辑"),
+		FSlateIcon(),
+		/*bVisible*/ false);
 
 	// 关卡侧不再有任何编辑入口：不注册组件可视化器，也不接管视口拖放。
 	//
@@ -56,6 +81,8 @@ void FMotionWeaverEditorModule::StartupModule()
 void FMotionWeaverEditorModule::ShutdownModule()
 {
 	FPoseToolbar::Unregister();
+
+	FEditorModeRegistry::Get().UnregisterMode(PoseGroupEditModeID);
 
 	if (FModuleManager::Get().IsModuleLoaded("AssetTools"))
 	{
@@ -72,5 +99,7 @@ void FMotionWeaverEditorModule::ShutdownModule()
 
 	RegisteredAssetTypeActions.Reset();
 }
+
+#undef LOCTEXT_NAMESPACE
 
 IMPLEMENT_MODULE(FMotionWeaverEditorModule, MotionWeaverEditor)

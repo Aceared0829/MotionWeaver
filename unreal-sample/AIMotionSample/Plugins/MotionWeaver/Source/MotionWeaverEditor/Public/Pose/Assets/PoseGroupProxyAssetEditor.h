@@ -7,6 +7,7 @@
 #include "Toolkits/AssetEditorToolkit.h"
 
 class UPoseGroupProxyAsset;
+class UPoseKeyAssetEditorContext;
 class SPoseGroupViewport;
 class SPoseKeyTimeline;
 class IDetailsView;
@@ -55,6 +56,7 @@ public:
 	virtual FText GetToolkitName() const override;
 	virtual FString GetWorldCentricTabPrefix() const override;
 	virtual FLinearColor GetWorldCentricTabColorScale() const override;
+	virtual void OnClose() override;
 	//~ End FAssetEditorToolkit Interface
 
 	/** 往当前资产追加一个空关键帧，帧号接在最后一个之后。 */
@@ -66,12 +68,23 @@ public:
 	/** 把选中帧的帧号改动写回资产并重解。 */
 	void SetSelectedKeyFrame(int32 NewFrame);
 
-	/** 视口拖拽：把新值写回选中帧并重解。 */
+	/** 视口拖拽：把新值写回选中帧（拖动中不重解）。 */
 	void ApplyDraggedKey(const FPoseKey& NewKeyValue);
 
-	/** 拖拽开始/结束：整段拖动算一个撤销单元。 */
-	void BeginDragTransaction();
-	void EndDragTransaction();
+	/** 松手：求解整条链并刷新时间轴与轨迹。 */
+	void FinishDrag();
+
+	/** 拖拽中：把资产里的新位置同步到预览组件（视图跟随）。 */
+	void SyncPreviewFromAsset();
+
+	/** 接上/断开元素层的拖动通知。 */
+	void BindElementMovement();
+	void UnbindElementMovement();
+
+	/** 撤销/重做之后重建视图：资产的 Key 被回滚了，蒙皮要重新贴。 */
+	void OnPostUndoRedo();
+
+
 
 private:
 	TSharedRef<SDockTab> SpawnTab_Viewport(const FSpawnTabArgs& Args);
@@ -84,12 +97,24 @@ private:
 
 	UPoseGroupProxyAsset* GroupAsset = nullptr;
 
+	/**
+	 * 把「当前选中帧」暴露成选择集，供编辑器变换手柄取用。
+	 * 没有它手柄找不到任何操作对象。
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UPoseKeyAssetEditorContext> ElementContext;
+
 	TSharedPtr<SPoseGroupViewport> ViewportWidget;
 	TSharedPtr<SPoseKeyTimeline> TimelineWidget;
 	TSharedPtr<IDetailsView> DetailsView;
 
 	int32 SelectedKeyIndex = INDEX_NONE;
 
-	/** 拖动事务是否已开。EndTransaction 必须与 BeginTransaction 配对。 */
-	bool bDragTransactionOpen = false;
+	/** 拖动通知的绑定句柄，关闭编辑器时要解绑。 */
+	TArray<FDelegateHandle> MovementHandles;
+
+	/** 撤销/重做事件的绑定句柄。 */
+	FDelegateHandle UndoRedoHandle;
+
+	bool bMovementTransactionOpen = false;
 };

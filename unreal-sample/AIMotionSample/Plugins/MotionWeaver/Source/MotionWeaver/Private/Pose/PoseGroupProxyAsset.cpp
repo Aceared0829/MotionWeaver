@@ -6,6 +6,21 @@
 
 #include "Misc/DataValidation.h"
 
+UPoseGroupProxyAsset::UPoseGroupProxyAsset()
+{
+	// 让这个资产可撤销。
+	//
+	// UDataAsset 的 UCLASS 没有 Transactional 标记，实例默认不带 RF_Transactional；
+	// 而 SaveToTransactionBuffer（UObjectGlobals.cpp:3215-3218）要求
+	//   GUndo && bIsTransactional && bIsNotScriptPackage
+	// 三者同时成立才会把对象写进撤销栈。
+	// 缺了 RF_Transactional，Modify() 只标脏不记录，Ctrl+Z 完全没反应。
+	//
+	// UCLASS 没有对应的 specifier（ObjectMacros.h 里只有运行时 flag），
+	// 所以在构造函数里补。
+	SetFlags(RF_Transactional);
+}
+
 bool UPoseGroupProxyAsset::IsWellFormed() const
 {
 	if (Keys.Num() == 0 || Settings.FrameRate <= 0.0)

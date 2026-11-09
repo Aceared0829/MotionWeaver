@@ -34,6 +34,7 @@ class MOTIONWEAVER_API UPoseGroupProxyAsset final : public UDataAsset
 	GENERATED_BODY()
 
 public:
+	UPoseGroupProxyAsset();
 	/** 组名，给人看的。留空时用资产名。 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Group")
 	FString DisplayName;
