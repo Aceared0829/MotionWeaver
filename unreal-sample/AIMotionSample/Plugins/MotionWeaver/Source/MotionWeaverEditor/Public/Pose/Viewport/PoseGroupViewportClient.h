@@ -48,11 +48,24 @@ public:
 	void SetOnDragStarted(FOnDragStateChanged InDelegate) { OnDragStarted = InDelegate; }
 	void SetOnDragFinished(FOnDragStateChanged InDelegate) { OnDragFinished = InDelegate; }
 
+	/**
+	 * 拖拽的直接对象。视口并不自己算变换，而是把它交给引擎的
+	 * UEditorEngine::ApplyDeltaToComponent 处理——那个函数负责坐标系、
+	 * 旋转绕轴、标脏、刷新细节面板等一系列副作用。
+	 * 传进来的必须是预览场景里那个真蒙皮组件。
+	 */
+	void SetDragTarget(USceneComponent* InComponent) { DragTarget = InComponent; }
+
 	//~ Begin FEditorViewportClient Interface
 	virtual void Draw(const FSceneView* View, FPrimitiveDrawInterface* PDI) override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual FVector GetWidgetLocation() const override;
+	virtual FMatrix GetWidgetCoordSystem() const override;
+	virtual ECoordSystem GetWidgetCoordSystemSpace() const override;
+	virtual void SetWidgetCoordSystemSpace(ECoordSystem NewCoordSystem) override;
 	virtual bool InputWidgetDelta(FViewport* InViewport, EAxisList::Type CurrentAxis,
 		FVector& Drag, FRotator& Rot, FVector& Scale) override;
+	virtual bool InputKey(const FInputKeyEventArgs& EventArgs) override;
 	virtual void TrackingStarted(const struct FInputEventState& InInputState, bool bIsDraggingWidget, bool bNudge) override;
 	virtual void TrackingStopped() override;
 	//~ End FEditorViewportClient Interface
@@ -69,11 +82,28 @@ private:
 
 	TWeakObjectPtr<UPoseGroupProxyAsset> GroupAsset;
 
+	/** 被拖拽的组件。裸指针，生命周期由视口控件持有。 */
+	USceneComponent* DragTarget = nullptr;
+
+	/** 世界 / 局部坐标系。局部时 Widget 跟着角色朝向转。 */
+	ECoordSystem WidgetCoordSystem = COORD_World;
+
 	int32 SelectedKeyIndex = INDEX_NONE;
 
-	/** 拖拽起始值。每次拖动都以它为基准重算，避免逐帧累加攒误差。 */
-	FPoseKey DragStartKey;
+	/**
+	 * 拖拽是否已经开始。
+	 * 不需要记「起始值」：变换由引擎的 ApplyDeltaToComponent 增量应用到
+	 * 预览组件上，组件本身就是基准，自己再存一份反而会与它失配。
+	 */
 	bool bHasDragStart = false;
+
+	/**
+	 * 视口是否已完成初始化。
+	 * 视角与手柄模式必须在 Tick 里设，不能放构造函数：
+	 * SetViewLocation/SetViewRotation 依赖 Slate 应用，
+	 * SetWidgetMode 依赖 ModeTools，两者在构造期都还没就绪。
+	 */
+	bool bViewportInitialized = false;
 
 	FOnKeyDragged OnKeyDragged;
 	FOnDragStateChanged OnDragStarted;

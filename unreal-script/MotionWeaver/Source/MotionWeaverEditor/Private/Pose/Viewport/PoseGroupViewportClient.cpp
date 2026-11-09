@@ -27,17 +27,18 @@ FPoseGroupViewportClient::FPoseGroupViewportClient(
 	FPreviewScene* InPreviewScene, const TSharedRef<SEditorViewport>& InViewport)
 	: FEditorViewportClient(nullptr, InPreviewScene, InViewport)
 {
+	// 构造函数里只做纯数据初始化。
+	//
+	// 不能在这里调 SetViewLocation / SetViewRotation / SetWidgetMode：
+	//  - 前两个会走 Slate 的 FSlateApplication，构造期 GUI 还没起来
+	//    （无头运行更是完全不存在），会命中
+	//    Assertion failed: CurrentApplication.IsValid()；
+	//  - SetWidgetMode 内部访问 ModeTools，而 ModeTools 由视口在构造后注入。
+	// 三者统一挪到第一次 Tick，那里上述依赖都已就绪。
 	SetRealtime(true);
-
-	// 整段运动比单帧大得多，初始视角退远并侧一些，保证能看全走向。
-	SetViewLocation(FVector(-420.0, -320.0, 240.0));
-	SetViewRotation(FRotator(-18.0, 30.0, 0.0));
 
 	DrawHelper.bDrawGrid = true;
 	EngineShowFlags.SetGrid(true);
-
-	// 默认平移手柄：摆位置是最高频的操作。
-	SetWidgetMode(UE::Widget::WM_Translate);
 }
 
 void FPoseGroupViewportClient::SetGroupAsset(UPoseGroupProxyAsset* InAsset)
@@ -63,6 +64,27 @@ const FPoseKey* FPoseGroupViewportClient::GetSelectedKeyPtr() const
 	return &Asset->Keys[SelectedKeyIndex];
 }
 
+void FPoseGroupViewportClient::Tick(float DeltaSeconds)
+{
+	FEditorViewportClient::Tick(DeltaSeconds);
+
+	// 首次 Tick 时才做视口初始化：此时 Slate 应用与 ModeTools 都已就绪，
+	// 构造期做这些会崩（见构造函数里的说明）。
+	if (!bViewportInitialized)
+	{
+		bViewportInitialized = true;
+
+		// 整段运动比单帧大得多，初始视角退远并侧一些，保证能看全走向。
+		SetViewLocation(FVector(-420.0, -320.0, 240.0));
+		SetViewRotation(FRotator(-18.0, 30.0, 0.0));
+
+		if (ModeTools != nullptr)
+		{
+			SetWidgetMode(UE::Widget::WM_Translate);
+		}
+	}
+}
+
 FVector FPoseGroupViewportClient::GetWidgetLocation() const
 {
 	// 手柄的位置由引擎每帧问这里，不需要自己 SetLocation
@@ -76,55 +98,96 @@ FVector FPoseGroupViewportClient::GetWidgetLocation() const
 	return FVector(0.0, 0.0, -100000.0);
 }
 
+FMatrix FPoseGroupViewportClient::GetWidgetCoordSystem() const
+{
+	// 局部坐标系：Widget 的轴跟着角色朝向转。作者拖「角色朝前的方向」时，
+	// 拖的就真的是朝前，而不是世界 +X。
+	// 世界坐标系直接返回单位矩阵，引擎就按世界轴摆。
+	if (WidgetCoordSystem == COORD_Local)
+	{
+		if (const FPoseKey* Selected = GetSelectedKeyPtr())
+		{
+			return FRotationMatrix(FRotator(0.0, Selected->BodyRotation.Yaw, 0.0));
+		}
+	}
+
+	return FMatrix::Identity;
+}
+
+ECoordSystem FPoseGroupViewportClient::GetWidgetCoordSystemSpace() const
+{
+	return WidgetCoordSystem;
+}
+
+void FPoseGroupViewportClient::SetWidgetCoordSystemSpace(ECoordSystem NewCoordSystem)
+{
+	WidgetCoordSystem = NewCoordSystem;
+	Invalidate();
+}
+
 bool FPoseGroupViewportClient::InputWidgetDelta(
 	FViewport* InViewport, EAxisList::Type CurrentAxis,
 	FVector& Drag, FRotator& Rot, FVector& Scale)
 {
 	const FPoseKey* Selected = GetSelectedKeyPtr();
-	if (Selected == nullptr)
+	if (Selected == nullptr || DragTarget == nullptr)
 	{
 		return false;
 	}
 
-	bool bChanged = false;
+	// 交给引擎处理，不自己算：
+	// UEditorEngine::ApplyDeltaToComponent 负责坐标系换算、绕轴旋转时
+	// 修正位置、标脏、PostEditComponentMove、刷新细节面板——
+	// 这些副作用缺一个都会让操作手感发涩（比如拖完面板数字不更新）。
+	//
+	// 注意 Drag/Rot 是「这一帧的增量」而不是累计总量：
+	// FMouseDeltaTracker 每帧只把本帧鼠标位移转成轴位移，
+	// 因此必须以 bDelta=true 的语义增量应用。
+	GEditor->ApplyDeltaToComponent(
+		DragTarget, /*bDelta*/true, &Drag, &Rot, &Scale,
+		DragTarget->GetComponentLocation());
 
-	// 每次拖动的第一帧拿到「起点值」，之后都以它为基准重算，
-	// 而不是在上一帧结果上累加——累加会把舍入误差攒起来，松手后位置会偏。
-	if (!bHasDragStart)
-	{
-		DragStartKey = *Selected;
-		bHasDragStart = true;
-	}
+	// 组件已被引擎改过，从这里读回它，同步到 key。
+	FPoseKey NewKey = *Selected;
+	NewKey.LocalLocation = DragTarget->GetRelativeLocation();
 
-	FPoseKey NewKey = DragStartKey;
-
-	if (!Drag.IsNearlyZero())
-	{
-		// 三个轴都放开：LocalLocation 是 FVector，求解器按三维 Hermite 插值。
-		NewKey.LocalLocation = DragStartKey.LocalLocation + Drag;
-		bChanged = true;
-	}
-
-	if (!Rot.IsNearlyZero())
-	{
-		// 旋转手柄给的是增量旋转；这里只取 Yaw。
-		// Pitch/Roll 能存进 BodyRotation，但旋转手柄的圆弧拖动在
-		// 这个只有偏航有语义的场景里容易误操作，先不开放。
-		NewKey.BodyRotation = FRotator(
-			DragStartKey.BodyRotation.Pitch,
-			DragStartKey.BodyRotation.Yaw + Rot.Yaw,
-			DragStartKey.BodyRotation.Roll);
-		NewKey.HeadingDegrees = NewKey.BodyRotation.Yaw;
-		bChanged = true;
-	}
-
-	if (!bChanged)
-	{
-		return false;
-	}
+	// 旋转只保留偏航：这个系统的朝向语义就是 Yaw。
+	// Pitch/Roll 能在 BodyRotation 里存，但旋转手柄的圆弧拖动在这里
+	// 容易误操作，等有明确需求再开放。
+	const FRotator ComponentRotation = DragTarget->GetRelativeRotation();
+	NewKey.BodyRotation = FRotator(
+		ComponentRotation.Pitch, ComponentRotation.Yaw, ComponentRotation.Roll);
+	NewKey.HeadingDegrees = NewKey.BodyRotation.Yaw;
 
 	OnKeyDragged.ExecuteIfBound(NewKey);
 	return true;
+}
+
+bool FPoseGroupViewportClient::InputKey(const FInputKeyEventArgs& EventArgs)
+{
+	// 与关卡编辑器一致的快捷键：W 平移 / E 旋转 / X 切换世界-局部坐标系。
+	// 这些键是用户肌肉记忆的一部分，换成别的会立刻觉得「别扭」。
+	if (EventArgs.Event == IE_Pressed && ModeTools != nullptr)
+	{
+		if (EventArgs.Key == EKeys::W)
+		{
+			SetWidgetMode(UE::Widget::WM_Translate);
+			return true;
+		}
+		if (EventArgs.Key == EKeys::E)
+		{
+			SetWidgetMode(UE::Widget::WM_Rotate);
+			return true;
+		}
+		if (EventArgs.Key == EKeys::X)
+		{
+			SetWidgetCoordSystemSpace(
+				WidgetCoordSystem == COORD_World ? COORD_Local : COORD_World);
+			return true;
+		}
+	}
+
+	return FEditorViewportClient::InputKey(EventArgs);
 }
 
 void FPoseGroupViewportClient::TrackingStarted(

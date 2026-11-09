@@ -57,9 +57,6 @@ private:
 	/** 把当前选中帧的姿态灌进预览组件。 */
 	void ApplySelectedPose();
 
-	/** 拖动过程中的即时预览：只动组件，不碰资产。 */
-	void ApplyDragPreview(const FPoseKey& NewKeyValue);
-
 	void HandleKeyDragged(const FPoseKey& NewKeyValue);
 	void HandleDragStarted();
 	void HandleDragFinished();

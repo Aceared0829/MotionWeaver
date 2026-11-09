@@ -289,9 +289,13 @@ void FPoseGroupProxyAssetEditor::BeginDragTransaction()
 	}
 
 	// 整段拖动一个事务：撤销一次回到拖动前，而不是退一帧。
+	// GEditor 在纯命令行上下文里可能为空，判一下再开事务。
 	if (!bDragTransactionOpen)
 	{
-		GEditor->BeginTransaction(LOCTEXT("DragPoseKey", "拖动关键帧"));
+		if (GEditor != nullptr)
+		{
+			GEditor->BeginTransaction(LOCTEXT("DragPoseKey", "拖动关键帧"));
+		}
 		GroupAsset->Modify();
 		bDragTransactionOpen = true;
 	}
@@ -301,7 +305,10 @@ void FPoseGroupProxyAssetEditor::EndDragTransaction()
 {
 	if (bDragTransactionOpen)
 	{
-		GEditor->EndTransaction();
+		if (GEditor != nullptr)
+		{
+			GEditor->EndTransaction();
+		}
 		bDragTransactionOpen = false;
 	}
 
