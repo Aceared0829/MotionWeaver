@@ -11,6 +11,9 @@
 #include "SceneManagement.h"
 #include "UnrealWidget.h"
 
+#include "LevelEditorViewport.h"
+#include "Settings/LevelEditorViewportSettings.h"
+
 namespace
 {
 	const FLinearColor TrajectoryColor(0.16f, 0.63f, 0.86f);
@@ -27,16 +30,13 @@ FPoseGroupViewportClient::FPoseGroupViewportClient(
 	FPreviewScene* InPreviewScene, const TSharedRef<SEditorViewport>& InViewport)
 	: FEditorViewportClient(nullptr, InPreviewScene, InViewport)
 {
-	// 构造函数里只做纯数据初始化。
-	//
-	// 不能在这里调 SetViewLocation / SetViewRotation / SetWidgetMode：
-	//  - 前两个会走 Slate 的 FSlateApplication，构造期 GUI 还没起来
-	//    （无头运行更是完全不存在），会命中
-	//    Assertion failed: CurrentApplication.IsValid()；
-	//  - SetWidgetMode 内部访问 ModeTools，而 ModeTools 由视口在构造后注入。
-	// 三者统一挪到第一次 Tick，那里上述依赖都已就绪。
-	SetRealtime(true);
+	// 构造里只碰「不依赖 Slate 应用、不依赖 ModeTools」的东西。
+	// 参照 FSCSEditorViewportClient 的构造函数：它在这里设的是
+	// WidgetMode / WidgetCoordSystem 这两个纯成员变量，而不是调 SetWidgetMode。
+	WidgetMode = UE::Widget::WM_Translate;
+	WidgetCoordSystem = COORD_Local;
 
+	SetRealtime(true);
 	DrawHelper.bDrawGrid = true;
 	EngineShowFlags.SetGrid(true);
 }
@@ -68,8 +68,9 @@ void FPoseGroupViewportClient::Tick(float DeltaSeconds)
 {
 	FEditorViewportClient::Tick(DeltaSeconds);
 
-	// 首次 Tick 时才做视口初始化：此时 Slate 应用与 ModeTools 都已就绪，
-	// 构造期做这些会崩（见构造函数里的说明）。
+	// 首次 Tick 才做需要 Slate / ModeTools 的初始化。
+	// 构造期做这些会崩：SetViewLocation 走 FSlateApplication，
+	// 而 ModeTools 在父类构造函数靠后位置才创建（EditorViewportClient.cpp:590）。
 	if (!bViewportInitialized)
 	{
 		bViewportInitialized = true;
@@ -78,24 +79,69 @@ void FPoseGroupViewportClient::Tick(float DeltaSeconds)
 		SetViewLocation(FVector(-420.0, -320.0, 240.0));
 		SetViewRotation(FRotator(-18.0, 30.0, 0.0));
 
-		if (ModeTools != nullptr)
+		// 吸附：这是拖动时「咬住网格」的来源，没有它手感会飘。
+		// 蓝图 SCS 视口在构造里就 Widget->SetSnapEnabled(true)，
+		// 这里等 Widget 就绪后补上。
+		if (Widget != nullptr)
 		{
-			SetWidgetMode(UE::Widget::WM_Translate);
+			Widget->SetSnapEnabled(true);
+		}
+
+		// 不把模式转给 ModeTools：WidgetMode 是本类自己维护的成员
+		// （见 SetWidgetMode / GetWidgetMode），转手反而会与它失配。
+
+		// 选中轮廓：让「当前在动哪一帧」有视觉反馈。
+		// 蓝图 SCS 视口读的是 ULevelEditorViewportSettings::bUseSelectionOutline，
+		// 这里跟随同一项设置，用户在关卡里关掉轮廓时这里也一致。
+		EngineShowFlags.SetSelectionOutline(
+			GetDefault<ULevelEditorViewportSettings>()->bUseSelectionOutline);
+	}
+
+	// 预览世界的 Tick：引擎的视口客户端每帧推进一次自己的预览场景，
+	// 少了这一步组件注册、材质解析、渲染状态更新都会滞后，
+	// 表现为「拖完要动一下鼠标才刷新」。
+	if (PreviewScene != nullptr)
+	{
+		if (UWorld* PreviewWorld = PreviewScene->GetWorld())
+		{
+			PreviewWorld->Tick(IsRealtime() ? LEVELTICK_ViewportsOnly : LEVELTICK_TimeOnly, DeltaSeconds);
 		}
 	}
 }
 
 FVector FPoseGroupViewportClient::GetWidgetLocation() const
 {
-	// 手柄的位置由引擎每帧问这里，不需要自己 SetLocation
-	// （FWidget 也没有那个接口）。没有选中帧时把手柄挪到原点之外，
-	// 避免它停在上一帧的位置让人误以为还在操作。
+	// 手柄位置优先读被拖的组件，而不是资产里的 key。
+	//
+	// 拖动过程中引擎直接改组件，资产要等编辑器写回才有新值：
+	// 如果这里读资产，手柄会落后一帧甚至停在原地，表现为「手柄不跟手」
+	// 或者拖到一半突然跳回。
+	if (DragTarget != nullptr && DragTarget->IsRegistered())
+	{
+		return DragTarget->GetComponentLocation();
+	}
+
 	if (const FPoseKey* Selected = GetSelectedKeyPtr())
 	{
 		return Selected->LocalLocation;
 	}
 
+	// 没有选中帧时把手柄挪到极远处，避免它停在原处让人误以为还能操作。
 	return FVector(0.0, 0.0, -100000.0);
+}
+
+void FPoseGroupViewportClient::SetWidgetMode(UE::Widget::EWidgetMode NewMode)
+{
+	// 只存成员，不转手给 ModeTools：
+	// 父类实现会访问 ModeTools 并触发 hit proxy 失效，在视口未完全就绪时
+	// 会踩空。蓝图 SCS 视口也是这么做的（SCSEditorViewportClient.cpp:885）。
+	WidgetMode = NewMode;
+	Invalidate();
+}
+
+UE::Widget::EWidgetMode FPoseGroupViewportClient::GetWidgetMode() const
+{
+	return WidgetMode;
 }
 
 FMatrix FPoseGroupViewportClient::GetWidgetCoordSystem() const

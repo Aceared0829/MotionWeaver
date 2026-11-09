@@ -60,6 +60,8 @@ public:
 	virtual void Draw(const FSceneView* View, FPrimitiveDrawInterface* PDI) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual FVector GetWidgetLocation() const override;
+	virtual void SetWidgetMode(UE::Widget::EWidgetMode NewMode) override;
+	virtual UE::Widget::EWidgetMode GetWidgetMode() const override;
 	virtual FMatrix GetWidgetCoordSystem() const override;
 	virtual ECoordSystem GetWidgetCoordSystemSpace() const override;
 	virtual void SetWidgetCoordSystemSpace(ECoordSystem NewCoordSystem) override;
@@ -86,7 +88,14 @@ private:
 	USceneComponent* DragTarget = nullptr;
 
 	/** 世界 / 局部坐标系。局部时 Widget 跟着角色朝向转。 */
-	ECoordSystem WidgetCoordSystem = COORD_World;
+	ECoordSystem WidgetCoordSystem = COORD_Local;
+
+	/**
+	 * 当前手柄模式。
+	 * 自己存而不是问 ModeTools：父类实现会碰 ModeTools 与 hit proxy，
+	 * 在视口未就绪时会踩空。蓝图 SCS 视口同样自己存。
+	 */
+	UE::Widget::EWidgetMode WidgetMode = UE::Widget::WM_Translate;
 
 	int32 SelectedKeyIndex = INDEX_NONE;
 
