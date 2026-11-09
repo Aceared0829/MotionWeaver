@@ -82,6 +82,9 @@ private:
 	/** 当前选中帧的数据指针；没有选中时返回 nullptr。 */
 	const FPoseKey* GetSelectedKeyPtr() const;
 
+	/** 平移 ↔ 旋转 循环。空格触发，与关卡编辑器一致。 */
+	void CycleWidgetMode();
+
 	TWeakObjectPtr<UPoseGroupProxyAsset> GroupAsset;
 
 	/** 被拖拽的组件。裸指针，生命周期由视口控件持有。 */

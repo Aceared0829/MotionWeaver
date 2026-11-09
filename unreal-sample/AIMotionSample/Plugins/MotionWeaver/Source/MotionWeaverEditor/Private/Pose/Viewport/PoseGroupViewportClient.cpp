@@ -14,6 +14,7 @@
 
 #include "LevelEditorViewport.h"
 #include "Settings/LevelEditorViewportSettings.h"
+#include "ViewportClientNavigationHelper.h"
 
 namespace
 {
@@ -255,29 +256,53 @@ bool FPoseGroupViewportClient::InputWidgetDelta(
 
 bool FPoseGroupViewportClient::InputKey(const FInputKeyEventArgs& EventArgs)
 {
-	// 与关卡编辑器一致的快捷键：W 平移 / E 旋转 / X 切换世界-局部坐标系。
-	// 这些键是用户肌肉记忆的一部分，换成别的会立刻觉得「别扭」。
-	if (EventArgs.Event == IE_Pressed && ModeTools != nullptr)
+	// 相机导航键一个都不能拦。
+	//
+	// 引擎把整套字母键都给了视口导航（EditorViewportClient.cpp:7570-7581）：
+	//   W/S 前后、A/D 左右、E/Q 世界上/下、R/F 局部上/下、C/Z 视野缩放。
+	// 之前用 W/E 切平移与旋转模式，等于按住右键飞相机时把前进和上移吃掉，
+	// 相机停在原地、右键却仍处于 mouse-look 状态——表现就是视口卡住。
+	// 关卡编辑器本身也不用 W/E 切 gizmo，而是工具栏按钮 + 空格循环。
+	//
+	// 所以这里只保留 X（引擎未占用）作为坐标系切换，其余全部交回父类。
+	const bool bCameraNavigating =
+		EventArgs.Viewport != nullptr
+		&& EventArgs.Viewport->KeyState(EKeys::RightMouseButton);
+	const bool bMouseLooking = GetViewportNavigationHelper()->bIsMouseLooking;
+
+	const bool bCanUseShortcuts =
+		EventArgs.Event == IE_Pressed
+		&& ModeTools != nullptr
+		&& !bCameraNavigating
+		&& !bMouseLooking
+		&& !bIsManipulating;
+
+	// 空格循环模式：与关卡编辑器一致，且空格不参与相机导航。
+	if (bCanUseShortcuts && EventArgs.Key == EKeys::SpaceBar)
 	{
-		if (EventArgs.Key == EKeys::W)
-		{
-			SetWidgetMode(UE::Widget::WM_Translate);
-			return true;
-		}
-		if (EventArgs.Key == EKeys::E)
-		{
-			SetWidgetMode(UE::Widget::WM_Rotate);
-			return true;
-		}
-		if (EventArgs.Key == EKeys::X)
-		{
-			SetWidgetCoordSystemSpace(
-				WidgetCoordSystem == COORD_World ? COORD_Local : COORD_World);
-			return true;
-		}
+		CycleWidgetMode();
+		return true;
+	}
+
+	// X 切换世界/局部坐标系。引擎没有给 X 分配导航语义。
+	if (bCanUseShortcuts && EventArgs.Key == EKeys::X)
+	{
+		SetWidgetCoordSystemSpace(
+			WidgetCoordSystem == COORD_World ? COORD_Local : COORD_World);
+		return true;
 	}
 
 	return FEditorViewportClient::InputKey(EventArgs);
+}
+
+void FPoseGroupViewportClient::CycleWidgetMode()
+{
+	// 平移 → 旋转 → 平移。只在这两个之间循环：
+	// 缩放对这个系统没有意义（姿态缩放不参与求解，也不该被随手改）。
+	SetWidgetMode(
+		WidgetMode == UE::Widget::WM_Translate
+			? UE::Widget::WM_Rotate
+			: UE::Widget::WM_Translate);
 }
 
 void FPoseGroupViewportClient::TrackingStarted(
