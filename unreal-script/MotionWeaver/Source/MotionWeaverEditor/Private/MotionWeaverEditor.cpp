@@ -5,12 +5,9 @@
 #include "Pose/Assets/PoseProxyAssetTypeActions.h"
 #include "Pose/Assets/PoseGroupProxyAssetTypeActions.h"
 #include "Pose/Extraction/PoseToolbar.h"
-#include "Pose/Proxy/PoseChainDragDropHandler.h"
 
 #include "AssetToolsModule.h"
-#include "Editor.h"
 #include "IAssetTools.h"
-#include "LevelEditorDragDropHandler.h"
 #include "Modules/ModuleManager.h"
 
 namespace
@@ -20,10 +17,6 @@ namespace
 	 * 用基类指针存：两种资产的动作类不同，但撤销接口是同一套。
 	 */
 	TArray<TSharedPtr<FAssetTypeActions_Base>> RegisteredAssetTypeActions;
-
-	/** 视口拖放处理器的创建委托是否已绑定。单播委托没有句柄，只记状态。 */
-	bool bPoseChainDragDropHandlerBound = false;
-
 }
 
 void FMotionWeaverEditorModule::StartupModule()
@@ -50,46 +43,19 @@ void FMotionWeaverEditorModule::StartupModule()
 	// 工具栏入口：动画编辑器里的「抽取姿态代理」。
 	FPoseToolbar::Register();
 
-	// 姿态链的视口编辑不再走组件可视化器。
-	// 旧做法是把一个 10cm 的命中球挂在蒙皮组件上，点身体命中的仍是 HActor，
-	// 而组件选中被 CanCreateBlueprintOfClass 挡死（链 Actor 是 final + BlueprintType），
-	// 那条路走不通。现在由 APoseChainKeyProxy 接管：
-	// 每个 key 在编辑器里就是一个真正的 Actor，点它就是点普通 Actor。
-	// 因此这里不再注册任何可视化器。
-
-	// 视口拖放：把姿势资产拖到选中的链 Actor 上时，追加一条关键帧，
-	// 而不是按默认工厂建一个独立的单帧 Actor。
-	if (GEditor != nullptr)
-	{
-		GEditor->OnCreateLevelEditorDragDropHandler().BindLambda(
-			[]() -> ULevelEditorDragDropHandler*
-			{
-				return NewObject<UPoseChainDragDropHandler>(
-					GEditor, UPoseChainDragDropHandler::StaticClass());
-			});
-		bPoseChainDragDropHandlerBound = true;
-	}
+	// 关卡侧不再有任何编辑入口：不注册组件可视化器，也不接管视口拖放。
+	//
+	// 曾经试过两条路，都放弃了：
+	//  1. 组件可视化器 + 命中球：组件选中被 CanCreateBlueprintOfClass 挡死
+	//     （链 Actor 是 final + BlueprintType），点身体永远出不来 gizmo；
+	//  2. per-key 代理 Actor：能点能拖，但一次拖动会触发全链重算，
+	//     而且把「编辑」放在了最不该放的地方——关卡。
+	// 现在所有编辑都在资产编辑器里做（见 FPoseGroupProxyAssetEditor）。
 }
 
 void FMotionWeaverEditorModule::ShutdownModule()
 {
 	FPoseToolbar::Unregister();
-
-	if (bPoseChainDragDropHandlerBound && GEditor != nullptr)
-	{
-		GEditor->OnCreateLevelEditorDragDropHandler().Unbind();
-		bPoseChainDragDropHandlerBound = false;
-
-		// 单播委托创建的实例由 GEditor 缓存；解绑后把它清掉，
-		// 否则下次 GetLevelEditorDragDropHandler 还会拿到我们那个已失效的对象。
-		if (ULevelEditorDragDropHandler* Cached = GEditor->GetLevelEditorDragDropHandler())
-		{
-			if (Cached->IsA(UPoseChainDragDropHandler::StaticClass()))
-			{
-				Cached->MarkAsGarbage();
-			}
-		}
-	}
 
 	if (FModuleManager::Get().IsModuleLoaded("AssetTools"))
 	{
@@ -105,8 +71,6 @@ void FMotionWeaverEditorModule::ShutdownModule()
 	}
 
 	RegisteredAssetTypeActions.Reset();
-
-
 }
 
 IMPLEMENT_MODULE(FMotionWeaverEditorModule, MotionWeaverEditor)

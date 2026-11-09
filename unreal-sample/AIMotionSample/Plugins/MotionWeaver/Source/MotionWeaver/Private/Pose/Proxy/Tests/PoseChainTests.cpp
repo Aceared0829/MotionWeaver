@@ -404,7 +404,7 @@ bool FChainSortedIndexMappingTest::RunTest(const FString& Parameters)
 	Keys.Add(MakeKey(0, FVector(0.0, 0.0, 0.0), 0.0));
 	Keys.Add(MakeKey(24, FVector(100.0, 0.0, 0.0), 0.0));
 
-	// 与 APoseChainActor::Rebuild 里同一套构造方式。
+	// 与 UPoseGroupProxyAsset::Solve 内部同一套构造方式。
 	TArray<int32> SortedToOriginal;
 	SortedToOriginal.SetNum(Keys.Num());
 	for (int32 Index = 0; Index < Keys.Num(); ++Index)
