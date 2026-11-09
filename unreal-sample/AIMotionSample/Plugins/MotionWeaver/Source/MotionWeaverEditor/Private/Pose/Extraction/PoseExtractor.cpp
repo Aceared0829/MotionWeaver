@@ -22,16 +22,31 @@
 namespace
 {
 	/**
+	 * 是否是动画命名里的方位标记（Front/Left/Right/Back）。
+	 *
+	 * 这些字母单独成段时（M_..._stand_F_Lfoot 里的 F）只是指明朝向与脚，
+	 * 对识别「这段动画是什么」没有信息量，且会让名字变长。
+	 * 但只认这四个：其他单字母可能是缩写（难度 A/B/C 等），不能一律丢。
+	 */
+	bool IsDirectionToken(const TCHAR Ch)
+	{
+		return Ch == TEXT('F') || Ch == TEXT('L') || Ch == TEXT('R') || Ch == TEXT('B')
+			|| Ch == TEXT('f') || Ch == TEXT('l') || Ch == TEXT('r') || Ch == TEXT('b');
+	}
+
+	/**
 	 * 从动画名生成资产名的主干。
 	 *
-	 * 动画名通常很长（M_Neutral_Traversal_Mantle_1_0_stand_F_foot），
-	 * 直接塞进资产名会超出可读长度。这里做三件事：
+	 * 动画名通常很长（M_Neutral_Traversal_Mantle_1_0_stand_F_Lfoot），
+	 * 直接塞进资产名会超出可读长度。这里做四件事：
 	 *  - 去掉常见前缀 M_ / A_ / AM_ / Anim_
-	 *  - 把剩余的下划线分段里纯数字与连续重复段丢掉，避免 F_foot 里的重复
-	 *  - 每段首字母大写后拼接，得到 NeutralTraversalMantle 这种紧凑形式
+	 *  - 把空格与连字符统一成下划线，兼容不同的命名风格
+	 *  - 丢掉纯数字段（_1_0_ 这类版本号与站位编号）与方位标记段（F/L/R/B）
+	 *  - 每段首字母大写后拼接，得到 NeutralTraversalMantleStandLfoot
 	 *
-	 * 去掉数字段是有意的：那些多半是版本号与站位编号（_1_0_），
-	 * 对「这段动画是什么」没有信息量。
+	 * 只丢「单字母方位标记」，不是丢所有单字母段：
+	 * 单字母也可能是缩写（如表示难度的 A/B/C），丢掉会损失信息。
+	 * 方位标记是动画命名里的固定噪音，去掉不影响识别内容。
 	 */
 	FString BuildAnimationStem(const UAnimSequence* Sequence)
 	{
@@ -42,8 +57,8 @@ namespace
 
 		FString Name = Sequence->GetName();
 
-		// 剥掉常见前缀。
-		static const TCHAR* Prefixes[] = { TEXT("AM_"), TEXT("Anim_"), TEXT("M_"), TEXT("A_") };
+		// 剥掉常见前缀。按长度从长到短匹配，避免 A_ 先把 AM_ 吃掉。
+		static const TCHAR* Prefixes[] = { TEXT("Anim_"), TEXT("AM_"), TEXT("M_"), TEXT("A_") };
 		for (const TCHAR* Prefix : Prefixes)
 		{
 			if (Name.StartsWith(Prefix, ESearchCase::CaseSensitive))
@@ -53,19 +68,27 @@ namespace
 			}
 		}
 
-		// 按下划线切段，丢掉空段、纯数字段与单字母段（如 F_foot 里的 F）。
+		// 统一分隔符：不同 DCC 导出的名字可能用空格或连字符。
+		Name.ReplaceInline(TEXT(" "), TEXT("_"));
+		Name.ReplaceInline(TEXT("-"), TEXT("_"));
+
 		TArray<FString> RawSegments;
 		Name.ParseIntoArray(RawSegments, TEXT("_"), /*InCullEmpty*/ true);
 
 		FString Stem;
 		for (const FString& Segment : RawSegments)
 		{
-			if (Segment.IsEmpty() || Segment.IsNumeric() || Segment.Len() <= 1)
+			if (Segment.IsEmpty() || Segment.IsNumeric())
 			{
 				continue;
 			}
 
-			// 首字母大写、其余保持原样，拼成驼峰式。
+			// 单个字母只在它是方位标记时丢弃。
+			if (Segment.Len() == 1 && IsDirectionToken(Segment[0]))
+			{
+				continue;
+			}
+
 			FString Part = Segment;
 			Part[0] = FChar::ToUpper(Part[0]);
 			Stem += Part;
@@ -169,17 +192,20 @@ UPoseProxyAsset* FPoseExtractor::ExtractToNewAsset(
 	//
 	// 前缀 Pose_ 让这类资产在列表里成组出现，也便于按类型筛。
 	// 帧号补零到三位，保证按名字排序时顺序正确（F009 排在 F010 前面）。
-	// 帧号要在命名之前算出来：资产名里带它，否则只能叫 Pose_XXX。
-	// 算法与下面写进快照的那份保持一致（时间 × 采样帧率）。
-	int32 SnapshotFrameForName = 0;
-	{
-		const FFrameRate SamplingRate = Sequence->GetSamplingFrameRate();
-		const double CurrentTime = PreviewInstance->GetCurrentTime();
-		SnapshotFrameForName = FMath::RoundToInt(CurrentTime * SamplingRate.AsDecimal());
-	}
+	// 出处信息只在这里算一次，命名与写进快照两处共用。
+	//
+	// 之前命名处算了一份、写快照处又算了一份，同一个事实存两遍：
+	// 将来任何一处改了算法，资产名与实际帧号就会对不上，而且不会有任何报错。
+	// 采样帧率为 0 时算不出帧号，退化为 F000 并在快照里留 INDEX_NONE。
+	const FFrameRate SamplingRate = Sequence->GetSamplingFrameRate();
+	const double CurrentTime = PreviewInstance->GetCurrentTime();
+	const double SamplingRateDecimal = SamplingRate.AsDecimal();
+	const int32 SourceFrame = SamplingRateDecimal > 0.0
+		? FMath::RoundToInt(CurrentTime * SamplingRateDecimal)
+		: 0;
 
 	const FString AnimationStem = BuildAnimationStem(Sequence);
-	const FString FrameSuffix = FString::Printf(TEXT("_F%03d"), SnapshotFrameForName);
+	const FString FrameSuffix = FString::Printf(TEXT("_F%03d"), SourceFrame);
 
 	AnimationEditorUtils::CreateUniqueAssetName(
 		OuterPackagePath / (TEXT("Pose_") + AnimationStem), FrameSuffix, PackageName, AssetName);
@@ -222,15 +248,14 @@ UPoseProxyAsset* FPoseExtractor::ExtractToNewAsset(
 	}
 
 	// 出处元数据：前面已确认 Sequence 非空，这里只判断有没有采样帧。
+	// 帧号与帧率复用命名阶段那一份，不重新计算。
 	if (Sequence->GetNumberOfSampledKeys() > 0)
 	{
-		const FFrameRate SamplingRate = Sequence->GetSamplingFrameRate();
-
 		Snapshot.SourceAnimation = FSoftObjectPath(Sequence);
-		Snapshot.SourceTime = PreviewInstance->GetCurrentTime();
-		Snapshot.SourceFrameRate = SamplingRate.AsDecimal();
+		Snapshot.SourceTime = CurrentTime;
+		Snapshot.SourceFrameRate = SamplingRateDecimal;
 		Snapshot.SourceTotalFrames = Sequence->GetNumberOfSampledKeys();
-		Snapshot.SourceFrame = FMath::RoundToInt(Snapshot.SourceTime * Snapshot.SourceFrameRate);
+		Snapshot.SourceFrame = SourceFrame;
 	}
 
 	// GetSkeleton() 返回 const 指针，与 TSoftObjectPtr 的非 const 赋值重载不匹配，
