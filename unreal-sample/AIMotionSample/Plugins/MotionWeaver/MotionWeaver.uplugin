@@ -24,7 +24,7 @@
 		{
 			"Name": "MotionWeaverTests",
 			"Type": "Editor",
-			"LoadingPhase": "PostEngineInit"
+			"LoadingPhase": "Default"
 		}
 	]
 }
