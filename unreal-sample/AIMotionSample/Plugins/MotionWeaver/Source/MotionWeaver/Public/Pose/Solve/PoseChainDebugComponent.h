@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Debug/DebugDrawComponent.h"
-#include "Pose/Solve/PoseChainTypes.h"
+#include "Pose/Data/PoseChainTypes.h"
 #include "PoseChainDebugComponent.generated.h"
 
 /**

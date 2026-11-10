@@ -3,7 +3,7 @@
 #include "Pose/PoseGroupEditMode.h"
 
 #include "Pose/Data/PoseGroupProxyAsset.h"
-#include "Pose/Solve/PoseChainTypes.h"
+#include "Pose/Data/PoseChainTypes.h"
 
 #include "Editor.h"
 #include "EditorModeManager.h"

@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
-#include "Pose/Solve/PoseChainTypes.h"
+#include "Pose/Data/PoseChainTypes.h"
 #include "UObject/SoftObjectPtr.h"
 #include "Misc/DataValidation.h"
 #include "PoseGroupProxyAsset.generated.h"

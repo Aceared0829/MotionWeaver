@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Pose/Solve/PoseChainTypes.h"
+#include "Pose/Data/PoseChainTypes.h"
 
 /**
  * 「若干有序姿态 -> 稠密地面轨迹」的求解器。

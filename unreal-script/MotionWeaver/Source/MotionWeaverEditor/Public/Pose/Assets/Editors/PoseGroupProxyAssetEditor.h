@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Pose/Solve/PoseChainTypes.h"
+#include "Pose/Data/PoseChainTypes.h"
 #include "Toolkits/AssetEditorToolkit.h"
 
 class UPoseGroupProxyAsset;
