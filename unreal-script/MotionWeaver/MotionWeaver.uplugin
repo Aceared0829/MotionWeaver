@@ -20,6 +20,11 @@
 			"Name": "MotionWeaverEditor",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "PostEngineInit"
+		},
+		{
+			"Name": "MotionWeaverTests",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
 		}
 	]
 }

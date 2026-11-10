@@ -2,9 +2,9 @@
 
 #include "Pose/Viewport/SPoseGroupViewport.h"
 
-#include "Pose/PoseGroupProxyAsset.h"
-#include "Pose/PoseProxyAsset.h"
-#include "Pose/PoseComponent.h"
+#include "Pose/Data/PoseGroupProxyAsset.h"
+#include "Pose/Data/PoseProxyAsset.h"
+#include "Pose/Runtime/PoseComponent.h"
 #include "Pose/Viewport/PoseGroupViewportClient.h"
 
 #include "AdvancedPreviewScene.h"

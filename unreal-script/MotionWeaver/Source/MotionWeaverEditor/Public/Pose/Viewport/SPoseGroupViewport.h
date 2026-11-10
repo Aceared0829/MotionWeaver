@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AdvancedPreviewScene.h"
-#include "Pose/Proxy/PoseChainTypes.h"
+#include "Pose/Data/PoseChainTypes.h"
 #include "SAssetEditorViewport.h"
 #include "UObject/GCObject.h"
 
@@ -67,8 +67,12 @@ private:
 	TSharedPtr<FAdvancedPreviewScene> PreviewScene;
 	TObjectPtr<UPoseComponent> PreviewComponent;
 
-	/** 裸指针：FGCObject 已经登记了它，这里只需要能读。 */
-	UPoseGroupProxyAsset* GroupAsset = nullptr;
+	/**
+	 * 用 TObjectPtr 而不是裸指针。
+	 * AddReferencedObject 的裸指针重载已弃用（C4996），
+	 * TObjectPtr 版本是当前推荐写法，顺带也能被 GC 正确追踪。
+	 */
+	TObjectPtr<UPoseGroupProxyAsset> GroupAsset = nullptr;
 
 	int32 SelectedKeyIndex = INDEX_NONE;
 };

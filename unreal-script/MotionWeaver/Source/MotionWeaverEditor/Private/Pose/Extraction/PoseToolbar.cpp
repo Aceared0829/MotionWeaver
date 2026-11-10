@@ -2,7 +2,7 @@
 
 #include "Pose/Extraction/PoseToolbar.h"
 
-#include "Pose/PoseProxyAsset.h"
+#include "Pose/Data/PoseProxyAsset.h"
 #include "Pose/Extraction/PoseExtractor.h"
 
 #include "ContentBrowserModule.h"

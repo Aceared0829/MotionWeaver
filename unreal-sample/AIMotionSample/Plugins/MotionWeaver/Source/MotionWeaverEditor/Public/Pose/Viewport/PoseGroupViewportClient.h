@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "EditorViewportClient.h"
-#include "Pose/Proxy/PoseChainTypes.h"
+#include "Pose/Data/PoseChainTypes.h"
 
 class UPoseGroupProxyAsset;
 
