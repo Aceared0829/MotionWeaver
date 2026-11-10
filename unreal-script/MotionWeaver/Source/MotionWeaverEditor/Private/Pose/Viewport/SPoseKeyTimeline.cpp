@@ -2,9 +2,9 @@
 
 #include "Pose/Viewport/SPoseKeyTimeline.h"
 
-#include "Pose/Assets/PoseGroupProxyAssetEditor.h"
-#include "Pose/PoseGroupProxyAsset.h"
-#include "Pose/PoseProxyAsset.h"
+#include "Pose/Assets/Editors/PoseGroupProxyAssetEditor.h"
+#include "Pose/Data/PoseGroupProxyAsset.h"
+#include "Pose/Data/PoseProxyAsset.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"

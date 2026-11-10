@@ -3,7 +3,7 @@
 #include "Pose/Elements/PoseKeyAssetEditorContext.h"
 
 #include "Pose/Elements/PoseKeyElementRegistry.h"
-#include "Pose/PoseGroupProxyAsset.h"
+#include "Pose/Data/PoseGroupProxyAsset.h"
 #include "Core/MotionWeaverLog.h"
 
 #include "Editor.h"

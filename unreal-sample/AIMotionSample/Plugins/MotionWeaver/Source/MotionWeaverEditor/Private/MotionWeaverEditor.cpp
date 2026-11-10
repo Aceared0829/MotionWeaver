@@ -2,8 +2,8 @@
 
 #include "MotionWeaverEditor.h"
 
-#include "Pose/Assets/PoseProxyAssetTypeActions.h"
-#include "Pose/Assets/PoseGroupProxyAssetTypeActions.h"
+#include "Pose/Assets/TypeActions/PoseProxyAssetTypeActions.h"
+#include "Pose/Assets/TypeActions/PoseGroupProxyAssetTypeActions.h"
 #include "Pose/Extraction/PoseToolbar.h"
 #include "Pose/PoseGroupEditMode.h"
 #include "Pose/Elements/PoseKeyElementWorldInterface.h"

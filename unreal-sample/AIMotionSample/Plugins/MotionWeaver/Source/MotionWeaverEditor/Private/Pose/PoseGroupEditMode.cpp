@@ -2,8 +2,8 @@
 
 #include "Pose/PoseGroupEditMode.h"
 
-#include "Pose/PoseGroupProxyAsset.h"
-#include "Pose/Proxy/PoseChainTypes.h"
+#include "Pose/Data/PoseGroupProxyAsset.h"
+#include "Pose/Solve/PoseChainTypes.h"
 
 #include "Editor.h"
 #include "EditorModeManager.h"

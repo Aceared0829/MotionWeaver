@@ -2,8 +2,9 @@
 
 #include "Pose/Extraction/PoseExtractor.h"
 
-#include "Pose/PoseProxyAsset.h"
-#include "Pose/PoseTypes.h"
+#include "Pose/Data/PoseProxyAsset.h"
+#include "Pose/Data/PoseTypes.h"
+#include "Pose/Extraction/PoseAssetNaming.h"
 
 #include "AnimPreviewInstance.h"
 #include "AnimationEditorUtils.h"
@@ -21,113 +22,6 @@
 
 namespace
 {
-	/**
-	 * 是否是动画命名里的方位标记（Front/Left/Right/Back）。
-	 *
-	 * 这些字母单独成段时（M_..._stand_F_Lfoot 里的 F）只是指明朝向与脚，
-	 * 对识别「这段动画是什么」没有信息量，且会让名字变长。
-	 * 但只认这四个：其他单字母可能是缩写（难度 A/B/C 等），不能一律丢。
-	 */
-	bool IsDirectionToken(const TCHAR Ch)
-	{
-		return Ch == TEXT('F') || Ch == TEXT('L') || Ch == TEXT('R') || Ch == TEXT('B')
-			|| Ch == TEXT('f') || Ch == TEXT('l') || Ch == TEXT('r') || Ch == TEXT('b');
-	}
-
-	/**
-	 * 从动画名生成资产名的主干。
-	 *
-	 * 动画名通常很长（M_Neutral_Traversal_Mantle_1_0_stand_F_Lfoot），
-	 * 直接塞进资产名会超出可读长度。这里做四件事：
-	 *  - 去掉常见前缀 M_ / A_ / AM_ / Anim_
-	 *  - 把空格与连字符统一成下划线，兼容不同的命名风格
-	 *  - 丢掉纯数字段（_1_0_ 这类版本号与站位编号）与方位标记段（F/L/R/B）
-	 *  - 每段首字母大写后拼接，得到 NeutralTraversalMantleStandLfoot
-	 *
-	 * 只丢「单字母方位标记」，不是丢所有单字母段：
-	 * 单字母也可能是缩写（如表示难度的 A/B/C），丢掉会损失信息。
-	 * 方位标记是动画命名里的固定噪音，去掉不影响识别内容。
-	 */
-	FString BuildAnimationStem(const UAnimSequence* Sequence)
-	{
-		if (Sequence == nullptr)
-		{
-			return TEXT("Unknown");
-		}
-
-		FString Name = Sequence->GetName();
-
-		// 剥掉常见前缀。按长度从长到短匹配，避免 A_ 先把 AM_ 吃掉。
-		static const TCHAR* Prefixes[] = { TEXT("Anim_"), TEXT("AM_"), TEXT("M_"), TEXT("A_") };
-		for (const TCHAR* Prefix : Prefixes)
-		{
-			if (Name.StartsWith(Prefix, ESearchCase::CaseSensitive))
-			{
-				Name.RightChopInline(FCString::Strlen(Prefix));
-				break;
-			}
-		}
-
-		// 统一分隔符：不同 DCC 导出的名字可能用空格或连字符。
-		Name.ReplaceInline(TEXT(" "), TEXT("_"));
-		Name.ReplaceInline(TEXT("-"), TEXT("_"));
-
-		TArray<FString> RawSegments;
-		Name.ParseIntoArray(RawSegments, TEXT("_"), /*InCullEmpty*/ true);
-
-		FString Stem;
-		for (const FString& Segment : RawSegments)
-		{
-			if (Segment.IsEmpty() || Segment.IsNumeric())
-			{
-				continue;
-			}
-
-			// 单个字母只在它是方位标记时丢弃。
-			if (Segment.Len() == 1 && IsDirectionToken(Segment[0]))
-			{
-				continue;
-			}
-
-			// 首字母大写只对 ASCII 做。
-			//
-			// FChar::ToUpper 是按单个 TCHAR 处理的，中文/日文动画名
-			// （M_角色_跑）的首字符是多字节序列的一部分，
-			// 强行转大写会把编码写坏，得到乱码资产名。
-			FString Part = Segment;
-			if (Part.Len() > 0 && Part[0] < 128)
-			{
-				Part[0] = FChar::ToUpper(Part[0]);
-			}
-			Stem += Part;
-
-			// 资产名要能落在文件路径里，过长会在 CreateAsset 阶段失败。
-			//
-			// 上限按「字符数」而不是「字节数」：中文名一个字算一个字符，
-			// 但实际 32 个汉字已经有 96 字节，路径限制是按字节算的。
-			// 这里保守取 24 字符，纯 ASCII 与宽字符都在安全范围内，
-			// 同时仍然足够区分不同运动（8 个英文单词或 24 个汉字）。
-			if (Stem.Len() >= 24)
-			{
-				break;
-			}
-		}
-
-		// fallback 分两级，不能直接用 Sequence->GetName()：
-		//
-		// 1. 用剥过前缀的 Name（M_1_2_3 剥完是 1_2_3，至少不带那个类型前缀）
-		// 2. Name 也会空（理论上不会，但空名字真的出现过），最后兜底 Unknown
-		//
-		// 之前直接返回 GetName()：动画名叫 M_1_2_3 时会拼出
-		// Pose_M_1_2_3_F012——前缀又回来了，等于前面的剥前缀白做。
-		if (!Stem.IsEmpty())
-		{
-			return Stem;
-		}
-
-		return Name.IsEmpty() ? TEXT("Unknown") : Name;
-	}
-
 	/** 取预览组件并确认处于暂停状态；不满足时填好原因。 */
 	UDebugSkelMeshComponent* GetPausedPreviewComponent(IPersonaToolkit& Toolkit, FText& OutReason)
 	{
@@ -234,11 +128,11 @@ UPoseProxyAsset* FPoseExtractor::ExtractToNewAsset(
 		? FMath::RoundToInt(CurrentTime * SamplingRateDecimal)
 		: 0;
 
-	const FString AnimationStem = BuildAnimationStem(Sequence);
-	const FString FrameSuffix = FString::Printf(TEXT("_F%03d"), SourceFrame);
+	// 命名规则在 PoseAssetNaming 里，这里只负责取主干与帧号后缀。
+	const FString BaseName = PoseAssetNaming::BuildBaseName(Sequence, SourceFrame);
 
 	AnimationEditorUtils::CreateUniqueAssetName(
-		OuterPackagePath / (TEXT("Pose_") + AnimationStem), FrameSuffix, PackageName, AssetName);
+		OuterPackagePath / BaseName, FString(), PackageName, AssetName);
 
 	UPoseProxyAsset* NewAsset = Cast<UPoseProxyAsset>(
 		AssetToolsModule.Get().CreateAsset(

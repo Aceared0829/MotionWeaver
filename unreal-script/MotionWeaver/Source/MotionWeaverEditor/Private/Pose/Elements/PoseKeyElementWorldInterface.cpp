@@ -2,8 +2,8 @@
 
 #include "Pose/Elements/PoseKeyElementWorldInterface.h"
 
-#include "Pose/Elements/PoseKeyElementData.h"
-#include "Pose/PoseGroupProxyAsset.h"
+#include "Pose/Data/PoseKeyElementData.h"
+#include "Pose/Data/PoseGroupProxyAsset.h"
 #include "Core/MotionWeaverLog.h"
 
 #include "Editor.h"

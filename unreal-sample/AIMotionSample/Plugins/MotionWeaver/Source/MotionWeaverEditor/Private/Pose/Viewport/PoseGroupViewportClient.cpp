@@ -3,9 +3,9 @@
 #include "Pose/Viewport/PoseGroupViewportClient.h"
 
 #include "Pose/PoseGroupEditMode.h"
-#include "Pose/PoseGroupProxyAsset.h"
-#include "Pose/PoseProxyAsset.h"
-#include "Pose/Proxy/PoseChainDebugComponent.h"
+#include "Pose/Data/PoseGroupProxyAsset.h"
+#include "Pose/Data/PoseProxyAsset.h"
+#include "Pose/Solve/PoseChainDebugComponent.h"
 
 #include "EditorModeManager.h"
 #include "EditorViewportClient.h"

@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AdvancedPreviewScene.h"
-#include "Pose/Proxy/PoseChainTypes.h"
+#include "Pose/Solve/PoseChainTypes.h"
 #include "SAssetEditorViewport.h"
 #include "UObject/GCObject.h"
 
