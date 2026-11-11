@@ -45,15 +45,13 @@ void FPoseProxyAssetTypeActions::OpenAssetEditor(
 	const TArray<UObject*>& InObjects, TSharedPtr<IToolkitHost> EditWithinLevelEditor)
 {
 	// 双击资产就直接进带视口的编辑器，不必先拖进关卡。
-	const EToolkitMode::Type Mode =
-		EditWithinLevelEditor.IsValid() ? EToolkitMode::WorldCentric : EToolkitMode::Standalone;
+	const EToolkitMode::Type Mode = EditWithinLevelEditor.IsValid() ? EToolkitMode::WorldCentric : EToolkitMode::Standalone;
 
 	for (UObject* Object : InObjects)
 	{
 		if (UPoseProxyAsset* PoseAsset = Cast<UPoseProxyAsset>(Object))
 		{
-			const TSharedRef<FPoseProxyAssetEditor> NewEditor =
-				MakeShared<FPoseProxyAssetEditor>();
+			const TSharedRef<FPoseProxyAssetEditor> NewEditor = MakeShared<FPoseProxyAssetEditor>();
 			NewEditor->InitPoseProxyAssetEditor(Mode, EditWithinLevelEditor, PoseAsset);
 		}
 	}
