@@ -16,16 +16,21 @@ import math
 import random
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-sys.path.insert(0, r"D:\AILocomotonSystem\MotionWeaver")
+# 仓库根按本文件位置推（tools/ 的上一级），换机器/换盘符不需要改这里。
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from training.pretrain.train_conditioned_pose import (   # noqa: E402
-    MotionWindows, ReferenceGuidedPose, losses, balanced_window_weights,
+from training.pretrain.train_conditioned_pose import (
+    ClipShuffleSampler,
+    MotionWindows,
+    ReferenceGuidedPose,
+    losses,
 )
 
 
@@ -48,6 +53,44 @@ def load_contract(release):
     return release, contract
 
 
+def restore_training_state(ckpt, model, opt, sched, *, width, bones, steps_per_epoch, out):
+    """把检查点里的状态接回模型/优化器/调度器，返回 (起始 epoch, 最优值, 历史, 已跑步数)。
+
+    只恢复权重是不够的：AdamW 的一二阶动量和余弦退火的 LR 位置都要接上，否则续跑
+    等于「拿一个收敛的权重按初始 LR 重新热身」，已经花掉的 epoch 收益会被打散。
+    老检查点（2026-11-14 之前的版本）没有 optimizer/scheduler，只能按已跑步数把
+    调度器空转到同一位置——LR 能对上，动量对不上，这部分损失无法追回。
+    """
+    if ckpt.get("width") != width or ckpt.get("bones") != bones:
+        raise ValueError(
+            f"检查点配置不匹配：width={ckpt.get('width')} bones={ckpt.get('bones')}，"
+            f"当前 width={width} bones={bones}")
+    model.load_state_dict(ckpt["model"])
+    start_epoch = int(ckpt.get("epoch", -1)) + 1
+    best = float(ckpt.get("best", ckpt.get("val_pose_rmse_cm", float("inf"))))
+    # history.json 是唯一一份逐 epoch 记录，检查点里的副本可能更旧，优先用文件。
+    history_path = Path(out) / "history.json"
+    if history_path.is_file():
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+    else:
+        history = list(ckpt.get("history") or [])
+    if history:
+        best = min(best, min(h["val_pose_rmse_cm"] for h in history))
+    step = int(ckpt.get("step", 0)) or start_epoch * steps_per_epoch
+    if ckpt.get("optimizer"):
+        opt.load_state_dict(ckpt["optimizer"])
+    if ckpt.get("scheduler"):
+        sched.load_state_dict(ckpt["scheduler"])
+    else:
+        # 只推进调度器、不推优化器，PyTorch 会就「step 顺序」发一条 UserWarning；
+        # 这里正是刻意只退火 LR，屏蔽掉以免每次续训都刷一条无意义的告警。
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Detected call of")
+            for _ in range(step):
+                sched.step()
+    return start_epoch, best, history, step
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--release", required=True, help="契约目录（含 contract/contract.json 或 contract.json）")
@@ -63,9 +106,15 @@ def main():
                     help="接触/脚滑损失权重；>0 时开启。需要数据侧 include_contacts=True")
     ap.add_argument("--bone-json", default=None,
                     help="skeleton.json 路径（含 roles），用于定位脚部关节；不传则从契约目录推断")
+    ap.add_argument("--chunk-size", type=int, default=16,
+                    help="按 clip 分块的打乱粒度：块内所有窗口一起打乱，让相邻样本落在同一条 clip 上。"
+                         "0 表示退回全局 shuffle（每个样本换一条 clip，全量数据下慢 10 倍以上）")
     ap.add_argument("--mmap-root", default=None,
                     help="内存映射数据目录（每 clip 一个子目录，含 p/r/k/c.npy）。"
                          "开启后随机窗口读取 1.33 ms（npz 解压 3.75 ms），且不占常驻内存")
+    ap.add_argument("--resume", default=None,
+                    help="从 last.pt/best.pt 续训：恢复权重、优化器/调度器状态、epoch 与最优值。"
+                         "只补跑 --epochs 里还没跑完的部分，不会从头再训。")
     args = ap.parse_args()
 
     out = Path(args.output).resolve()
@@ -99,7 +148,9 @@ def main():
     if mmap_root is not None:
         if not mmap_root.is_dir():
             raise FileNotFoundError(f"--mmap-root 不存在：{mmap_root}")
-        n_sub = sum(1 for p in mmap_root.iterdir() if p.is_dir())
+        # 不要只数一级子目录：本仓库的 mmap 布局是 clips/<fps_group>/<clip_id>/，
+        # 只数顶层会永远打印 1 条（clips 自己）。按「含 p.npy 的目录」来数才准确。
+        n_sub = sum(1 for p in mmap_root.rglob("p.npy"))
         print(f"mmap 数据：{mmap_root}（{n_sub} 条 clip）")
 
     train_set = MotionWindows(release, contract, "train", seed=args.seed,
@@ -110,20 +161,32 @@ def main():
                             mmap_root=mmap_root)
     print(f"train 窗口={len(train_set)}  val 窗口={len(val_set)}")
 
-    # pin_memory=True 是必需的，不是可选项。
-    # 实测（batch 256, workers 8）：不开时 H2D 拷贝 53.0 ms/步、占总耗时 61%；
-    # 开启后降到 1.8 ms/步，整体 74.6 -> 39.5 ms，提速 1.89x。
-    # 原因：x.to(device, non_blocking=True) 只有在源内存被 pin 住时才真正异步，
-    # 否则每次都走同步 pageable 拷贝。
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
-                              num_workers=args.workers, drop_last=True,
-                              pin_memory=True,
-                              persistent_workers=args.workers > 0,
-                              prefetch_factor=(4 if args.workers > 0 else None))
+    # 采样顺序才是本机真正的瓶颈，不是 pin_memory。
+    # 实测（71k 全量、batch 256、workers 8、mmap）：全局 shuffle 388 ms/步、
+    # 约 660 samples/s，其中 196 ms 在等 DataLoader；换 ClipShuffleSampler
+    # （--chunk-size 16）后 31 ms/步、约 8,100 samples/s，GPU 从 3–21% 拉到满载。
+    # 原因：每个样本换一条 clip 就要重新 open 三个 .npy（1.5–4 ms/样本，99% 是
+    # np.load 的元数据开销），而每条 clip 平均有 35 个窗口，随机取样必然次次冷读。
+    if args.chunk_size > 0:
+        sampler = ClipShuffleSampler(train_set.rows, chunk=args.chunk_size, seed=args.seed)
+        train_loader = DataLoader(train_set, batch_size=args.batch_size, sampler=sampler,
+                                  num_workers=args.workers, drop_last=True,
+                                  pin_memory=True,
+                                  persistent_workers=args.workers > 0,
+                                  prefetch_factor=(4 if args.workers > 0 else None))
+    else:
+        sampler = None
+        train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
+                                  num_workers=args.workers, drop_last=True,
+                                  pin_memory=True,
+                                  persistent_workers=args.workers > 0,
+                                  prefetch_factor=(4 if args.workers > 0 else None))
     val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False,
                             num_workers=args.workers, pin_memory=True,
                             persistent_workers=args.workers > 0,
                             prefetch_factor=(4 if args.workers > 0 else None))
+    print(f"采样：{'全局 shuffle' if sampler is None else f'clip 分块 chunk={args.chunk_size}'}"
+          f"  每 epoch {len(train_loader)} 步  workers={args.workers}")
 
     bones = contract["bone_count"]
     model = ReferenceGuidedPose(bones, args.width).to(device)
@@ -135,13 +198,26 @@ def main():
     pose_std = torch.from_numpy(train_set.std).float().to(device)
     pose_mean = torch.from_numpy(train_set.mean).float().to(device)
 
-    best = float("inf")
-    history = []
-    t0 = time.perf_counter()
-    step = 0
+    start_epoch, best, history, step = 0, float("inf"), [], 0
+    if args.resume:
+        resume_path = Path(args.resume).resolve()
+        if not resume_path.is_file():
+            raise FileNotFoundError(f"--resume 指向的检查点不存在：{resume_path}")
+        ckpt = torch.load(resume_path, map_location=device, weights_only=False)
+        start_epoch, best, history, step = restore_training_state(
+            ckpt, model, opt, sched, width=args.width, bones=bones,
+            steps_per_epoch=max(1, len(train_loader)), out=out)
+        print(f"续训：{resume_path.name}  epoch {start_epoch} 起，已跑 {step} 步，"
+              f"lr={sched.get_last_lr()[0]:.2e}  历史最优 {best:.2f} cm", flush=True)
 
-    for epoch in range(args.epochs):
+    t0 = time.perf_counter()
+
+    for epoch in range(start_epoch, args.epochs):
         train_set.epoch = epoch
+        # 采样器也要跟着换 epoch，否则每个 epoch 的遍历顺序完全相同，
+        # 分组边界固化会让部分 clip 长期落在同一批 step 上。
+        if sampler is not None:
+            sampler.set_epoch(epoch)
         model.train()
         run = 0.0; nb = 0
         for batch in train_loader:
@@ -192,8 +268,13 @@ def main():
         print(f"== epoch {epoch} 验证 关节位置 RMSE = {val_rmse_cm:.2f} cm", flush=True)
         history.append({"epoch": epoch, "val_pose_rmse_cm": val_rmse_cm})
 
+        # 优化器与调度器状态必须一起存：只存权重的话续训会让 LR 与动量重新起步，
+        # 之前的 15 个 epoch 等于白跑。history/step/best 也存进来，方便不依赖目录内容恢复。
         ckpt = {"model": model.state_dict(), "width": args.width, "bones": bones,
-                "epoch": epoch, "val_pose_rmse_cm": val_rmse_cm, "args": vars(args)}
+                "epoch": epoch, "step": step, "val_pose_rmse_cm": val_rmse_cm,
+                "best": best, "history": history,
+                "optimizer": opt.state_dict(), "scheduler": sched.state_dict(),
+                "args": vars(args)}
         torch.save(ckpt, out / "last.pt")
         if val_rmse_cm < best:
             best = val_rmse_cm
