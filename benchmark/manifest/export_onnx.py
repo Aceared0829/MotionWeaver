@@ -59,7 +59,7 @@ def build_model(checkpoint):
     repo = Path(__file__).resolve().parents[2]
     if str(repo) not in sys.path:
         sys.path.insert(0, str(repo))
-    from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
+    from motionweaver.refpose import ReferenceGuidedPose
 
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
     model = ReferenceGuidedPose(ckpt["bones"], ckpt["width"]).eval()

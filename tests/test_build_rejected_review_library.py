@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from data.tools.build_rejected_review_library import build
-from data.tools.native_review_store import load_native_review_inputs
+from data.tools.review.build_rejected_review_library import build
+from data.tools.review.native_review_store import load_native_review_inputs
 
 
 def fixture(folder, *, tamper=False):

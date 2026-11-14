@@ -3,7 +3,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-spec=importlib.util.spec_from_file_location('review_server',Path(__file__).resolve().parents[1] / "data/tools/motion_review_server.py")
+spec=importlib.util.spec_from_file_location('review_server',Path(__file__).resolve().parents[1] / "data/tools/review/motion_review_server.py")
 assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

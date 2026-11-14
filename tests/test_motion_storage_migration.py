@@ -16,8 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_tool(name):
+    candidates = list((ROOT / "data/tools").rglob(f"{name}.py"))
+    path = next(path for path in candidates if path.parent.name != "tools")
     spec = importlib.util.spec_from_file_location(
-        name, ROOT / "data/tools" / f"{name}.py"
+        name, path
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -156,7 +158,7 @@ class StorageMigrationTests(unittest.TestCase):
         server = subprocess.Popen(
             [
                 sys.executable,
-                str(ROOT / "data/tools/migration_progress_lite_server.py"),
+                str(ROOT / "data/tools/ops/migration_progress_lite_server.py"),
                 "--root",
                 str(self.root),
                 "--port",

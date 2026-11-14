@@ -11,7 +11,7 @@ from data.runtime.motion_kinematics import world_positions
 from data.runtime.native_motion import SampledMotion, SourceInfo
 from data.runtime.native_motion_io import skeleton_signature
 from data.runtime.skeleton_contract import load_skeleton_contract
-from data.tools.process_soma_dataset import fixed_soma_motion
+from data.tools.build.process_soma_dataset import fixed_soma_motion
 
 
 class SomaFullProcessingTests(unittest.TestCase):

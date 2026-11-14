@@ -20,7 +20,7 @@ from data.runtime.native_motion_io import (
     write_native_motion,
 )
 from data.runtime.skeleton_contract import load_skeleton_contract
-from data.tools.freeze_soma_skeleton import write_contract
+from data.tools.ingest.freeze_soma_skeleton import write_contract
 
 CONTRACT = Path(__file__).resolve().parents[1] / "data/skeletons/soma_uniform_v1.json"
 

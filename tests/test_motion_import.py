@@ -18,7 +18,7 @@ from data.runtime.native_motion_io import (
     write_native_motion,
 )
 from data.runtime.normalize_motion import normalize_motion
-from data.tools.import_motion_dataset import project_manifest, run_batch
+from data.tools.ingest.import_motion_dataset import project_manifest, run_batch
 
 
 def bvh_fixture(folder):

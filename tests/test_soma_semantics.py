@@ -2,7 +2,7 @@
 
 import unittest
 
-from data.tools.enrich_soma_observation import temporal_reading
+from data.tools.build.enrich_soma_observation import temporal_reading
 
 
 class SomaSemanticsTests(unittest.TestCase):

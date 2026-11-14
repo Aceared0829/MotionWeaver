@@ -6,8 +6,8 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
-from data.tools.motion_review_server import ReviewStore
-from data.tools.run_overnight_seed_pipeline import isolate_issues, run
+from data.tools.review.motion_review_server import ReviewStore
+from data.tools.ops.run_overnight_seed_pipeline import isolate_issues, run
 
 
 class SecondaryReviewTests(unittest.TestCase):
@@ -56,9 +56,9 @@ class SecondaryReviewTests(unittest.TestCase):
             (root / 'work').mkdir()
             stop = root / 'work/STOP'
             stop.write_text('user_pause: keep all files', encoding='utf-8')
-            with patch('data.tools.run_overnight_seed_pipeline.states') as state, \
-                 patch('data.tools.run_overnight_seed_pipeline.finish_batch') as finish, \
-                 patch('data.tools.run_overnight_seed_pipeline.start_queue') as start:
+            with patch('data.tools.ops.run_overnight_seed_pipeline.states') as state, \
+                 patch('data.tools.ops.run_overnight_seed_pipeline.finish_batch') as finish, \
+                 patch('data.tools.ops.run_overnight_seed_pipeline.start_queue') as start:
                 run(root, root, once=True)
             state.assert_not_called()
             finish.assert_not_called()

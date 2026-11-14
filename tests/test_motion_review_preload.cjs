@@ -33,7 +33,7 @@ const context = vm.createContext({
     };
   },
 });
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../data/tools/review_web/app.js'), 'utf8'), context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../data/tools/review/review_web/app.js'), 'utf8'), context);
 
 (async () => {
   vm.runInContext("catalog={entries:[{id:'a',source_sha256:'source',output_sha256:'output'},{id:'b',source_sha256:'source',output_sha256:'output'},{id:'retry',source_sha256:'source',output_sha256:'output'}]}", context);

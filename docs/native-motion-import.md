@@ -15,9 +15,9 @@ data/runtime/importers/bvh.py        复用现有 BVH 解析和局部轨道适�
 data/runtime/importers/gltf.py       glTF 2.0/GLB 骨架与动画读取
 data/runtime/importers/fbx.py        Blender Headless FBX 调用
 data/runtime/normalize_motion.py     共用空间转换与采样
-data/tools/import_motion_dataset.py  Python 批次编排
+data/tools/ingest/import_motion_dataset.py  Python 批次编排
 外部 --extractor                    CUE4Parse .NET 提取器边界（源码尚未恢复）
-data/tools/read_fbx_native.py        Blender 环境内的 FBX 求值脚本
+data/tools/ingest/read_fbx_native.py  Blender 环境内的 FBX 求值脚本
 ```
 
 Python 的上述读取与标准化模块只需要 NumPy/SciPy，不导入 Torch、UE Python 或训练模型。UE 提取是独立子进程边界。FBX 额外需要可用的 Blender 可执行文件；其脚本在 Blender 自身 Python 中运行。
@@ -71,7 +71,7 @@ E:/MotionWeaverData/
 ### UE 项目小样本
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.import_motion_dataset `
+./.venv/Scripts/python.exe -m data.tools.ingest.import_motion_dataset `
   --ue-project D:/GameAnimation `
   --engine GAME_UE5_8 `
   --limit 3 `
@@ -112,7 +112,7 @@ E:/MotionWeaverData/
 路径和轴基是格式示例，须替换为实际来源。BVH 必须显式提供单位和轴基；`root_joint` 仅在来源存在已确认独立 Root 时填写，Hips 不自动当作 Actor Root。`absolute_position_joints` 用于明确那些平移通道已包含绝对局部位置的来源，例如经核对的 SOMA Hips；只在来源语义确认后填写。
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.import_motion_dataset `
+./.venv/Scripts/python.exe -m data.tools.ingest.import_motion_dataset `
   --manifest path/to/input.json --data-root E:/MotionWeaverData --fps 30
 ```
 
@@ -147,10 +147,10 @@ FBX 条目使用 `format: fbx`、`path` 和可选 Action 名称 `animation_id`�
 
 ## 人工审核这批动画
 
-复用既有 Motion Review 页面，通过 `data/tools/native_review_store.py` 读取合并后的有效索引。查看的是标准化局部 TRS 经 FK 得到的来源骨架，保留父级缩放及 Root 位移；仅将显示坐标换为查看器使用的 UE 轴和厘米，不改动数据文件。
+复用既有 Motion Review 页面，通过 `data/tools/review/native_review_store.py` 读取合并后的有效索引。查看的是标准化局部 TRS 经 FK 得到的来源骨架，保留父级缩放及 Root 位移；仅将显示坐标换为查看器使用的 UE 轴和厘米，不改动数据文件。
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.motion_review_server `
+./.venv/Scripts/python.exe -m data.tools.review.motion_review_server `
   --library E:/MotionWeaverData `
   --native-index E:/MotionWeaverData/reports/gameanimation/20261015-full-export/export-index.csv `
   --port 8766

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from data.tools.prepare_soma_ue_batch import compatible_offsets
+from data.tools.ingest.prepare_soma_ue_batch import compatible_offsets
 
 
 class RepairCompatibilityTests(unittest.TestCase):

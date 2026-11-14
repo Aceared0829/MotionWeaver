@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from data.tools.native_review_store import load_native_review_inputs
+from data.tools.review.native_review_store import load_native_review_inputs
 
 
 def write_batch(root, run_id, records, acceptance_extra=None, index_rows=None):

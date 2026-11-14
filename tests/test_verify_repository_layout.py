@@ -26,6 +26,9 @@ class RepositoryLayoutAuditTests(unittest.TestCase):
                 script = root / 'data/tools/sample.py'
                 script.parent.mkdir(parents=True)
                 script.write_text('import argparse\nargparse.ArgumentParser().parse_args()', encoding='utf-8')
+                nested = root / 'data/tools/build/nested.py'
+                nested.parent.mkdir(parents=True)
+                nested.write_text('import argparse\nargparse.ArgumentParser().parse_args()', encoding='utf-8')
                 artifact = root / 'training/runs/sample.ckpt'
                 artifact.parent.mkdir(parents=True)
                 artifact.write_bytes(b'fixture')
@@ -54,7 +57,7 @@ class RepositoryLayoutAuditTests(unittest.TestCase):
                         verifier.main()
                 if mode != 'missing_receipt':
                     report = json.loads(output.read_text(encoding='utf-8'))
-                    self.assertEqual(report['cli_count'], 1)
+                    self.assertEqual(report['cli_count'], 2)
                     if mode == 'daily':
                         self.assertNotIn('artifact_files', report)
                     else:

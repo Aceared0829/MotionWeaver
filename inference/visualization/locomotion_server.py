@@ -28,7 +28,7 @@ import render_refpose_gifs as g
 from ue_axis import vec_to_ue
 
 from inference.runtime.conditioned_pose import rotation_6d_to_matrix
-from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
+from motionweaver.refpose import ReferenceGuidedPose
 
 POSE_W = paths.POSE_WEIGHT
 HOST, PORT = "127.0.0.1", 8822

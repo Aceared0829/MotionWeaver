@@ -14,7 +14,7 @@ from data.runtime.native_motion import NativeSkeleton, SampledMotion, SourceInfo
 from data.runtime.native_motion_io import skeleton_signature
 from data.runtime.retarget_motion import SomaRetargeter, rest_motion
 from data.runtime.skeleton_contract import load_skeleton_contract
-from data.tools.retarget_uefn_to_soma import write_bvh
+from data.tools.ingest.retarget_uefn_to_soma import write_bvh
 
 ROOT = Path(__file__).parents[1]
 

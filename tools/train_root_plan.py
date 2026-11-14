@@ -25,7 +25,8 @@ sys.path.insert(0, str(ROOT / "inference" / "visualization"))
 
 import paths
 
-from training.pretrain.train_conditioned_pose import MotionWindows
+from data.runtime.refpose_windows import MotionWindows
+from motionweaver.refpose import RootPlanHead, root_loss
 
 
 class ClipWindowSampler(Sampler[int]):
@@ -147,43 +148,6 @@ def load_contract(release):
     if window["history_frames"] != 24 or window["future_frames"] != 24:
         raise ValueError(f"需要 24+24 帧契约，当前 {window}")
     return release, contract
-
-
-class RootPlanHead(nn.Module):
-    """从历史身体和历史 Root 预测未来 24 帧 Root。不输出骨骼。"""
-
-    def __init__(self, width=256):
-        super().__init__()
-        self.width = width
-        self.history = nn.GRU(709, width, batch_first=True)
-        self.time = nn.Parameter(torch.zeros(1, 24, width))
-        layer = nn.TransformerEncoderLayer(
-            width, 4, width * 3, dropout=0.1, batch_first=True, norm_first=True)
-        self.temporal = nn.TransformerEncoder(layer, 3)
-        self.output = nn.Sequential(nn.LayerNorm(width), nn.Linear(width, 7))
-        nn.init.zeros_(self.output[-1].weight)
-        nn.init.zeros_(self.output[-1].bias)
-        with torch.no_grad():
-            self.output[-1].bias[6] = 1.0
-
-    def forward(self, history):
-        _, state = self.history(history)
-        hidden = state[-1].unsqueeze(1) + self.time
-        raw = self.output(self.temporal(hidden))
-        position = raw[..., :3]
-        quaternion = raw[..., 3:]
-        quaternion = quaternion / quaternion.norm(dim=-1, keepdim=True).clamp_min(1e-6)
-        return torch.cat((position, quaternion), dim=-1)
-
-
-def root_loss(predicted, target):
-    position = (predicted[..., :3] - target[..., :3]).square().mean()
-    dot = (predicted[..., 3:] * target[..., 3:]).sum(dim=-1).abs().clamp(max=1.0)
-    rotation = (1.0 - dot.square()).mean()
-    velocity = (predicted[:, 1:, :3] - predicted[:, :-1, :3]
-                - target[:, 1:, :3] + target[:, :-1, :3]).square().mean()
-    total = 10.0 * position + rotation + 2.0 * velocity
-    return total, position, rotation
 
 
 @torch.no_grad()

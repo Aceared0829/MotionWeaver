@@ -190,18 +190,18 @@ python inference/cli/interactive_demo_g1.py --chinese_ui 0
 
 ```bash
 # 训练 VQ-VAE（动作分词器）
-python training/pretrain/train_vqvae.py
+python -m training.pretrain.train_unreal --model vqvae
 
 # 训练姿态模型（需要预训练 VQ-VAE 检查点）
-python training/pretrain/train_pose.py
+python -m training.pretrain.train_unreal --model pose
 
 # 训练根节点模型（不需要 VQ-VAE）
-python training/pretrain/train_root.py
+python -m training.pretrain.train_unreal --model root
 ```
 
 ### 数据集
 
-上游训练数据的介绍见 [BONES-SEED](https://huggingface.co/datasets/bones-studio/seed)。本节列出的三个上游训练脚本默认使用**合成数据**，实现位于 `motionbricks/data/synthetic_dataset.py`，用于理解和检查训练流程。UE 自定义数据训练需要实际导出并预处理的数据，见 [UE 插件与训练说明](../../unreal-script/AILocomotionSystem/README.md)。
+上游训练数据的介绍见 [BONES-SEED](https://huggingface.co/datasets/bones-studio/seed)。本节列出的三个模型入口默认使用**合成数据**，实现位于 `motionbricks/data/synthetic_dataset.py`，用于理解和检查训练流程。UE 自定义数据训练需要实际导出并预处理的数据，现行方向见 [SOMA 数据与双路径推理](../soma-training-data-direction.md)。
 
 ## 动作表示与自定义数据集
 

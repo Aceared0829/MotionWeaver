@@ -102,7 +102,7 @@ def bench_gpu(model, opt, batch, device, reps, warmup=5):
 
 
 def bench_end_to_end(model, opt, loader, device, steps, warmup=5, contacts=False, foot_indices=None,
-                     pose_std=None, pose_mean=None, contact_weight=0.0):
+                     pose_std=None, pose_mean=None, contact_weight=0.0, fps=30.0):
     it = iter(loader)
     def one(batch):
         parts = move_batch(batch, device)
@@ -112,7 +112,7 @@ def bench_end_to_end(model, opt, loader, device, steps, warmup=5, contacts=False
             pred = model(history, root, reference, mask)
         total, _, _ = losses(pred.float(), target.float(), mask, pose_std, pose_mean=pose_mean,
                              root_plan=root, contacts=con, foot_indices=foot_indices,
-                             contact_weight=contact_weight)
+                             contact_weight=contact_weight, fps=fps)
         opt.zero_grad(set_to_none=True)
         total.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -151,6 +151,8 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     release, contract = load_contract(args.release)
+    # 与训练同口径：接触损失的脚速按契约帧率换算（full_release_v2 是 120 fps）。
+    fps = float(contract.get("fps") or 30.0)
     use_contacts = args.contact_weight > 0
 
     foot_indices = None
@@ -209,7 +211,7 @@ def main():
             per_step = bench_end_to_end(model, opt, loader, device, args.steps,
                                         contacts=use_contacts, foot_indices=foot_indices,
                                         pose_std=pose_std, pose_mean=pose_mean,
-                                        contact_weight=args.contact_weight)
+                                        contact_weight=args.contact_weight, fps=fps)
             sps = len(per_step) / sum(per_step)
             record["step_ms_median"] = round(statistics.median(per_step) * 1000, 1)
             record["step_ms_p90"] = round(sorted(per_step)[int(len(per_step) * 0.9)] * 1000, 1)

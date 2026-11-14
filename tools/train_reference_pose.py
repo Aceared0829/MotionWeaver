@@ -140,6 +140,9 @@ def main():
     ap.add_argument("--mmap-root", default=None,
                     help="内存映射数据目录（每 clip 一个子目录，含 p/r/k/c.npy）。"
                          "开启后随机窗口读取 1.33 ms（npz 解压 3.75 ms），且不占常驻内存")
+    ap.add_argument("--max-steps", type=int, default=0,
+                    help="本次最多跑这么多优化步就停（冒烟/稳定性检查用，0 表示跑满）。"
+                         "改动损失口径后先用它验一遍损失量级，不要直接开整轮。")
     ap.add_argument("--resume", default=None,
                     help="从 last.pt/best.pt 续训：恢复权重、优化器/调度器状态、epoch 与最优值。"
                          "只补跑 --epochs 里还没跑完的部分，不会从头再训。")
@@ -156,6 +159,10 @@ def main():
     print(f"clips={len(contract['clips'])} windows={contract.get('window_count', '?')} "
           f"split={contract['split_counts']}")
 
+    # 接触损失里的脚速 = 帧间位移 × 帧率。帧率必须取契约的 fps，不能写死 30：
+    # full_release_v2 是 120 fps，写死 30 会让接触项进平方后缩小 16 倍，
+    # 于是 --contact-weight 0.4 实际只起 0.025 的作用（见 2026-11-14 的记录）。
+    fps = float(contract.get("fps") or 30.0)
     use_contacts = args.contact_weight > 0
     if use_contacts:
         # 接触损失需要 foot_indices，从 skeleton.json 的 roles 解析
@@ -248,6 +255,7 @@ def main():
             sampler.set_epoch(epoch)
         model.train()
         run = 0.0; nb = 0
+        smoke_done = False
         for batch in train_loader:
             if use_contacts:
                 (history_b, root, reference, mask, target,
@@ -260,7 +268,7 @@ def main():
             pred = pred.float(); target_f = target.float()
             total, pos, rot = losses(
                 pred, target_f, mask, pose_std, pose_mean=pose_mean, root_plan=root,
-                contacts=contacts, foot_indices=foot_indices,
+                contacts=contacts, foot_indices=foot_indices, fps=fps,
                 contact_weight=(args.contact_weight if use_contacts else 0.0))
             opt.zero_grad(set_to_none=True)
             total.backward()
@@ -272,6 +280,13 @@ def main():
                       f"pos={float(pos):.5f} rot={float(rot):.5f} "
                       f"lr={sched.get_last_lr()[0]:.2e} {time.perf_counter()-t0:.0f}s", flush=True)
                 run = 0.0; nb = 0
+            if args.max_steps and step >= args.max_steps:
+                smoke_done = True
+                break
+        if smoke_done:
+            # 冒烟到此为止：不验证、不存检查点，输出目录只留 config.json 供事后对照。
+            print(f"冒烟结束：已跑 {step} 步（--max-steps={args.max_steps}），未写检查点", flush=True)
+            return
 
         # 验证
         model.eval()

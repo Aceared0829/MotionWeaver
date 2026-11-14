@@ -88,6 +88,33 @@ class ConditionedPoseTrainingTests(unittest.TestCase):
         assert pose.grad is not None
         self.assertGreater(float(pose.grad.abs().sum()), 0)
 
+    def test_contact_loss_scales_with_contract_fps_squared(self):
+        """脚速 = 帧间位移 × 帧率，平方后整项按 (fps/30)^2 放大。
+
+        锁定这条是因为曾经把 30 写死：full_release_v2 是 120 fps，于是
+        --contact-weight 0.4 实际只生效 1/16，训练记录里的权重值全部失真。
+        """
+        pose = torch.tensor([[[[1.0, 0.0, 0.0]], [[1.0, 0.0, 0.0]]]])
+        root = torch.tensor([[[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                              [0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]]])
+        features = torch.cat((pose, torch.zeros(1, 2, 1, 6)), dim=-1).reshape(1, 2, 9)
+        common = dict(pose_mean=torch.zeros(1, 1, 3), root_plan=root,
+                      contacts=torch.ones(1, 2, 1), foot_indices=[0], contact_weight=1.0)
+
+        def contact_only(fps):
+            # 预测与目标相同 -> position/rotation/velocity 全 0，total 就是接触项本身。
+            return float(losses(features, features.clone(), torch.zeros(1, 2, 1),
+                                torch.ones(1, 1, 3), fps=fps, **common)[0])
+
+        loss30, loss60, loss120 = contact_only(30.0), contact_only(60.0), contact_only(120.0)
+        # 单帧位移 0.1 m，接触对只有第 1 帧 -> contact_loss = (0.1 * fps)^2
+        self.assertAlmostEqual(loss30, 9.0, places=4)
+        self.assertAlmostEqual(loss60 / loss30, 4.0, places=4)
+        self.assertAlmostEqual(loss120 / loss30, 16.0, places=4)
+        # 省略 fps 时保持旧行为（30），冻结的 legacy fixture 才对得上。
+        self.assertAlmostEqual(float(losses(features, features.clone(), torch.zeros(1, 2, 1),
+                                            torch.ones(1, 1, 3), **common)[0]), loss30, places=6)
+
     def test_hybrid_references_cover_fixed_and_off_grid_times(self):
         data = object.__new__(MotionWindows)
         data.rows = [{"clip_index": 0, "start": 0}]

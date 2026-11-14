@@ -1,5 +1,10 @@
 # MotionWeaver：原版继承与 UE 玩家模型路线
 
+> **2026-11-14 注记：** 本文保留 2026-09 的 MotionWeaver Pose Token / Actor Root 路线记录。
+> 当前主线已转为 refpose v3 参考引导姿态补全，正式结果见
+> [refpose v3 训练与评测](refpose-v3-training-evaluation.md)；UE 侧现状以
+> [Unreal 集成](../unreal-script/README.md) 为准。
+
 状态：2026-09-28 已实现独立 Actor Root 条件的 Pose Token 训练与本地推理入口；A800 上的 MotionWeaver Pose **从零完成 20000 步**，本地同轨与录制 CMC 评估已完成。固定 validation Token CE 明显改善，但 Run/Crouch 姿态、脚滑和 CMC 站→蹲测试未过质量门槛。E 盘现可读取；79 骨 UE VQ-VAE 检查点已核对。UE NNE/AnimGraph 尚未接入 MotionWeaver。工作树 `D:/AILocomotonSystem/GR00T-WholeBodyControl-p0-review`，代码基点 `e07aad2`，保留前序未提交实验。原版 `model/MotionWeaver/` 网络与 G1 演示仍保留；本轮未改变现有玩家试玩的 UE 推理行为。训练和验证详情见[已完成的实验记录](experiments/2026-09-28-motionweaver-a800-actor-root.md)。
 
 ## 名称与边界

@@ -19,16 +19,16 @@ python -m inference.cli.interactive_demo_g1 --help
 
 2026-09-12 已在当前 `.venv` 补齐 MuJoCo 与 G1 权重，并通过实际生成、渲染和中文窗口验收，见 [G1 演示验收](../docs/g1-demo-acceptance.md)。
 
-24 帧候选使用 `export_unreal_animgraph --window_frames 24 --pose-condition endpoints`，仅以历史窗口首尾已知姿态作软条件。导出仍默认 16 帧与 `none`。`compare_unreal_streaming` 对两个导出包使用相同源时间区间评估，并单独记录过短片段；残差加权融合仅用于离线消融。实测结果与 UE 重跑入口见 [候选实验报告](../unreal-script/AIAnimation/docs/candidate24-evaluation.md)。
+24 帧候选使用 `export_unreal_animgraph --window_frames 24 --pose-condition endpoints`，仅以历史窗口首尾已知姿态作软条件。导出仍默认 16 帧与 `none`。`compare_unreal_streaming` 对两个导出包使用相同源时间区间评估，并单独记录过短片段；残差加权融合仅用于离线消融。候选实验报告随旧 `unreal-script/AIAnimation/` 插件移除，需要时从 git 历史取回。
 
 ## 跑酷参考姿态实验
 
 本地交互入口：`./inference/profiling/Start-PoseReferenceLab.ps1`。服务只监听本机，HTML 从服务调用实际模型；手选帧保存在浏览器。支持历史24 / 已知代理48、软参考 / 融合后平滑硬约束、逐参考位置与旋转误差、JSON 导出。硬约束属于离线局部变换投影，不是新训练权重或因果运行时能力。
 
-- [操作、硬约束算法及实测](profiling/pose-reference-lab.md)
-- [阶段候选与条件遵守审计](profiling/phase-reference-results.md)
-- [已知代理动画与手选参考](profiling/proxy-reference-results.md)
+- [操作、硬约束算法及实测](../docs/experiments/2026-09-23-pose-reference-lab.md)
+- [阶段候选与条件遵守审计](../docs/experiments/2026-09-23-phase-reference-results.md)
+- [已知代理动画与手选参考](../docs/experiments/2026-09-23-proxy-reference-results.md)
 - 具体问题姿态与短片对照：原记录位于已移除的 `unreal-script/AIAnimation/docs/targeted-pose-reference-evaluation.md`，需要时从 git 历史取回（`git show e7330af:unreal-script/AIAnimation/docs/targeted-pose-reference-evaluation.md`）
-- [本轮审查修复与验证](profiling/pose-reference-review.md)
+- [本轮审查修复与验证](../docs/experiments/2026-09-23-pose-reference-review.md)
 
 自动选择脚本用于历史消融及诊断，页面手选不会调用自动选择器。GPU 批量实验脚本需要 CUDA；交互实验室和硬约束对照支持 CUDA 或 CPU。检查点和准备数据均需本地提供。

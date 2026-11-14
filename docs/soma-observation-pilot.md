@@ -50,10 +50,10 @@ observation sidecar 的哈希与动作身份、帧数、FPS 绑定到新审核�
 
 ```powershell
 # 生成另一批观察数据时必须使用新的 run-id，不覆盖已存在版本。
-./.venv/Scripts/python.exe -m data.tools.soma_observation --run-id <new-run-id>
+./.venv/Scripts/python.exe -m data.tools.build.soma_observation --run-id <new-run-id>
 
 # 打开本批次审核。
-./.venv/Scripts/python.exe -m data.tools.motion_review_server --library E:/MotionWeaverData --native-index E:/MotionWeaverData/reports/soma_observation/20261017_observation_pilot_v1/export-index.csv --port 8780
+./.venv/Scripts/python.exe -m data.tools.review.motion_review_server --library E:/MotionWeaverData --native-index E:/MotionWeaverData/reports/soma_observation/20261017_observation_pilot_v1/export-index.csv --port 8780
 ```
 
 访问 `http://127.0.0.1:8780`。可播放、逐帧、切换五个关节轨迹、跳转高度极值并保存人工备注。

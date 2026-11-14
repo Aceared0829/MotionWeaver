@@ -25,7 +25,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from data.tools.build_refpose_release import build, split_of, window_starts
+from data.tools.build.build_refpose_release import build, split_of, window_starts
 from training.pretrain.train_conditioned_pose import MotionWindows
 
 BONES = 78

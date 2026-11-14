@@ -1,5 +1,7 @@
 # MotionWeaver local acceptance probes
 
+> 状态：实验仪器，冻结新增。边界见 [STATUS.md](STATUS.md)。
+
 These scripts render the prepared 79-bone UE skeleton in world space. They do
 not exercise a skinned UE character, live CMC prediction, IK, or network play.
 Each generated clip uses four historical source poses and scores only the next

@@ -25,7 +25,7 @@ Root 和 Hips 的节点身份已固定；Root/Hips 运动分工和时间轴规�
 从仓库根目录复核：
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.freeze_soma_skeleton
+./.venv/Scripts/python.exe -m data.tools.ingest.freeze_soma_skeleton
 ./.venv/Scripts/python.exe -m unittest discover -s tests -p test_soma_skeleton.py -v
 ```
 

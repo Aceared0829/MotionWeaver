@@ -2,7 +2,7 @@
 
 为什么要单独一个入口：仓库里的 training/evaluation/evaluate_conditioned_pose.py
 只跑 no_reference 与 two_refs 两档，而且要 --lock 指向封版 freeze_manifest.json；
-本机重建的 full_release_v2 没有那份清单（见 data/tools/build_refpose_release.py），
+本机重建的 full_release_v2 没有那份清单（见 data/tools/build/build_refpose_release.py），
 所以那条路走不通。这里复刻非学习基线
 （training/evaluation/evaluate_conditioned_baselines.py）的选窗与聚合口径，
 让模型指标能和 hold / linear_reference 直接对表：

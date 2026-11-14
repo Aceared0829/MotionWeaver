@@ -14,25 +14,7 @@ from torch.utils.data import DataLoader, Dataset
 from data.runtime.conditioned_motion import sha256
 from data.runtime.stance_motion import load_stance_window
 from data.runtime.unreal_dataset import read_json
-from training.pretrain.train_conditioned_pose import ReferenceGuidedPose, losses
-
-
-class StanceGuidedPose(ReferenceGuidedPose):
-    """在旧模型隐状态上增加目标状态条件，初始数值等于旧模型。"""
-
-    def __init__(self, bones=79, width=256):
-        super().__init__(bones, width)
-        self.goal_stance = nn.Embedding(2, width)
-        nn.init.zeros_(self.goal_stance.weight)
-
-    def forward(self, history, root_plan, reference, mask, goal_stance):
-        if goal_stance.shape != root_plan.shape[:2]:
-            raise ValueError("目标状态必须逐未来帧给出")
-        _, state = self.history(history)
-        control = torch.cat((root_plan, reference, mask), dim=-1)
-        hidden = self.control(control) + state[-1].unsqueeze(1) + self.time + self.goal_stance(goal_stance)
-        predicted = self.output(self.temporal(hidden))
-        return torch.where(mask.bool(), reference, predicted)
+from motionweaver.refpose import StanceGuidedPose, losses
 
 
 class StanceWindows(Dataset):

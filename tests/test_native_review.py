@@ -13,8 +13,8 @@ from test_motion_import import bvh_fixture
 from data.runtime.importers.bvh import read_bvh_motion
 from data.runtime.native_motion_io import read_sampled_motion
 from data.runtime.normalize_motion import normalize_motion
-from data.tools.import_motion_dataset import run_batch
-from data.tools.native_review_store import (
+from data.tools.ingest.import_motion_dataset import run_batch
+from data.tools.review.native_review_store import (
     NativeReviewStore,
     load_native_review_inputs,
     world_positions,

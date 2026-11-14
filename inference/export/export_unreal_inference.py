@@ -75,10 +75,15 @@ def export(checkpoint, output, decoder_only=False):
     return report
 
 
-if __name__ == "__main__":
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--decoder_only", action="store_true", help="只保留码本和解码器，面向已经提供兼容 token 的运行时")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     print(json.dumps(export(args.checkpoint, args.output, args.decoder_only), ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

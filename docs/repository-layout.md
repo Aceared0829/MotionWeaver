@@ -2,17 +2,29 @@
 
 本页说明当前职责目录、安装入口和兼容约定。2026-09-12 的迁移映射、验收结果及当时工作区状态见 [历史迁移记录](history/repository-migration-20260912.md)。
 
+当前代码整理计划见 [代码整理方案](refactor-plan.md)；日常入口与实验入口的对照见 [工具入口索引](tools-index.md)（初版）。
+
 ## 当前布局
 
 ```text
 MotionWeaver/
 ├── data/
 │   ├── runtime/                  # data.runtime：骨架、数据集、格式契约
+│   │   ├── refpose_contract.py   # refpose 封版契约校验
+│   │   └── refpose_windows.py    # refpose 窗口加载、采样与数据集
 │   ├── tools/                    # 数据准备、批次处理、审核和入库
-│   │   └── review_web/           # 审核网页资源
+│   │   ├── common/               # 跨工具基础库（文件锁等）
+│   │   ├── review/               # 审核服务、存储、拒绝库与 review_web
+│   │   ├── ingest/               # 导入、重定向、骨架冻结与批次准备
+│   │   ├── build/                # 训练视图、索引、契约与发布包构建
+│   │   ├── audit/                # 只读审计、质量筛查与训练前校验
+│   │   ├── publish/              # 封版、批次关闭、提升与清理
+│   │   ├── ops/                  # 队列、长任务、迁移与恢复
+│   │   ├── eval/                 # 数据侧评测编排
+│   │   └── *.py                  # 旧路径兼容 shim，指向分组实现
 │   └── prepared/                 # 已有本地 UE 数据，不提交
 ├── training/
-│   ├── pretrain/                 # train_unreal、train_vqvae、train_pose、train_root
+│   ├── pretrain/                 # train_unreal（--model vqvae/pose/root）与条件姿态训练
 │   ├── posttrain/                # 扩展位置；尚无独立后训练算法
 │   ├── models/
 │   │   ├── vqvae/                # Lightning VQ-VAE 封装
@@ -24,6 +36,7 @@ MotionWeaver/
 │   └── runs/                     # 本地训练检查点与实验产物，不提交
 ├── model/
 │   └── MotionWeaver/
+│       ├── refpose/              # 条件姿态与 Root 头；纯 torch，不依赖 training
 │       ├── tokenizer/neural_modules/ # 编码器、码本、解码器
 │       ├── backbone/             # Pose、Root 网络及共享采样
 │       ├── representation/
@@ -73,8 +86,8 @@ MotionWeaver/
 uv pip install --python .venv/Scripts/python.exe --no-deps -e .
 .venv/Scripts/python.exe -m training.pretrain.train_unreal --help
 .venv/Scripts/python.exe -m inference.export.export_unreal_inference --help
-.venv/Scripts/python.exe -m data.tools.motion_review_server --help
-.venv/Scripts/python.exe -m unittest discover -s tests -v
+.venv/Scripts/python.exe -m data.tools.review.motion_review_server --help
+.venv/Scripts/python.exe tools/dev.py test -q
 ```
 
 新环境可在根目录安装 `.[training]` 或 `.[training,demo]`；GPU PyTorch 应使用适合目标硬件的构建。旧 `motionbricks/setup.py` 会明确提示安装根目录，避免误装空包。

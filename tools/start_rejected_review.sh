@@ -21,10 +21,10 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 if [[ ! -f "$INDEX" ]]; then
   echo "找不到验收批次索引：$INDEX" >&2
-  echo "先跑：$PYTHON -m data.tools.build_rejected_review_library --help" >&2
+  echo "先跑：$PYTHON -m data.tools.review.build_rejected_review_library --help" >&2
   exit 1
 fi
 
 cd "$ROOT"
-exec "$PYTHON" -m data.tools.motion_review_server \
+exec "$PYTHON" -m data.tools.review.motion_review_server \
   --library "$LIBRARY" --native-index "$INDEX" --port "$PORT"

@@ -12,6 +12,7 @@ package_roots = {
     'data': 'data',
     'training': 'training',
     'inference': 'inference',
+    'benchmark': 'benchmark',
 }
 packages = {}
 for name, folder in package_roots.items():
@@ -24,12 +25,22 @@ setup(
     options={'egg_info': {'egg_base': str(METADATA)}},
     packages=list(packages), package_dir=packages,
     package_data={'data': ['skeletons/*.json', 'skeletons/mappings/*.json', 'annotations/*.json'],
-                  'data.tools': ['review_web/*'], 'training': ['configs/pretrain/*.yaml']},
+                  'data.tools.review': ['review_web/*'],
+                  'training': ['configs/pretrain/*.yaml', 'configs/unreal/*.json'],
+                  'benchmark': ['manifest/*.json']},
     install_requires=['torch>=2.0', 'numpy', 'einops', 'scipy', 'hydra-core', 'omegaconf',
                       'vector-quantize-pytorch', 'colorlog'],
+    entry_points={'console_scripts': [
+        'mw-benchmark = benchmark.run:main',
+        'mw-review = data.tools.review.motion_review_server:main',
+        'mw-train-refpose = training.pretrain.train_conditioned_pose:main',
+        'mw-export-unreal = inference.export.export_unreal_inference:main',
+    ]},
     extras_require={
         'training': ['pytorch-lightning', 'transformers<5', 'adam-atan2-pytorch', 'matplotlib', 'imageio', 'pillow'],
         'demo': ['pytorch-lightning', 'transformers<5', 'adam-atan2-pytorch', 'mujoco>=3.0', 'pynput',
                  "keyboard; platform_system == 'Windows'", "python-xlib; platform_system == 'Linux'"],
+        'export': ['onnx>=1.16', 'onnxruntime>=1.18'],
+        'dev': ['pytest>=8', 'ruff>=0.17,<0.18', 'pre-commit>=3'],
     },
 )

@@ -7,8 +7,8 @@ import numpy as np
 from data.runtime.unreal_dataset import UnrealMotionDataset, file_sha256
 from test_unreal_dataset import pose_only_fixture
 
-from data.tools.prepare_unreal_dataset import prepare
-from data.tools.validate_seed_training import load_audited_clip
+from data.tools.ingest.prepare_unreal_dataset import prepare
+from data.tools.audit.validate_seed_training import load_audited_clip
 
 
 class SeedTrainingTests(unittest.TestCase):

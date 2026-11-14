@@ -15,20 +15,8 @@ from data.runtime.conditioned_motion import (
     verify_source_manifest,
     with_references,
 )
+from data.runtime.refpose_windows import select_windows
 from data.runtime.unreal_dataset import apply_authoritative_root, read_json
-
-
-def select_windows(index_file, contract, split, per_clip):
-    grouped = defaultdict(list)
-    with Path(index_file).open(encoding="utf-8") as stream:
-        for line in stream:
-            row = json.loads(line)
-            if contract["clips"][row["clip_index"]]["split"] == split:
-                grouped[row["clip_index"]].append(row)
-    if not grouped:
-        raise ValueError(f"分区 {split} 没有合法未来窗口")
-    return [row for index in sorted(grouped) for row in
-            (grouped[index] if per_clip == 0 else [grouped[index][len(grouped[index]) // 2]])]
 
 
 def _interpolate_pose(visible):

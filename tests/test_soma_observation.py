@@ -12,9 +12,9 @@ from test_motion_import import bvh_fixture
 
 from data.runtime.native_motion import SampledMotion, SourceInfo
 from data.runtime.skeleton_contract import load_skeleton_contract
-from data.tools.import_motion_dataset import run_batch
-from data.tools.native_review_store import NativeReviewStore, load_native_review_inputs
-from data.tools.soma_observation import LABELS, intervals, observe, select_clips, sha
+from data.tools.ingest.import_motion_dataset import run_batch
+from data.tools.review.native_review_store import NativeReviewStore, load_native_review_inputs
+from data.tools.build.soma_observation import LABELS, intervals, observe, select_clips, sha
 
 
 class SomaObservationTests(unittest.TestCase):

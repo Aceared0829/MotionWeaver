@@ -1,6 +1,6 @@
 # SOMA uniform 非镜像全库处理
 
-执行入口为 `python -m data.tools.process_soma_dataset`，保留原始 BVH，处理 `seed_metadata_v004.csv` 中 `is_mirror=False` 的 71,132 条、62,301,201 帧。镜像数据及 `soma_proportional` 不在本轮处理范围。
+执行入口为 `python -m data.tools.build.process_soma_dataset`，保留原始 BVH，处理 `seed_metadata_v004.csv` 中 `is_mirror=False` 的 71,132 条、62,301,201 帧。镜像数据及 `soma_proportional` 不在本轮处理范围。
 
 ## 输出与来源
 
@@ -34,7 +34,7 @@ E:/MotionWeaverData/
 ## 运行与续跑
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.process_soma_dataset --run-id 20261018-soma-full-v1 --workers 8
+./.venv/Scripts/python.exe -m data.tools.build.process_soma_dataset --run-id 20261018-soma-full-v1 --workers 8
 ```
 
 独立后台进程将 stdout/stderr 保存到 `reports/soma_uniform/20261018-soma-full-v1-launch/`。本轮启动记录与续跑脚本也在该目录。原始文件不清理；关闭查看页不停止任务，电脑睡眠会暂停计算。

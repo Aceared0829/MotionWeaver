@@ -2,7 +2,7 @@
 
 The archive deliberately excludes raw UE audit tracks and holdout target
 outputs. Generate and transfer the Actor Root sidecar separately with
-data/tools/prepare_motionweaver_actor_roots.py before running training.
+data/tools/ingest/prepare_motionweaver_actor_roots.py before running training.
 """
 
 import argparse

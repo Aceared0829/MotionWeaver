@@ -90,7 +90,7 @@ class TrainingStepNormalizationFlagTests(unittest.TestCase):
         soma = read(REPO / "data/runtime/soma_realtime_dataset.py")
         self.assertIn("to_normalize=False", soma,
                       "SomaRealtimeCollate 的归一化口径变了，训练侧必须同步复查")
-        build = read(REPO / "data/tools/build_unreal_training_set.py")
+        build = read(REPO / "data/tools/build/build_unreal_training_set.py")
         self.assertIn("(features - mean)", build,
                       "build_unreal_training_set 不再预归一化，训练侧必须同步复查")
 

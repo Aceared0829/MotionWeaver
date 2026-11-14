@@ -7,7 +7,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 function fixture(filename, payloads) {
-  const source = fs.readFileSync(path.join(__dirname, "../data/tools", filename), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "../data/tools/ops", filename), "utf8");
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1];
   const nodes = {};
   for (const id of ["status", "total", "overall", "meta", "jobs", "percent", "done", "speed", "eta", "bar", "updated", "error"]) {

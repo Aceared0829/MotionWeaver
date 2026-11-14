@@ -1901,7 +1901,7 @@ cd MotionWeaver
 powershell -ExecutionPolicy Bypass -File paper\build-pdf.ps1
 
 # 3. 数据处理（示例：SOMA 全库批次，参数写在一行以避免续行符）
-.\.venv\Scripts\python.exe -u -m data.tools.process_soma_dataset --data-root E:/MotionWeaverData --run-id 20261018-soma-full-v1 --workers 8
+.\.venv\Scripts\python.exe -u -m data.tools.build.process_soma_dataset --data-root E:/MotionWeaverData --run-id 20261018-soma-full-v1 --workers 8
 
 # 4. 训练（A800，20,000 步，从零初始化 Pose Backbone）
 python -u -m training.pretrain.train_unreal --model pose --dataset ../dataset --actor_root_sidecar ../actor_root_sidecar --vqvae ../weights/vqvae.ckpt --output ../runs/motionweaver_actor_root_compact_20k_v1 --motionweaver_online --max_steps 20000 --batch_size 8 --checkpoint_every 2000 --accelerator gpu --precision bf16-mixed --seed 42</code></pre>
@@ -1918,8 +1918,8 @@ python -u -m training.pretrain.train_unreal --model pose --dataset ../dataset --
       <tr><td><code>…/assets/…/config.yaml</code></td><td>训练配置（含 VQ 哈希、调度器与条件 profile）</td></tr>
       <tr><td><code>docs/experiments/2026-10-18-soma-processing-speed.md</code></td><td>吞吐优化与 24 次等价核对</td></tr>
       <tr><td><code>docs/soma-training-execution-plan.md</code></td><td>双帧率对齐、场景划分、窗口与 Token 预算</td></tr>
-      <tr><td><code>inference/profiling/pose-reference-lab.md</code></td><td>硬参考等式约束投影的对照结果</td></tr>
-      <tr><td><code>docs/soma-tokenizer-joint-error-options.md</code></td><td>§9 的完整实验记录与判别链（口径修复、系数扫描、码本塌缩）</td></tr>
+      <tr><td><code>docs/experiments/2026-09-23-pose-reference-lab.md</code></td><td>硬参考等式约束投影的对照结果</td></tr>
+      <tr><td><code>docs/archive.md</code></td><td>§9 的完整实验记录索引（原文已归档，可从 Git 历史取回）</td></tr>
       <tr><td><code>docs/assets/plan-a-final/plan_a_full_table.csv</code></td><td>§9.5 全部检查点的原始指标（rmse / p95 / max / feature_l1 / 自校验）</td></tr>
       <tr><td><code>docs/assets/plan-a-final/WEIGHTS_MANIFEST.md</code></td><td>§9 各 run 的配置、步数、最优指标与权重位置</td></tr>
     </tbody>

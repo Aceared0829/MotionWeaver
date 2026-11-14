@@ -8,8 +8,9 @@ import numpy as np
 import torch
 
 from data.runtime.conditioned_motion import load_window
-from training.evaluation.evaluate_conditioned_baselines import select_windows
-from training.pretrain.train_conditioned_pose import ReferenceGuidedPose, verify_release
+from data.runtime.refpose_contract import verify_release
+from data.runtime.refpose_windows import select_windows
+from motionweaver.refpose import ReferenceGuidedPose
 
 
 def rotation_6d_to_matrix(values):

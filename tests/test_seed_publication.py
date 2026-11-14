@@ -4,7 +4,7 @@ from pathlib import Path
 
 from data.runtime.unreal_dataset import file_sha256
 
-from data.tools.close_seed_batch import durable_copy, write_json
+from data.tools.publish.close_seed_batch import durable_copy, write_json
 
 
 class PublicationTests(unittest.TestCase):

@@ -2,11 +2,23 @@
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
+[tool.ruff]
+target-version = "py310"
+
 [tool.ruff.lint.isort]
-known-first-party = ["data", "inference", "motionbricks", "motionweaver", "training"]
+known-first-party = ["benchmark", "data", "inference", "motionbricks", "motionweaver", "training"]
 
 [tool.ruff.lint]
+# 显式固定规则，避免不同 ruff 版本的默认规则集漂移。
+# 这里只拦“几乎肯定是 bug”的问题；全仓历史格式（E701/E702/I001 等）尚未
+# 统一，不在门禁里强制，避免一次格式化淹没真实改动。
 # B018 = 裸表达式。实测它只抓字面量和裸名字，抓不到 `len(x) - 1` 这种 BinOp
 # （2026-11-03 真正漏网的那处就是 BinOp）。留着当第一道粗筛，但不能拿它当
 # "没有死语句"的证据——完整检查见 tests/test_no_dead_expressions.py。
-extend-select = ["B018"]
+select = ["E9", "F63", "F7", "F82", "B018"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
