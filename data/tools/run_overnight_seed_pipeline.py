@@ -10,6 +10,8 @@ import time
 from contextlib import closing
 from pathlib import Path
 
+from data.tools.portable_lock import lock_exclusive
+
 ROOT = Path(__file__).resolve().parent
 UNVERIFIED = {'heading_not_validated', 'contacts_not_validated', 'visual_quality_not_validated'}
 
@@ -103,15 +105,12 @@ def finish_batch(library):
 
 def run(library, source, once=False):
     library, source = Path(library).resolve(), Path(source).resolve()
-    import msvcrt
     lock = (library / 'work/overnight.lock').open('a+b')
-    lock.seek(0)
-    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+    lock_exclusive(lock)
     worker = None
     try:
         with (library / 'work/queue.lock').open('a+b') as queue_lock:
-            queue_lock.seek(0)
-            msvcrt.locking(queue_lock.fileno(), msvcrt.LK_NBLCK, 1)
+            lock_exclusive(queue_lock)
         while True:
             stop = library / 'work/STOP'
             if stop.exists() and not stop.read_text(encoding='utf-8').startswith('review_required:'):

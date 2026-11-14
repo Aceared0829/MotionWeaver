@@ -1,7 +1,6 @@
 """有界、单实例 UE 批次调度；输出隔离待验收，绝不删除原始动作。"""
 import argparse
 import json
-import msvcrt
 import os
 import shutil
 import subprocess
@@ -16,6 +15,7 @@ from motionweaver.repository import unreal_scripts
 from data.tools.audit_ue_batch import audit
 from data.tools.check_seed_sources import header
 from data.tools.motion_batch_gate import batch_capacity, pending_count
+from data.tools.portable_lock import lock_exclusive
 
 
 def execute(command, log, env=None):
@@ -46,9 +46,8 @@ def main():
         parser.error('--batch-size 必须在 1 到 32 之间')
     catalog=MotionCatalog(args.library)
     lock=(catalog.folder/'work/queue.lock').open('a+b')
-    lock.seek(0)
     try:
-        msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
+        lock_exclusive(lock)
     except OSError:
         raise RuntimeError('已有批处理工作进程，拒绝重复启动')
     scripts=Path(__file__).resolve().parent

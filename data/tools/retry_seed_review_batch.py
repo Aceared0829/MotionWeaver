@@ -1,7 +1,6 @@
 """仅重新处理用户指定的二审名单；完整长片段、新 UE 输出与源文件全部保留。"""
 import argparse
 import json
-import msvcrt
 import os
 import shutil
 import sys
@@ -14,6 +13,7 @@ from motionweaver.repository import unreal_scripts
 
 from data.tools.audit_ue_batch import audit
 from data.tools.close_seed_batch import write_json
+from data.tools.portable_lock import lock_exclusive
 from data.tools.run_seed_queue import execute
 from data.tools.screen_pending_quality import screen
 
@@ -27,8 +27,7 @@ def retry(library, source, cohort, engine, project):
         raise ValueError('本次仅处理用户指定的 10 条拒绝动作')
     catalog=MotionCatalog(library)
     lock=(library/'work/queue.lock').open('a+b')
-    lock.seek(0)
-    msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
+    lock_exclusive(lock)
     session=library/'work'/('repair10_'+uuid.uuid4().hex)
     session.mkdir()
     write_json(session/'authorization_scope.json',{'cohort': str(cohort),'cohort_sha256': file_sha256(cohort),
