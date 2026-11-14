@@ -27,6 +27,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _is_windows_absolute(value):
+    """在 POSIX 上也能识别 `D:/...`，避免把它当成相对路径拼到仓库根。"""
+    text = str(value)
+    return len(text) >= 3 and text[1] == ":" and text[2] in "/\\"
+
+
 def _env_path(name, default, anchor=None):
     """读一个路径型环境变量，空串/纯空白一律回落到默认值。
 
@@ -38,7 +44,7 @@ def _env_path(name, default, anchor=None):
     if not value:
         return Path(default)
     path = Path(value).expanduser()
-    if anchor is not None and not path.is_absolute():
+    if anchor is not None and not path.is_absolute() and not _is_windows_absolute(path):
         path = Path(anchor) / path
     return path
 

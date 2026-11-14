@@ -1,0 +1,20 @@
+# 可选但推荐的本地门禁。安装一次后，每次 commit 只检查 staged Python 文件。
+#
+#   .venv/bin/python -m pip install -e ".[dev]"
+#   .venv/bin/python -m pre_commit install
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check
+        entry: python tools/dev.py lint
+        language: system
+        types: [python]
+
+      - id: fast-tests
+        name: repository guard tests
+        entry: python tools/dev.py test tests/test_benchmark_paths.py tests/test_no_dead_expressions.py tests/test_verify_repository_layout.py -q
+        language: system
+        pass_filenames: false
+        always_run: true
