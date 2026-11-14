@@ -60,6 +60,11 @@ def restore_training_state(ckpt, model, opt, sched, *, width, bones, steps_per_e
     等于「拿一个收敛的权重按初始 LR 重新热身」，已经花掉的 epoch 收益会被打散。
     老检查点（2026-11-14 之前的版本）没有 optimizer/scheduler，只能按已跑步数把
     调度器空转到同一位置——LR 能对上，动量对不上，这部分损失无法追回。
+
+    sched 必须是调用方按「本次的 --epochs」新建的调度表：只有当它的 T_max 与检查点
+    记录的一致时才直接搬检查点状态，否则按已跑 step 在新表上空转。这一点不能省——
+    load_state_dict 会把 T_max 一并覆盖回旧值，--epochs 调大后余弦会越过旧 T_max 折返、
+    LR 回升，等于悄悄重新热身。
     """
     if ckpt.get("width") != width or ckpt.get("bones") != bones:
         raise ValueError(
@@ -79,9 +84,32 @@ def restore_training_state(ckpt, model, opt, sched, *, width, bones, steps_per_e
     step = int(ckpt.get("step", 0)) or start_epoch * steps_per_epoch
     if ckpt.get("optimizer"):
         opt.load_state_dict(ckpt["optimizer"])
-    if ckpt.get("scheduler"):
+
+    # 调度表：只有「目标 T_max 与检查点一致」时才能直接搬检查点的状态。
+    # 直接 load_state_dict 会把调用方构造时给的 T_max 覆盖回旧值，于是 --epochs 调大以后
+    # 余弦越过旧 T_max 会从 -1 折返，LR 沿原路回升（实测 20ep 的检查点续到 25ep，
+    # LR 从 0 爬回 4.4e-5）——那是「重新升温」，不是「接着退火」。
+    # T_max 一变就必须在新调度表上把进度空转到同一 step，取同一进度位置上的 LR。
+    old_tmax = int((ckpt.get("scheduler") or {}).get("T_max") or 0)
+    if old_tmax == int(sched.T_max):
         sched.load_state_dict(ckpt["scheduler"])
+        # load_state_dict 只恢复调度器自己的 _last_lr，不会写回 optimizer 的参数组；
+        # 参数组还停在构造时的 lr（命令行 --lr），而 opt.step() 用的正是参数组的值。
+        # 不同步的话续训第一步会按满学习率更新一次，日志打印的却是调度器的 lr，看不出异常。
+        for group in opt.param_groups:
+            group["lr"] = sched.get_last_lr()[0]
+    elif step >= int(sched.T_max):
+        raise ValueError(
+            f"已跑 {step} 步不短于目标调度表 T_max={sched.T_max}（--epochs 太小）。"
+            f"续训的 --epochs 是总 epoch 数，必须大于 {start_epoch}。")
     else:
+        # CosineAnnealingLR.get_lr 是**相对**的：它按 cos 比值去乘参数组当前的 lr。
+        # 刚 load 进优化器状态时参数组的 lr 是保存那一刻的值（走满退火的话就是 0），
+        # 相对递推乘下去永远得 0——必须先把参数组退回初值，再空转到同一进度。
+        base_lrs = (ckpt.get("scheduler") or {}).get("base_lrs") or [
+            group.get("initial_lr", group["lr"]) for group in opt.param_groups]
+        for group, base in zip(opt.param_groups, base_lrs):
+            group["lr"] = base
         # 只推进调度器、不推优化器，PyTorch 会就「step 顺序」发一条 UserWarning；
         # 这里正是刻意只退火 LR，屏蔽掉以免每次续训都刷一条无意义的告警。
         with warnings.catch_warnings():
@@ -270,14 +298,19 @@ def main():
 
         # 优化器与调度器状态必须一起存：只存权重的话续训会让 LR 与动量重新起步，
         # 之前的 15 个 epoch 等于白跑。history/step/best 也存进来，方便不依赖目录内容恢复。
+        # 先比完 best 再打包检查点：原实现把 ckpt 建在比较之前，存进去的是「上一次的最优」，
+        # 导致 best.pt 里的 best 字段比它自己的 val 差一个 epoch（ep19 存的是 4.0577 而不是 4.0469）。
+        # 续训时又从 history 取最小值兜住了，所以没出过事故，但字段本身是错的。
+        improved = val_rmse_cm < best
+        if improved:
+            best = val_rmse_cm
         ckpt = {"model": model.state_dict(), "width": args.width, "bones": bones,
                 "epoch": epoch, "step": step, "val_pose_rmse_cm": val_rmse_cm,
                 "best": best, "history": history,
                 "optimizer": opt.state_dict(), "scheduler": sched.state_dict(),
                 "args": vars(args)}
         torch.save(ckpt, out / "last.pt")
-        if val_rmse_cm < best:
-            best = val_rmse_cm
+        if improved:
             torch.save(ckpt, out / "best.pt")
             print(f"   -> 新最优 {best:.2f} cm，已保存 best.pt", flush=True)
         (out / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")

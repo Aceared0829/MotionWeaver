@@ -120,3 +120,61 @@ def test_width_or_bone_mismatch_is_rejected(tmp_path):
         restore_training_state(ckpt, fresh, fresh_opt, fresh_sched,
                                width=WIDTH, bones=BONES,
                                steps_per_epoch=STEPS_PER_EPOCH, out=tmp_path)
+
+def test_param_group_lr_matches_scheduler_after_restore(tmp_path):
+    """续训第一步必须按恢复后的 LR 更新。
+
+    sched.load_state_dict 只写回调度器自己的 _last_lr，不会碰 optimizer 的
+    param_groups；而 opt.step() 读的正是参数组里的 lr。不同步的话，续训第一步
+    会按命令行 --lr（满学习率）更新一次，日志打印的却是调度器的 lr，看不出异常。
+    """
+    trained, opt, sched = build()
+    train_steps(trained, opt, sched, 60)          # T_max=100，走到 60% 处
+    expected_lr = sched.get_last_lr()[0]
+    assert expected_lr != pytest.approx(3e-4), "前置条件：此时 LR 应已明显低于初值"
+    ckpt = make_ckpt(trained, opt, sched, epoch=2, step=60)
+
+    fresh, fresh_opt, fresh_sched = build()       # 新建的调度器给的是满 lr
+    restore_training_state(ckpt, fresh, fresh_opt, fresh_sched,
+                           width=WIDTH, bones=BONES, steps_per_epoch=STEPS_PER_EPOCH, out=tmp_path)
+
+    assert fresh_opt.param_groups[0]["lr"] == pytest.approx(expected_lr), \
+        "参数组必须同步到调度器的 LR，否则续训第一步按满学习率更新"
+
+
+def test_larger_t_max_rebuilds_schedule_instead_of_rebounding(tmp_path):
+    """把 --epochs 调大后续训，不能靠 load_state_dict 搬调度器状态。
+
+    CosineAnnealingLR 越过 T_max 后余弦从 -1 折返，LR 沿原路回升。而
+    load_state_dict 会把构造时给的 T_max 覆盖回检查点的旧值，于是「30 epoch 续训」
+    实际得到的是「20 epoch 走到 0 之后重新升温」——语言上看是接着训，数值上是重新热身。
+    """
+    trained, opt, sched = build(t_max=100)
+    train_steps(trained, opt, sched, 100)         # 走满 T_max，LR 归零
+    assert sched.get_last_lr()[0] == pytest.approx(0.0)
+    ckpt = make_ckpt(trained, opt, sched, epoch=9, step=100)
+
+    # 目标 20 epoch（T_max=200）续训
+    fresh, fresh_opt, longer = build(t_max=200)
+    restore_training_state(ckpt, fresh, fresh_opt, longer,
+                           width=WIDTH, bones=BONES, steps_per_epoch=10, out=tmp_path)
+
+    assert longer.T_max == 200, "调用方给的 T_max 不能被检查点的旧值覆盖"
+    assert longer.last_epoch == 100, "进度要停在已跑步数上"
+    # 新表走到一半，LR 应处于中段（1.5e-4），而不是 0（折返起点）
+    assert longer.get_last_lr()[0] == pytest.approx(1.5e-4), \
+        "T_max 变大后应在新的余弦上取同一进度位置，而不是从 0 折返回升"
+    assert fresh_opt.param_groups[0]["lr"] == pytest.approx(1.5e-4)
+
+
+def test_epochs_smaller_than_progress_is_rejected(tmp_path):
+    """--epochs 是总 epoch 数；给成比已跑还小的话，新调度表一开始就走到终点。"""
+    trained, opt, sched = build(t_max=100)
+    train_steps(trained, opt, sched, 50)
+    ckpt = make_ckpt(trained, opt, sched, epoch=4, step=50)
+
+    # 目标 T_max=40，小于检查点的 100，也小于已跑的 50 步
+    fresh, fresh_opt, shorter = build(t_max=40)
+    with pytest.raises(ValueError, match="--epochs 太小"):
+        restore_training_state(ckpt, fresh, fresh_opt, shorter,
+                               width=WIDTH, bones=BONES, steps_per_epoch=10, out=tmp_path)
