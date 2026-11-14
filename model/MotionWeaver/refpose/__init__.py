@@ -10,4 +10,3 @@ __all__ = [
     "root_loss",
     "root_world_positions",
 ]
-

@@ -11,6 +11,6 @@ from importlib import import_module
 def shim(name, target):
     """把旧模块名转发到 target；CLI 入口在新模块中执行。"""
     if name == "__main__":
-        runpy.run_module(target, run_name="__main__")
+        runpy.run_module(target, run_name="__main__", alter_sys=True)
     else:
         sys.modules[name] = import_module(target)

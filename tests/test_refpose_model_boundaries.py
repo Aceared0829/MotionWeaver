@@ -101,4 +101,3 @@ print('ok')
             check=False,
         )
     assert result.returncode == 0, result.stdout + result.stderr
-

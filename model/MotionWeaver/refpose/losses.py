@@ -69,4 +69,3 @@ def root_loss(predicted, target):
     ).square().mean()
     total = 10.0 * position + rotation + 2.0 * velocity
     return total, position, rotation
-

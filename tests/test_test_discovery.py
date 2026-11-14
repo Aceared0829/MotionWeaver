@@ -24,4 +24,3 @@ def test_pytest_only_collects_the_tests_directory():
     assert match, "pyproject.toml 缺少 tool.pytest.ini_options.testpaths"
     paths = re.findall(r'"([^"]+)"', match.group(1))
     assert paths == ["tests"]
-

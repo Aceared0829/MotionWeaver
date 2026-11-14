@@ -68,4 +68,3 @@ def test_public_packages_import_from_any_working_directory():
             check=False,
         )
     assert result.returncode == 0, result.stdout + result.stderr
-

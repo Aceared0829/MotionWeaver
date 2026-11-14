@@ -282,4 +282,3 @@ def select_windows(index_file, contract, split, per_clip):
             else [grouped[index][len(grouped[index]) // 2]]
         )
     ]
-

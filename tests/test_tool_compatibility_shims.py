@@ -37,3 +37,23 @@ def test_old_cli_path_still_dispatches_to_new_module(module):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip()
+
+
+def test_alias_keeps_identity_when_new_module_is_imported_first():
+    code = """
+import importlib
+new = importlib.import_module("data.tools.audit.audit_conditioned_dataset")
+old = importlib.import_module("data.tools.audit_conditioned_dataset")
+assert old is new
+old.reload_marker = 42
+assert new.reload_marker == 42
+assert importlib.reload(old) is new
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

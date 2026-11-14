@@ -93,4 +93,3 @@ class RootPlanHead(nn.Module):
         quaternion = raw[..., 3:]
         quaternion = quaternion / quaternion.norm(dim=-1, keepdim=True).clamp_min(1e-6)
         return torch.cat((position, quaternion), dim=-1)
-

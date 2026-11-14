@@ -95,4 +95,3 @@ def test_type_checking_import_is_not_a_runtime_dependency(tmp_path):
         encoding="utf-8",
     )
     assert not _violations(tmp_path, {"training"}, allow=())
-

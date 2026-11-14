@@ -29,4 +29,3 @@ def verify_release(release, lock, source_override=None):
         raise ValueError("当前模型要求 24+24 帧契约")
     # 位置可迁移，内容仍由冻结清单、骨架与逐条 NPZ 哈希约束。
     return dict(contract, source_dataset=str(source)), lock
-
