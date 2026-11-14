@@ -14,17 +14,16 @@
 
 import sys
 import unittest
+from pathlib import Path
 
 import torch
 
-sys.path.insert(0, r"D:\AILocomotonSystem\MotionWeaver")
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
 
-LOSS_SOURCE = (r"D:\AILocomotonSystem\MotionWeaver"
-               r"\training\models\vqvae\motion_vqvae.py")
-CLI_SOURCE = (r"D:\AILocomotonSystem\MotionWeaver"
-              r"\training\pretrain\train_unreal.py")
-YAML_SOURCE = (r"D:\AILocomotonSystem\MotionWeaver"
-               r"\training\configs\pretrain\motionweaver_vqvae.yaml")
+LOSS_SOURCE = REPO / "training/models/vqvae/motion_vqvae.py"
+CLI_SOURCE = REPO / "training/pretrain/train_unreal.py"
+YAML_SOURCE = REPO / "training/configs/pretrain/motionweaver_vqvae.yaml"
 
 
 def read(path):

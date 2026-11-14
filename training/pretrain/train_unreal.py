@@ -431,5 +431,5 @@ if __name__ == "__main__":
     parser.add_argument("--max_tokens", type=int, default=None,
                         help="每段最多 token 数；必须满足 max_tokens <= (窗口帧数-1)/2**down_t，"
                              "否则 training_step 会随机取到超长 num_frames 并静默跳过整步。"
-                             "72 帧窗口配 down_t=3 时上限为 8（YAML 默认 16 会跳过约 67% 的步）")
+                             "72 帧窗口配 down_t=3 时上限为 8（YAML 默认 16 会跳过约 67%% 的步）")
     train(parser.parse_args())

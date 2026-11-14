@@ -1,4 +1,4 @@
-﻿"""按 MotionBricks 原版的指标体系对比各 checkpoint。
+"""按 MotionBricks 原版的指标体系对比各 checkpoint。
 
 ## 原版怎么做的（training/models/vqvae/motion_vqvae.py:335-352）
 
@@ -34,7 +34,9 @@ import statistics
 import sys
 from pathlib import Path
 
-RUNS = Path(r"D:\MotionWeaverData\training_runs")
+from benchmark import paths as benchmark_paths
+
+RUNS = benchmark_paths.RUNS
 
 # 与 motion_vqvae.py:336-344 一一对应
 METRICS = {

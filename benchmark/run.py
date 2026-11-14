@@ -30,25 +30,25 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"D:\AILocomotonSystem\MotionWeaver")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from benchmark import evaluate_recon, training_metrics
+from benchmark import evaluate_recon, paths as benchmark_paths, training_metrics
 
 DEFAULT_RUNS = {
     "BC120 (B+C, down_t=3)": {
-        "run": Path(r"D:\MotionWeaverData\training_runs\tok_BC120_3ep"),
+        "run": benchmark_paths.RUNS / "tok_BC120_3ep",
         "scenes": ["B", "C"],
     },
     "A120 (A, down_t=2)": {
-        "run": Path(r"D:\MotionWeaverData\training_runs\tok_A120_20k"),
+        "run": benchmark_paths.RUNS / "tok_A120_20k",
         "scenes": ["A"],
     },
     "A120 (A, down_t=3)": {
-        "run": Path(r"D:\MotionWeaverData\training_runs\tok_A120_dt3_3ep"),
+        "run": benchmark_paths.RUNS / "tok_A120_dt3_3ep",
         "scenes": ["A"],
     },
     "B120 (A, kmeans, down_t=2)": {
-        "run": Path(r"D:\MotionWeaverData\training_runs\tok_B120_3ep"),
+        "run": benchmark_paths.RUNS / "tok_B120_3ep",
         "scenes": ["A"],
     },
 }
@@ -96,7 +96,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--clips", type=int, default=4,
                         help="每个长度抽多少条做重建评测")
-    parser.add_argument("--report", default=r"D:\MotionWeaverData\reports\benchmark.json")
+    parser.add_argument("--report", default=str(benchmark_paths.REPORTS / "benchmark.json"))
     parser.add_argument("--only", nargs="*", help="只跑这些臂（名字前缀匹配）")
     args = parser.parse_args()
 
