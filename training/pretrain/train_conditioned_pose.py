@@ -15,7 +15,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
-from data.runtime.conditioned_motion import load_raw, root_local
+from data.runtime.conditioned_motion import load_raw, root_local, verify_source_manifest
 from data.runtime.unreal_dataset import contained_file
 
 
@@ -33,8 +33,7 @@ def verify_release(release, lock, source_override=None):
             raise ValueError(f"封版文件哈希不匹配：{name}")
     contract = json.loads((release / "contract" / "contract.json").read_text(encoding="utf-8"))
     source = Path(source_override if source_override is not None else contract["source_dataset"]).resolve()
-    if digest(source / "dataset.json") != contract["source_manifest_sha256"]:
-        raise ValueError("来源清单已改变")
+    verify_source_manifest(dict(contract, source_dataset=str(source)))
     if digest(source / "skeleton.json") != contract["skeleton_sha256"]:
         raise ValueError("来源骨架已改变")
     if contract["window"]["history_frames"] != 24 or contract["window"]["future_frames"] != 24:
@@ -103,11 +102,12 @@ class MotionWindows(Dataset):
         clip = self.contract["clips"][index]
 
         if self.mmap_root is not None:
-            # 目录名必须用 clip["raw_file"]，不能用契约数组下标 index。
+            # 目录名必须来自契约里的路径字段，不能用契约数组下标 index。
             # 20k 那次两者恰好相同（契约按原始顺序建、目录也按原始顺序命名），
             # 但全量 71k 的 clips 顺序与 mmap 目录命名顺序不一致，用 index 会读到别的 clip 甚至 KeyError。
-            # 契约里 raw_file 已写成 6 位目录名（如 "000000"）。
-            md = self.mmap_root / str(clip["raw_file"])
+            # 新版契约为 raw_file（NPZ）与 mmap_file（mmap 目录）两个字段；
+            # 旧版契约只有 raw_file 且就写成目录名，所以这里要回落到它。
+            md = self.mmap_root / str(clip.get("mmap_file", clip["raw_file"]))
             if md.is_dir():
                 pos = np.load(md / "p.npy", mmap_mode="r")
                 rot = np.load(md / "r.npy", mmap_mode="r")
@@ -145,7 +145,10 @@ class MotionWindows(Dataset):
                     self.contacts.pop(old_key, None)
                 return
 
-        raw, _ = load_raw(contained_file(self.source, clip["raw_file"]), clip["source_frames"],
+        # 没有 mmap_root 时回落到逐条 NPZ。raw_file 就是 NPZ 路径；
+        # 新版构建器另写了 raw_npz 作为同义冗余，优先用它（更明确），老契约没有就回落到 raw_file。
+        npz_rel = clip.get("raw_npz", clip["raw_file"])
+        raw, _ = load_raw(contained_file(self.source, npz_rel), clip["source_frames"],
                           self.contract["bone_count"], self.contract["fps"],
                           expected_sha256=clip["raw_sha256"] if self.source_verified else None)
         self.raw[index] = (raw["positions"],
@@ -185,6 +188,9 @@ class MotionWindows(Dataset):
             offsets = (12,)
         elif self.scenario == "two_refs":
             offsets = (12, 23)
+        elif self.scenario == "end_ref":
+            # 只有未来窗口末帧（第 23 帧）是硬参考，对应封盘四档里的 end_reference。
+            offsets = (23,)
         else:
             offsets = ()
         mask = np.zeros((24, 1), dtype=np.float32)
@@ -206,6 +212,53 @@ def balanced_window_weights(data, category_power=0.5, clip_power=0.5):
     weights = [categories[data.contract["clips"][row["clip_index"]]["category"]] ** -category_power
                * clips[row["clip_index"]] ** -clip_power for row in data.rows]
     return torch.tensor(weights, dtype=torch.double)
+
+
+class ClipShuffleSampler(torch.utils.data.Sampler):
+    """按 clip 分块打乱窗口，让相邻样本落在同一条动作上。
+
+    为什么需要它：``MotionWindows._ensure_loaded`` 每次换 clip 都要 open 三个
+    .npy（实测 1.5–4 ms，其中 99% 是 np.load 的冷元数据开销，真正读 48 行只要
+    0.18 ms）。全量 71,128 条 clip 摊到约 35 个窗口/条，默认 shuffle 下每个样本
+    都换 clip，LRU 命中率≈0，数据管线 700–1,000 samples/s，GPU 只有 3–21% 利用率
+    （实测 batch 256、8 worker：388 ms/步，其中 196 ms 在等数据）。
+
+    本采样器把 clip 分成 ``chunk`` 个一组：组间顺序随机、组内所有窗口再整体打乱。
+    一个 chunk 覆盖 chunk×35 个窗口，而 LRU 容量 256 条，组合内命中率接近 1。
+    实测同参数下 33–39 ms/步（约 8,000 samples/s），快 10 倍以上。
+
+    语义与 ``shuffle=True`` 一致：一个 epoch 仍恰好遍历每个窗口一次（无放回、
+    无重复、无遗漏），变的只是遍历顺序。参考帧采样与数据增强都由
+    ``seed + epoch*1000003 + item`` 决定，与遍历顺序无关，因此换采样器不改变
+    单样本内容，只改变 mini-batch 的组合。
+    """
+
+    def __init__(self, rows, chunk=16, seed=0):
+        if chunk < 1:
+            raise ValueError(f"chunk 必须为正整数：{chunk}")
+        groups = {}
+        for index, row in enumerate(rows):
+            groups.setdefault(row["clip_index"], []).append(index)
+        # 按 clip_index 排序，保证同一份契约在任意机器上分组顺序一致。
+        self.groups = [np.asarray(groups[key], dtype=np.int64) for key in sorted(groups)]
+        self.chunk = int(chunk)
+        self.seed = int(seed)
+        self.epoch = 0
+        self._length = sum(len(group) for group in self.groups)
+
+    def set_epoch(self, epoch):
+        self.epoch = int(epoch)
+
+    def __iter__(self):
+        rng = np.random.default_rng(self.seed + self.epoch * 100003)
+        order = rng.permutation(len(self.groups))
+        for start in range(0, len(order), self.chunk):
+            block = order[start:start + self.chunk]
+            windows = np.concatenate([self.groups[int(i)] for i in block])
+            yield from windows[rng.permutation(len(windows))].tolist()
+
+    def __len__(self):
+        return self._length
 
 
 def capture_random_state(loader_generator):

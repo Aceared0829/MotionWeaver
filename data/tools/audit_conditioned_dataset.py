@@ -17,7 +17,7 @@ from data.runtime.unreal_dataset import (
 )
 from scipy.spatial.transform import Rotation
 
-from data.runtime.conditioned_motion import CONTRACT_ID, load_raw
+from data.runtime.conditioned_motion import CONTRACT_ID, load_raw, verify_source_manifest
 
 FOOT_ROLES = ("left_foot", "left_toe", "right_foot", "right_toe")
 METRIC_FIELDS = ("root_speed_max_mps", "root_horizontal_speed_max_mps",
@@ -139,9 +139,8 @@ def audit(contract_folder, output, progress=None):
     if output.exists():
         raise FileExistsError(f"报告目录已存在：{output}")
     source = Path(contract["source_dataset"])
-    manifest_path = source / "dataset.json"
-    if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != contract["source_manifest_sha256"]:
-        raise ValueError("来源清单已改变，拒绝沿用旧契约")
+    # 清单文件名取自契约（旧契约 dataset.json，参考引导契约 clips.jsonl）。
+    manifest_path = verify_source_manifest(contract)
     manifest = read_json(manifest_path)
     skeleton_json = read_json(source / "skeleton.json")
     if hashlib.sha256((source / "skeleton.json").read_bytes()).hexdigest() != contract["skeleton_sha256"]:

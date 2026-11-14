@@ -91,6 +91,30 @@ def _save_stats(folder, name, total, squares, count):
             "std": std_path.name, "std_sha256": sha256(std_path), "valid_frames": count}
 
 
+def source_manifest_path(contract):
+    """来源清单的路径：旧契约是 dataset.json，参考引导契约是 clips.jsonl。
+
+    为什么要显式取名字：契约里已经写了 source_manifest_name
+    （build_refpose_release.py 写的是清单的真实文件名），但早期实现把所有
+    校验点都硬编码成 dataset.json，导致 Schema v3 的参考引导契约虽然哈希
+    完全对得上，却在读清单时直接 FileNotFoundError。
+    """
+    source = Path(contract["source_dataset"])
+    name = contract.get("source_manifest_name", "dataset.json")
+    path = source / name
+    if not path.is_file():
+        raise FileNotFoundError(f"来源数据清单不存在：{path}")
+    return path
+
+
+def verify_source_manifest(contract):
+    """来源清单内容必须与契约记录一致；返回清单路径。"""
+    path = source_manifest_path(contract)
+    if sha256(path) != contract["source_manifest_sha256"]:
+        raise ValueError("来源数据清单已改变")
+    return path
+
+
 def build_index(source, output, *, history_frames=24, future_frames=24, stride_frames=4,
                 exclude_train_indices=(), progress=None):
     """一遍读取原始 NPZ；仅写窗口索引、派生接触掩码与训练分区统计量。"""
@@ -171,6 +195,7 @@ def build_index(source, output, *, history_frames=24, future_frames=24, stride_f
                                                     velocity_squares, velocity_count)}
     contract = {"schema_version": 1, "contract_id": CONTRACT_ID,
                 "source_dataset": str(source), "source_manifest_sha256": sha256(manifest_path),
+                "source_manifest_name": manifest_path.name,
                 "source_training_signature": manifest["training_signature"],
                 "skeleton_sha256": sha256(source / "skeleton.json"), "fps": fps,
                 "bone_count": bone_count,
