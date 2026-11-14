@@ -55,9 +55,31 @@ systemctl --user stop mw-train                 # 只停任务，绝不碰 DSH
 
 只存权重不存优化器会让续训把 LR 与动量重新起步，之前的 epoch 等于白跑——这是必须留 `optimizer` 的原因。
 
+## 环境变量必须用 --env 显式传
+
+`systemd-run` 起的进程**不继承调用方的环境变量**——它不走 shell，由 systemd 按 unit 配置 fork。所以这种写法是错的：
+
+```bash
+# 错的：RUN_DIR 会被静默丢弃，脚本回落到默认值
+RUN_DIR=/path/to/run tools/run_detached.sh --name mw-eval -- tools/run_full_evaluation.sh
+```
+
+必须写成：
+
+```bash
+tools/run_detached.sh --name mw-eval \
+  --env RUN_DIR=/home/acear/MotionWeaverData/runs/refpose_v2_30ep \
+  --env OUT_DIR=/home/acear/MotionWeaverData/reports/refpose_v2_30ep_test \
+  -- tools/run_full_evaluation.sh
+```
+
+2026-11-14 就是这样踩的：延长训练后的评测用了默认 `RUN_DIR`，把旧的 20ep 检查点重算了一遍，报告覆盖在旧目录里，30ep 的 `best.pt` 一次都没被评测到——日志看着全程正常，只有 `model.json` 里的 `checkpoint` 字段能看出来。**评测跑完先核对 `model.json` 的 `checkpoint` 和 `epoch` 是不是你要的那一份。**
+
 ## 连评测 watcher 也要按 unit 等
 
-`tools/run_full_evaluation.sh` 通过 `TRAIN_UNIT`（默认 `mw-train`）轮询 `systemctl --user is-active`，不要写死训练 PID：续训会换主 PID，写死 PID 的 watcher 会在训练还跑着的时候就去抢显存。
+`tools/run_full_evaluation.sh` 通过 `TRAIN_UNIT`（默认 `mw-train`）轮询 `systemctl --user is-active`，不要写死训练 PID：续训会换主 PID，写死 PID 的 watcher 会在训练还跑着的时候就去抢显存。注意 `TRAIN_UNIT` 也是环境变量，同样要用 `--env` 传。
+
+watcher 一旦发现训练 unit 退出就会立刻开跑评测。所以**不要在训练已结束后才启动 watcher**——它会在第一轮轮询就直接开跑，此时如果你还没想清楚用哪个 `RUN_DIR`，就会评错权重。要事后补评，直接跑 `tools/run_full_evaluation.sh`（此时无需 watcher）。
 
 ## 排查清单
 

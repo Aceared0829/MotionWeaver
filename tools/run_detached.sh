@@ -18,6 +18,9 @@
 #   tools/run_detached.sh --name mw-train --log /path/train.log -- \
 #       .venv/bin/python tools/train_reference_pose.py --epochs 20 ...
 #
+#   # 需要给任务传环境变量时必须用 --env，不能靠调用方的环境继承（systemd-run 不继承）
+#   tools/run_detached.sh --name mw-eval --env RUN_DIR=/path/run -- tools/run_full_evaluation.sh
+#
 #   systemctl --user status mw-train        # 看状态与主 PID
 #   journalctl --user -u mw-train -f        # 跟日志（文件里也有一份）
 #   systemctl --user stop mw-train          # 只停这个 unit，绝不碰 DSH
@@ -31,6 +34,7 @@ SWAP_MAX="6G"
 CPU_QUOTA=""
 NICE="5"
 WORKDIR="$PWD"
+ENVS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -42,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     --cpu-quota) CPU_QUOTA="$2"; shift 2 ;;
     --nice)      NICE="$2"; shift 2 ;;
     --workdir)   WORKDIR="$2"; shift 2 ;;
+    --env)       ENVS+=("$2"); shift 2 ;;
     --) shift; break ;;
     *) echo "未知参数：$1" >&2; exit 2 ;;
   esac
@@ -84,13 +89,22 @@ if [[ -n "$CPU_QUOTA" ]]; then
   PROPS+=(--property=CPUQuota="$CPU_QUOTA")
 fi
 
+# systemd-run 起的进程**不继承调用方的环境变量**（它没有走 shell，而是由 systemd
+# 按 unit 配置 fork）。调用方 RUN_DIR=... tools/run_detached.sh ... 这种写法一旦
+# 依赖环境变量传递，变量会被静默丢弃、脚本回落到默认值——2026-11-14 那次评测
+# 就是这样拿着默认 RUN_DIR 重算了旧检查点。要传变量必须写进 unit 配置本身。
+ENV_ARGS=()
+for kv in ${ENVS[@]+"${ENVS[@]}"}; do
+  ENV_ARGS+=(--setenv="$kv")
+done
+
 if [[ -n "$LOG" ]]; then
   mkdir -p "$(dirname "$LOG")"
   # append: 让续训也能接着写同一个日志文件，而不是每次清空。
   PROPS+=(--property=StandardOutput=append:"$LOG" --property=StandardError=append:"$LOG")
 fi
 
-systemd-run --user --unit="$NAME" --collect "${PROPS[@]}" -- "$CMD" "${@:2}"
+systemd-run --user --unit="$NAME" --collect "${PROPS[@]}" ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} -- "$CMD" "${@:2}"
 
 echo "已提交 unit: $NAME"
 echo "  状态：systemctl --user status $NAME --no-pager"
