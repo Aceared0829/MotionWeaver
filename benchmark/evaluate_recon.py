@@ -26,16 +26,18 @@
 """
 
 import sys
+from pathlib import Path
 
 import numpy as np
 import torch
 
-sys.path.insert(0, r"D:\AILocomotonSystem\MotionWeaver")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from data.runtime.soma_realtime_dataset import (
     SomaRealtimeDataset,
     quat_to_matrix,
 )
+from benchmark import paths as benchmark_paths
 from inference.runtime.checkpoint import load_vqvae
 from motionweaver.representation.helper.data_training_util import (
     extract_feature_from_motion_rep,
@@ -118,8 +120,7 @@ def run_one(pose_net, motion_rep, pos, rot, frames, device):
 
 
 def evaluate_all(checkpoint, *, rows=(6, 8, 10, 12, 14, 16), scenes=("B", "C"),
-                 clips=6, device=None,
-                 views=r"D:\MotionWeaverData\soma_train_v1\full-v1-f32"):
+                 clips=6, device=None, views=None):
     """按 token 长度逐档评估，返回可 JSON 化的汇总（供 benchmark.run 调用）。
 
     与命令行入口的区别：不做打印，只返回结构化结果。
@@ -129,6 +130,7 @@ def evaluate_all(checkpoint, *, rows=(6, 8, 10, 12, 14, 16), scenes=("B", "C"),
 
     from benchmark.primitives.metrics import summarize
 
+    views = views or str(benchmark_paths.VIEWS)
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     pose_net, motion_rep, contract = load_vqvae(str(checkpoint))
     pose_net = pose_net.to(device).eval()

@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT/"inference"/"visualiz
 import paths
 import render_refpose_gifs as g
 
-from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
+from motionweaver.refpose import ReferenceGuidedPose
 
 POSE_W = paths.POSE_WEIGHT
 OUT = ROOT/"output"/"refpose_preview"/"context_sweep"

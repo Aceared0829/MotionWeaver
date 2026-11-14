@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
 import render_refpose_gifs as g
 
-from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
+from motionweaver.refpose import ReferenceGuidedPose
 
 OUT = ROOT / "output" / "refpose_preview" / "gifs"
 IDLE = "016517"

@@ -24,7 +24,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from data.runtime.unreal_dataset import UnrealMotionDataset, UnrealSkeleton
-from data.tools.build_unreal_training_set import (
+from data.tools.build.build_unreal_training_set import (
     MIN_TRAINING_FRAMES,
     build_skeleton_file,
     prepare,
@@ -270,7 +270,7 @@ class ThresholdConsistencyTests(unittest.TestCase):
     """
 
     def test_frame_threshold_matches_official_preparer(self):
-        from data.tools import prepare_unreal_dataset
+        from data.tools.ingest import prepare_unreal_dataset
 
         self.assertEqual(
             MIN_TRAINING_FRAMES,

@@ -13,8 +13,8 @@ from data.runtime.motion_processing import process_motion
 from data.runtime.native_motion import SampledMotion, SourceInfo
 from data.runtime.native_motion_io import read_sampled_motion, write_sampled_motion
 from data.runtime.skeleton_contract import load_skeleton_contract
-from data.tools.process_soma_dataset import hashes, verify_resume_manifest
-from data.tools.soma_observation import sha, write_json
+from data.tools.build.process_soma_dataset import hashes, verify_resume_manifest
+from data.tools.build.soma_observation import sha, write_json
 
 
 class SomaProcessingOptimizationTests(unittest.TestCase):

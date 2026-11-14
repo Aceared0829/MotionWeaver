@@ -20,8 +20,10 @@ def main():
     with tempfile.TemporaryDirectory() as cwd:
         targets = []
         for folder in ('data/tools', 'training/pretrain', 'training/evaluation', 'inference/cli', 'inference/export', 'inference/profiling', 'tools/compat/motionbricks/scripts'):
-            for path in (ROOT / folder).glob('*.py'):
-                if path.name in {'__init__.py', 'motion_batch_gate.py'}:
+            root = ROOT / folder
+            paths = root.rglob('*.py') if folder == 'data/tools' else root.glob('*.py')
+            for path in paths:
+                if path.name in {'__init__.py', '_compat.py', 'motion_batch_gate.py'}:
                     continue
                 syntax = ast.parse(path.read_text(encoding='utf-8'))
                 has_parser = any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)

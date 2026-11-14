@@ -199,7 +199,7 @@ cd D:\AILocomotonSystem\MotionWeaver
 $env:PYTHONIOENCODING = 'utf-8'
 
 # 契约（32 进程并行，约 12 分钟）
-.\.venv\Scripts\python.exe -m data.tools.build_soma_contract_parallel `
+.\.venv\Scripts\python.exe -m data.tools.build.build_soma_contract_parallel `
   --dataset D:\MotionWeaverData\soma_train_v1\full-v1 `
   --output D:\MotionWeaverData\soma_train_v1\full-v1\contracts --workers 32
 

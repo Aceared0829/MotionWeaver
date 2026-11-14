@@ -44,13 +44,13 @@
 访问 `http://127.0.0.1:8781`。重启命令：
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.motion_review_server --library E:/MotionWeaverData --native-index E:/MotionWeaverData/reports/soma_observation/20261017_semantic_review_v2/export-index.csv --port 8781
+./.venv/Scripts/python.exe -m data.tools.review.motion_review_server --library E:/MotionWeaverData --native-index E:/MotionWeaverData/reports/soma_observation/20261017_semantic_review_v2/export-index.csv --port 8781
 ```
 
 生成其他语义审核批次时，在项目根目录运行：
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.enrich_soma_observation --index E:/MotionWeaverData/reports/soma_observation/20261017_observation_pilot_v1/export-index.csv --run-id <new-run-id>
+./.venv/Scripts/python.exe -m data.tools.build.enrich_soma_observation --index E:/MotionWeaverData/reports/soma_observation/20261017_observation_pilot_v1/export-index.csv --run-id <new-run-id>
 ```
 
 新报告目录包含 `semantic-report.json`、`semantic-report.md`、逐动作 observation、新审核索引和来源资料哈希。它引用原有 raw/processed，不复制或修改运动数组；新 sidecar 哈希产生独立审核身份，结论保持未验收。

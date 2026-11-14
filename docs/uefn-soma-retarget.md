@@ -44,11 +44,11 @@ BVH 使用厘米、Y-up、Z-forward、局部 ZXY 欧拉旋转；Root/Hips 的平
 ## 执行与审核
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.retarget_uefn_to_soma `
+./.venv/Scripts/python.exe -m data.tools.ingest.retarget_uefn_to_soma `
   --index E:/MotionWeaverData/reports/gameanimation/20261015-full-export/export-index.csv `
   --run-id 20261018-soma-retarget-v1
 
-./.venv/Scripts/python.exe -m data.tools.motion_review_server `
+./.venv/Scripts/python.exe -m data.tools.review.motion_review_server `
   --library E:/MotionWeaverData `
   --native-index E:/MotionWeaverData/reports/gameanimation_soma/20261018-soma-retarget-v1/export-index.csv `
   --port 8784
@@ -59,7 +59,7 @@ BVH 使用厘米、Y-up、Z-forward、局部 ZXY 欧拉旋转；Root/Hips 的平
 失败条目可以单独从 raw 重新标准化后再转换一次：
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.retarget_uefn_to_soma `
+./.venv/Scripts/python.exe -m data.tools.ingest.retarget_uefn_to_soma `
   --index E:/MotionWeaverData/reports/gameanimation/20261015-full-export/export-index.csv `
   --run-id 20261018-soma-retarget-retry-v1 `
   --retry-report E:/MotionWeaverData/reports/gameanimation_soma/20261018-soma-retarget-v1/run.json

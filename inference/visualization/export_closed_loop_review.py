@@ -17,8 +17,7 @@ import paths
 import render_refpose_gifs as g
 from refpose_closed_loop import compose, localize
 
-from tools.train_root_plan import RootPlanHead
-from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
+from motionweaver.refpose import ReferenceGuidedPose, RootPlanHead
 
 POSE_W = paths.POSE_WEIGHT
 ROOT_W = paths.ROOT_WEIGHT

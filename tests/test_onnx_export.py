@@ -19,9 +19,12 @@ for extra in (REPO, REPO / "benchmark" / "manifest"):
     if str(extra) not in sys.path:
         sys.path.insert(0, str(extra))
 
+from benchmark import paths as benchmark_paths  # noqa: E402
+
 MANIFEST_PATH = REPO / "benchmark" / "manifest" / "refpose_manifest_v1.json"
-CHECKPOINT = Path("D:/MotionWeaverData/model_weight/refpose_v3_71k/best.pt")
-ONNX_DIR = Path("D:/MotionWeaverData/model_weight/refpose_v3_71k")
+# 权重目录随 MW_DATA_ROOT 走，不再写死某台机器的盘符。
+ONNX_DIR = benchmark_paths.WEIGHTS / "refpose_v3_71k"
+CHECKPOINT = ONNX_DIR / "best.pt"
 ONNX_PATH = ONNX_DIR / "model.onnx"
 ONNX_MANIFEST = ONNX_DIR / "onnx_manifest.json"
 
@@ -212,8 +215,13 @@ def test_mask_non_binary_proves_where_not_lerp(manifest):
         f"mask=0.5 时输出与 lerp 只差 {to_lerp:.3e}——图里可能是 lerp 而非 Where")
 
 
+@requires_onnx
 def test_batch_size_1_is_enforced(record):
-    """静态 batch=1 是硬约束：GRU 在非 1 batch 下会报错，多角色必须多 session。"""
+    """静态 batch=1 是硬约束：GRU 在非 1 batch 下会报错，多角色必须多 session。
+
+    加 requires_onnx 的理由与其它用例一致：本机没有导出产物时应当 skip，
+    「有输入没产物」那种半成品状态由 test_export_artifacts_exist 明确报红。
+    """
     import onnxruntime as ort
 
     session = ort.InferenceSession(str(ONNX_PATH), providers=["CPUExecutionProvider"])

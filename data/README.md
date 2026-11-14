@@ -17,7 +17,7 @@ UE 来源转统一 SOMA 的实现与目录见 [UE → SOMA 离线重定向](../d
 
 `runtime/stance_motion.py` 和 `tools/build_stance_motion_index.py` 在既有 v1 条件契约上建立站蹲 v2 试验索引。只有历史允许首帧补齐，未来始终取真实帧；旧动画方向标注的目标状态是推定代理条件，不是玩家输入或 CMC 批准。当前 P0 标注见 `annotations/stance_transition_p0_provisional.json`，仅四条明确过渡动作，边界尚为 `provisional`。结果与实际命令见 `docs/experiments/2026-09-28-stance-transition-v2.md`。
 
-`tools/`：数据准备、格式校验、批次调度、人工审核服务和入库工具。`review_web/` 随审核服务归档。`validate_seed_training.py` 校验训练数据格式，属于数据验收，不执行梯度训练。
+`tools/`：数据准备、格式校验、批次调度、人工审核服务和入库工具，按 `common` / `review` / `ingest` / `build` / `audit` / `publish` / `ops` / `eval` 分组。`review/review_web/` 随审核服务归档；`audit/validate_seed_training.py` 校验训练数据格式，不执行梯度训练。
 
 `raw/` 与 `prepared/`：本地数据，忽略提交。当前大数据物理目录为 `D:/MotionWeaverData/`（训练视图 `soma_train_v1/full-v1-f32`、mmap 训练集 `full_mmap`、契约 `full_release`）与 `E:/MotionWeaverData/`（原生导入、SOMA 处理与重定向报告）。旧 `E:/AIAnimationSystemData/` 路径已不存在，其 UE 导出与 `AILocomotionDataset` 产出于 2026-11 随插件一并废弃；旧 D 盘入口可能是兼容 Junction，不能视为第二份数据。
 
@@ -27,4 +27,4 @@ UE 来源转统一 SOMA 的实现与目录见 [UE → SOMA 离线重定向](../d
 
 已有 UE 导出数据的 Root/姿态条件索引与非学习基线全部使用 Python 离线处理，无需启动完整 UE 编辑器。契约、实测数量、局限和复现命令见 [Root 驱动与硬参考姿态数据契约](../docs/reference-guided-data-contract-v1.md)。新资产的采样或跨骨架重定向仍依赖 UE 资产系统，可走已有无界面批处理；编辑器用于最终视觉验收。
 
-根目录安装后运行：`python -m data.tools.prepare_unreal_dataset --help` 或 `python -m data.tools.motion_review_server --help`。
+根目录安装后运行：`python -m data.tools.ingest.prepare_unreal_dataset --help` 或 `python -m data.tools.review.motion_review_server --help`。

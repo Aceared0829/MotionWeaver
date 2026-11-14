@@ -6,7 +6,7 @@
 
 - `data/runtime/motion_features.py`：数值运动与有效朝向，不含语言模型或语义分类。
 - `data/runtime/motion_processing.py`：可逆 Root 位置表示、脚部多高度稳定候选、手部低速线索。
-- `data/tools/prepare_soma_processing.py`：全库非镜像来源语义索引、30 条处理试点、参考候选、任务候选索引及新审核版本。
+- `data/tools/ingest/prepare_soma_processing.py`：全库非镜像来源语义索引、30 条处理试点、参考候选、任务候选索引及新审核版本。
 - 原有原生导入、FK、来源双语说明和动作审核复用。没有引入 UE、网络服务或新依赖。
 
 ## Root 与时间的离线契约
@@ -63,8 +63,8 @@ E:/MotionWeaverData/
 ```
 
 ```powershell
-./.venv/Scripts/python.exe -m data.tools.prepare_soma_processing --index E:/MotionWeaverData/reports/soma_observation/20261017_semantic_review_v2/export-index.csv --run-id 20261017_processing_v1
-./.venv/Scripts/python.exe -m data.tools.motion_review_server --library E:/MotionWeaverData --native-index E:/MotionWeaverData/reports/soma_observation/20261017_processing_v1/export-index.csv --port 8781
+./.venv/Scripts/python.exe -m data.tools.ingest.prepare_soma_processing --index E:/MotionWeaverData/reports/soma_observation/20261017_semantic_review_v2/export-index.csv --run-id 20261017_processing_v1
+./.venv/Scripts/python.exe -m data.tools.review.motion_review_server --library E:/MotionWeaverData --native-index E:/MotionWeaverData/reports/soma_observation/20261017_processing_v1/export-index.csv --port 8781
 ```
 
 已有批次拒绝覆盖；重新执行需新 run ID。历史数据库只读，备注保留原审核身份，在新页面单独展示，不继承其结论。

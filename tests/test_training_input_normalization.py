@@ -31,19 +31,20 @@ z-score 空间，于是训练喂给 pose_net 的 body 通道与评测喂的不�
 
 import sys
 import unittest
+from pathlib import Path
 
 import numpy as np
 import torch
 
-sys.path.insert(0, r"D:\AILocomotonSystem\MotionWeaver")
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
 
+from benchmark import paths as benchmark_paths  # noqa: E402
 from data.runtime.soma_realtime_dataset import SomaRealtimeCollate  # noqa: E402
 
-LOSS_SOURCE = (r"D:\AILocomotonSystem\MotionWeaver"
-               r"\training\models\vqvae\motion_vqvae.py")
-VIEWS = r"D:\MotionWeaverData\soma_train_v1\full-v1-f32"
-CHECKPOINT = (r"D:\MotionWeaverData\training_runs\full_base_40k"
-              r"\checkpoints\final.ckpt")
+LOSS_SOURCE = REPO / "training/models/vqvae/motion_vqvae.py"
+VIEWS = benchmark_paths.VIEWS
+CHECKPOINT = benchmark_paths.RUNS / "full_base_40k/checkpoints/final.ckpt"
 
 # 两条路径的 body 相对差上限。实测修复后 max|d| 在 1e-5 量级（只是浮点累加差），
 # 修复前是 862 级别；取 1e-2 留足余量，但远低于任何真实的错位。
@@ -86,19 +87,16 @@ class TrainingStepNormalizationFlagTests(unittest.TestCase):
 
     def test_two_data_entrypoints_disagree_so_flag_must_be_explicit(self):
         """钉住前提：两条入口的归一化状态确实相反，这才需要显式开关。"""
-        soma = read(r"D:\AILocomotonSystem\MotionWeaver"
-                    r"\data\runtime\soma_realtime_dataset.py")
+        soma = read(REPO / "data/runtime/soma_realtime_dataset.py")
         self.assertIn("to_normalize=False", soma,
                       "SomaRealtimeCollate 的归一化口径变了，训练侧必须同步复查")
-        build = read(r"D:\AILocomotonSystem\MotionWeaver"
-                     r"\data\tools\build_unreal_training_set.py")
+        build = read(REPO / "data/tools/build/build_unreal_training_set.py")
         self.assertIn("(features - mean)", build,
                       "build_unreal_training_set 不再预归一化，训练侧必须同步复查")
 
     def test_cli_sets_flag_from_data_source(self):
         """训练入口必须按实际数据来源改写开关，不能靠 yaml 默认值。"""
-        text = read(r"D:\AILocomotonSystem\MotionWeaver"
-                    r"\training\pretrain\train_unreal.py")
+        text = read(REPO / "training/pretrain/train_unreal.py")
         self.assertIn("conf.model.args.inputs_are_normalized = not bool(", text,
                       "训练入口没有按数据来源声明归一化状态")
         self.assertIn('getattr(args, "soma_views", None))', text,

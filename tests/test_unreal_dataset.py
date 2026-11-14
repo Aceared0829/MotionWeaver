@@ -67,7 +67,7 @@ def pose_only_fixture():
 
 
 def prepare_module():
-    path = Path(__file__).resolve().parents[1] / "data/tools/prepare_unreal_dataset.py"
+    path = Path(__file__).resolve().parents[1] / "data/tools/ingest/prepare_unreal_dataset.py"
     spec = importlib.util.spec_from_file_location("prepare_unreal", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

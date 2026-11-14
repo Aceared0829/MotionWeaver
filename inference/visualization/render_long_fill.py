@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "inference" / "visualization"))
 import paths
 
-from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
+from motionweaver.refpose import ReferenceGuidedPose
 
 MMAP = paths.MMAP
 STATS = paths.STATS

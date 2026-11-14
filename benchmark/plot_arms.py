@@ -7,8 +7,15 @@
     让「重建误差远大于补间基线」这一事实一眼可见。
 """
 
+import argparse
 import json
+import sys
 from pathlib import Path
+
+# 直接 `python benchmark/plot_arms.py` 时仓库根不在 sys.path 上，
+# 会以 ModuleNotFoundError: No module named 'benchmark' 退出。
+# 与 cli_recon.py 一样按本文件位置推根，换机器不需要改。
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import matplotlib
 
@@ -16,8 +23,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-REPORT = Path(r"D:\MotionWeaverData\reports\benchmark.json")
-OUT = Path(r"D:\AILocomotonSystem\MotionWeaver\paper\figures\fig9-benchmark-arms.png")
+from benchmark import paths as benchmark_paths
+
+REPORT = benchmark_paths.REPORTS / "benchmark.json"
+OUT = benchmark_paths.ROOT / "paper" / "figures" / "fig9-benchmark-arms.png"
 
 # 与正文表 20/21 对齐的短标签
 SHORT = {
@@ -35,7 +44,17 @@ COLORS = {
 
 
 def main():
-    report = json.loads(REPORT.read_text(encoding="utf-8"))
+    # 没有 --report 时退回 benchmark.paths 的默认位置；给了就用给的。
+    # 这个脚本原来硬读 REPORTS/benchmark.json，换机器/换数据根只能改源码。
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--report", default=str(REPORT), help="benchmark.json 路径")
+    parser.add_argument("--out", default=str(OUT), help="输出 PNG 路径")
+    options = parser.parse_args()
+    report_path, out_path = Path(options.report), Path(options.out)
+    if not report_path.is_file():
+        raise FileNotFoundError(f"找不到评测报告：{report_path}（用 --report 指定）")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     arms = [a for a in report["arms"] if a.get("training_metrics")]
     recon_arms = [a for a in report["arms"]
                   if a.get("reconstruction") and "error" not in a["reconstruction"]]
@@ -101,9 +120,9 @@ def main():
                 "Self-check (inverse round-trip) is 0.000000 m for every arm, "
                 "so group B differences come from the models, not the harness.",
                 ha="center", fontsize=8, color="gray")
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(OUT, dpi=150, bbox_inches="tight")
-    print(f"已写出 {OUT}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(out_path, dpi=150, bbox_inches="tight")
+    print(f"已写出 {out_path}")
 
 
 if __name__ == "__main__":

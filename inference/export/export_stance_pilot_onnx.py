@@ -12,7 +12,7 @@ from data.runtime.unreal_dataset import read_json
 from torch import nn
 
 from data.runtime.conditioned_motion import sha256
-from training.pretrain.train_stance_pilot import StanceGuidedPose
+from motionweaver.refpose import StanceGuidedPose
 
 
 class StancePilotExport(nn.Module):

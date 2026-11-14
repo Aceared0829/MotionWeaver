@@ -10,8 +10,10 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"D:\AILocomotonSystem\MotionWeaver")
+# 仓库根按本文件位置推，换机器/换盘符不需要改这里。
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from benchmark import paths as benchmark_paths
 from benchmark.evaluate_recon import (
     DEFAULT_ROWS,
     RAW_ERROR_LIMIT,
@@ -22,8 +24,8 @@ from benchmark.evaluate_recon import (
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--views",
-                        default=r"D:\MotionWeaverData\soma_train_v1\full-v1-f32")
+    parser.add_argument("--views", default=str(benchmark_paths.VIEWS),
+                        help="训练视图目录；默认取 MW_VIEWS / <数据根>/soma_train_v1/full-v1-f32")
     parser.add_argument("--scenes", nargs="+", default=["B", "C"])
     parser.add_argument("--clips", type=int, default=8,
                         help="每个长度档抽多少条；16 时单臂 96 次重建")

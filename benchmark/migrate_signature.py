@@ -22,16 +22,19 @@ neutral_joints 逐元素一致）时才允许改写，否则拒绝。
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
 import torch
 
-sys.path.insert(0, r"D:\AILocomotonSystem\MotionWeaver")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from benchmark import paths as benchmark_paths
 from data.runtime.soma_realtime_dataset import training_signature
 
-TEMP_VIEW = Path(r"C:\Users\zzn19\AppData\Local\Temp\motionweaver_skeleton_view")
+# 临时视图落在系统临时目录里，不再写死某台机器的用户目录。
+TEMP_VIEW = Path(tempfile.gettempdir()) / "motionweaver_skeleton_view"
 
 
 def normalize(skeleton):
@@ -75,8 +78,7 @@ def find_equivalent_skeleton(views, stored_signature):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--views",
-                        default=r"D:\MotionWeaverData\soma_train_v1\full-v1-f32")
+    parser.add_argument("--views", default=str(benchmark_paths.VIEWS))
     parser.add_argument("--checkpoint", nargs="+", required=True)
     parser.add_argument("--dry_run", action="store_true",
                         help="只检查不改写")

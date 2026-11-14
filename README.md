@@ -59,7 +59,9 @@ MotionWeaver（原 AIAnimationSystem）是面向 Unreal Engine 的 AI 角色动�
 | 技术报告（论文） | [paper/main.html](paper/main.html)（HTML 工作稿，可导出 PDF） |
 | 软件著作权材料 | [paper/软著/](paper/软著/)（能力清单、说明书、源程序、申请表） |
 | 评测协议基线 | [docs/soma-inbetweening-baseline-full-v1.md](docs/soma-inbetweening-baseline-full-v1.md) |
+| 开发环境与测试 | [docs/development.md](docs/development.md) |
 | 架构与目录 | [docs/motionweaver-architecture.md](docs/motionweaver-architecture.md)、[docs/repository-layout.md](docs/repository-layout.md) |
+| 代码整理计划 | [docs/refactor-plan.md](docs/refactor-plan.md) |
 
 现有 G1 权重与参考骨架绑定。自定义 UE 训练入口不支持直接加载 G1 权重微调，原 G1 演示也不能直接预览新的 UE 骨架检查点。
 
@@ -77,9 +79,25 @@ cd MotionWeaver
 
 当前默认分支为 `main`。预训练检查点默认不自动下载；按下面的使用场景准备环境和模型。
 
+### 开发环境
+
+只改代码、跑测试时推荐用仓库 `.venv` 和统一开发入口：
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python tools/dev.py setup
+.venv/bin/python tools/dev.py doctor
+.venv/bin/python -m pytest -q
+```
+
+Windows 将 `.venv/bin/python` 换成 `.venv\Scripts\python.exe`。`setup` 默认安装
+`.[training,dev]`；另加 `--demo` / `--export` 可补 MuJoCo 与 ONNX 依赖。
+完整搭建、测试分类、Lint 策略和数据路径见 [开发环境](docs/development.md)。
+
 ### Unreal 侧范围
 
-训练数据链路已不经过 UE：原始动作来自 `soma_uniform/bvh`，跨骨架转换由离线 Python 完成（`data/tools/retarget_uefn_to_soma.py`），训练契约是 78 骨 SOMA / 120 fps / 24+24 窗口。
+训练数据链路已不经过 UE：原始动作来自 `soma_uniform/bvh`，跨骨架转换由离线 Python 完成（`data/tools/ingest/retarget_uefn_to_soma.py`），训练契约是 78 骨 SOMA / 120 fps / 24+24 窗口。
 
 UE 侧目前只保留 `unreal-sample/AIMotionSample` 实验宿主与空壳 `MotionWeaver` 插件，用来承接后续 refpose v3 的 AnimNode 接线。该宿主是 GASP 示例工程的副本，尚无自有 `Source/` 与 `Plugins/`。旧的 79 骨 `AILocomotionDataset` 导出插件、`AIAnimation` 实验推理插件、Motion Matching 桥接与旧宿主 `UMWSamplePreview` 均已于 2026-11 移除，理由见 [Unreal 集成](unreal-script/README.md)。
 
@@ -87,7 +105,7 @@ UE 侧目前只保留 `unreal-sample/AIMotionSample` 实验宿主与空壳 `Moti
 
 从仓库根目录运行 `./inference/profiling/Start-PoseReferenceLab.ps1`，在本地页面逐帧选姿态，再运行真实模型对照。需要本机 V2 检查点和准备好的原始数据；这些数据与权重不随本次源码提交发布。
 
-[实验室操作、软/硬对照与限制](inference/profiling/pose-reference-lab.md)记录了用户所选六帧的结果：平均关节误差 11.322→6.903 cm，参考帧通过后处理等式约束精确满足；加速度误差略升，不能宣称解决抽搐。编码器仍读取完整已知窗口，代理模式还读取已知未来；尚非稀疏参考生成未知过渡，也未接入 UE 跑酷执行逻辑。
+[实验室操作、软/硬对照与限制](docs/experiments/2026-09-23-pose-reference-lab.md)记录了用户所选六帧的结果：平均关节误差 11.322→6.903 cm，参考帧通过后处理等式约束精确满足；加速度误差略升，不能宣称解决抽搐。编码器仍读取完整已知窗口，代理模式还读取已知未来；尚非稀疏参考生成未知过渡，也未接入 UE 跑酷执行逻辑。
 
 ### MotionBricks 参考演示
 
@@ -110,7 +128,7 @@ Windows 下默认打开中文单窗口界面，其他平台在不能嵌入 MuJoC
 ## 最近的实测结论
 
 2026-10 的一轮实验给出两条结论，都记在 [技术报告 §9](paper/main.html) 与
-[关节误差文档](docs/soma-tokenizer-joint-error-options.md)：
+[实验记录归档](docs/archive.md)：
 
 1. **评测口径曾经是错的。** 训练与评测喂给模型的是两种不同的归一化分布
    （`--dataset` 落盘前已标准化，`--soma_views` 产出原始特征，而
@@ -170,8 +188,8 @@ tools/compat/       历史命令与检查点导入兼容源码
 | [实验记录](docs/experiments/README.md) | 可提交的逐次数据、训练、评估与 UE 验证记录及证据索引 |
 | [技术报告](paper/main.html) | 完整技术报告源码；PDF 见 `paper/MotionWeaver-technical-report.pdf`（31 页） |
 | [软著材料](paper/软著/README.md) | 软件著作权登记材料：说明书、源程序文档、能力清单与一致性检查 |
-| [关节误差与方案 A 结论文档](docs/soma-tokenizer-joint-error-options.md) | 归一化口径缺陷的定位与修复、关节位置损失的 17 组对照、码本塌缩证据 |
-| [分词器评测](docs/soma-tokenizer-benchmark.md) | 统一 benchmark 的四臂结果与口径边界 |
+| [关节误差与方案 A 结论（归档）](docs/archive.md) | 归一化口径缺陷的定位与修复、关节位置损失的 17 组对照、码本塌缩证据 |
+| [分词器评测（归档）](docs/archive.md) | 统一 benchmark 的四臂结果与口径边界 |
 | [权重清单](docs/assets/plan-a-final/WEIGHTS_MANIFEST.md) | 长期保留的 25 个 run 的配置、步数、最优指标与位置 |
 | [launcher](launcher) | Windows 参考演示启动器源码 |
 
@@ -190,4 +208,4 @@ Licensed by NVIDIA Corporation under the NVIDIA Open Model License.
 
 本文件由 AIAnimationSystem 维护者基于上游 README 改写；2026-09-07 更新项目命名、
 使用入口、开发状态及来源声明；2026-10-28 补充 SOMA 全库训练视图、统一评测、
-分词器现状与最近的实测结论。
+分词器现状与最近的实测结论；2026-11-14 补充开发环境、统一入口与测试说明。

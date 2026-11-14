@@ -22,7 +22,7 @@ const context = vm.createContext({
   fetch() { return new Promise(() => {}); }, requestAnimationFrame() {}, URL, Float32Array,
   devicePixelRatio: 1, confirm() { return true; }, alert() {},
 });
-const script = fs.readFileSync(path.join(__dirname, '../data/tools/review_web/app.js'), 'utf8');
+const script = fs.readFileSync(path.join(__dirname, '../data/tools/review/review_web/app.js'), 'utf8');
 vm.runInContext(script, context);
 vm.runInContext(`data={frames:2,fps:30,source:{names:['Root','Hand'],parents:[-1,0],pelvis:0,
   positions:Float32Array.from([0,0,50,0,0,150,100,0,150,100,0,250]),

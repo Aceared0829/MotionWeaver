@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 from test_motion_import import bvh_fixture
 
-from data.tools.build_native_batch_index import INDEX_FIELDS, build
-from data.tools.import_motion_dataset import run_batch
-from data.tools.native_review_store import load_native_review_inputs
+from data.tools.build.build_native_batch_index import INDEX_FIELDS, build
+from data.tools.ingest.import_motion_dataset import run_batch
+from data.tools.review.native_review_store import load_native_review_inputs
 
 
 def fixture_batch(folder, fps=2):

@@ -1,8 +1,13 @@
 # MotionWeaver 数据—模型—推理统一执行方案 v1
 
-> 状态：方案定稿，待实施。本文取代此前口头讨论中关于帧率、窗口与场景划分的临时结论。
+> 状态：数据侧方案已落地，模型与推理部分已被后续主线取代。本文保留为当时的数据契约与 token 预算决策记录。
+> 2026-11-14 注记：`data/runtime/soma_train_dataset.py` 与
+> `data/tools/build/build_soma_training_set.py` 已实现本文的按帧率分组、场景划分与 token 预算；
+> 当前正式模型与评测以 [refpose v3 训练与评测](refpose-v3-training-evaluation.md) 为准。
+> 文中引用的 `unreal-script/AILocomotionSystem/` 等旧插件路径已于 2026-11 移除，
+> 相关内容仅作历史记录。
 > 日期：2026-10-21。基线：`codex/uefn-soma-retarget` @ `de5fecc`。
-> 相关文档：[SOMA 训练数据方向](soma-training-data-direction.md)、[玩家状态条件动画计划](player-state-conditioned-animation-plan.md)、[混合运动开发方案](../unreal-script/AILocomotionSystem/LocomotionPlan.md)、[SOMA 全库处理](soma-full-processing.md)。
+> 相关文档：[SOMA 训练数据方向](soma-training-data-direction.md)、[玩家状态条件动画计划](player-state-conditioned-animation-plan.md)、[SOMA 全库处理](soma-full-processing.md)。
 
 ---
 
@@ -319,7 +324,7 @@ down_t(fps) = down_t(基准帧率) - round(log2(基准帧率 / fps))
 | 模块 | 职责 |
 | --- | --- |
 | `data/runtime/soma_train_dataset.py` | 读 SOMA processed + NPZ，输出 Schema v3 clip（78 骨、Root 相对、按秒窗口） |
-| `data/tools/build_soma_training_set.py` | 批次入口：场景划分 → 统计量 → dataset.json |
+| `data/tools/build/build_soma_training_set.py` | 批次入口：场景划分 → 统计量 → dataset.json |
 | `data/tools/build_semantic_index.py` | 149 种自由值 → 受控词表 → 结构化标签 |
 | `data/runtime/posture_transition.py` | 大姿态转换检测：从 body_position 多值 + 几何验证 |
 | `data/runtime/self_contact.py` | 自接触几何候选（指尖球 + 躯干胶囊 + 头球） |

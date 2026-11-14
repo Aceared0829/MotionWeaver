@@ -160,7 +160,7 @@ Root 表示方案要同时服务普通移动和跑酷任务，最终必须能与
 - 复用恢复的 `data/runtime/native_motion.py`、`native_motion_io.py` 和 `normalize_motion.py`。
 - 已新增 `data/skeletons/soma_uniform_v1.json` 及固定快照读取器；`data/skeletons/mappings/` 留待实际映射时新增。
 - 拟新增 `data/runtime/retarget_motion.py` 与 `data/tools/retarget_motion_dataset.py`，实现离线转换和逐动画报告。
-- 复用 `data/tools/native_review_store.py`、`motion_review_server.py` 与 `review_web/`，接入转换结果对照。
+- 复用 `data/tools/review/native_review_store.py`、`motion_review_server.py` 与 `review_web/`，接入转换结果对照。
 - 训练入口复用 `prepare_unreal_dataset.prepare()` 的 `input_manifest`、`clip_loader` 消费边界，保留原有签名检查并接入新目标契约。
 
 站蹲状态与过渡标注优先复用 `stance_motion.py` 的思路，参考条件优先复用 `conditioned_motion.py` 的显式选择与掩码机制；实现前先适配 SOMA 和新 Root/时间契约，不另起一套物理数据存储。来源语义、自动接触候选与参考以轻量 sidecar/索引保存。当前处理试点的格式、命令和消费者见轻量处理文档；正式模型训练适配仍未完成。

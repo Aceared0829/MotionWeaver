@@ -15,7 +15,7 @@
 
 它们**不是**：
 - 不是推理运行时（运行时在 `inference/runtime/`）
-- 不是验收工具（验收在 `data/tools/review_web/`）
+- 不是验收工具（验收在 `data/tools/review/review_web/`）
 - 不是 UE 接入的承载层（承载层是新的 `FAnimNode_RefPose`，见
   `docs/refpose-ue-runtime-integration-research.md`）
 

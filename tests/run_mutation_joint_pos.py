@@ -20,10 +20,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO = Path(r"D:\AILocomotonSystem\MotionWeaver")
+REPO = Path(__file__).resolve().parents[1]
 TARGET = REPO / "training/models/vqvae/motion_vqvae.py"
-BACKUP = Path(r"D:\tmp\mutation_backup_joint_pos.py")
-PYTEST = [str(REPO / ".venv/Scripts/python.exe"), "-m", "pytest",
+BACKUP = REPO / ".build" / "tmp" / "mutation_backup_joint_pos.py"
+PYTEST = [sys.executable, "-m", "pytest",
           "tests/test_joint_position_loss.py", "-q"]
 
 MUTATIONS = [
@@ -90,6 +90,7 @@ def run_tests():
 def main():
     original = TARGET.read_text(encoding="utf-8")
     baseline_hash = digest(TARGET)
+    BACKUP.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(TARGET, BACKUP)
     print(f"备份哈希 {baseline_hash}\n")
 

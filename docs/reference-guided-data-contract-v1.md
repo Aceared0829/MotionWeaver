@@ -31,7 +31,7 @@ flowchart LR
 | 标签与归一化 | 原始姿态和 Root | 用真实 Root 与姿态派生四个脚部接触启发式标签；姿态与 Root 速度统计量只遍历训练分区的真实帧，每段只计一次。 |
 | 基线/诊断 | 留出集、明确的 Root 与硬参考条件 | 用 Python 评估，不调用 UE 或训练模型。最终蒙皮、IK、碰撞、网络移动和场景落点仍需 UE 中验收。 |
 
-已实现入口：`data/tools/build_conditioned_motion_index.py`、`data/runtime/conditioned_motion.py`、`training/evaluation/evaluate_conditioned_baselines.py`。来源文件继续位于 `E:\AIAnimationSystemData\prepared\native30_traversal_semantic_v1`；新索引位于 `E:\AIAnimationSystemData\prepared\reference_guided_root_pose_v1_20260924`。索引目录仅含契约、窗口行和统计量，不是第二份训练数据。路径存在于契约中，迁移来源目录后需要重新建立索引。
+已实现入口：`data/tools/build/build_conditioned_motion_index.py`、`data/runtime/conditioned_motion.py`、`training/evaluation/evaluate_conditioned_baselines.py`。来源文件继续位于 `E:\AIAnimationSystemData\prepared\native30_traversal_semantic_v1`；新索引位于 `E:\AIAnimationSystemData\prepared\reference_guided_root_pose_v1_20260924`。索引目录仅含契约、窗口行和统计量，不是第二份训练数据。路径存在于契约中，迁移来源目录后需要重新建立索引。
 
 2026-09-24 质量审计后，后续条件生成实验应使用 `E:\AIAnimationSystemData\prepared\reference_guided_root_pose_v1_20260924_audited`。它仍引用同一套原始动作，只在条件索引中屏蔽了 3 条精确重复的训练片段；旧索引作为审计前基线保留。完整发现和复核范围见下文。
 
@@ -54,7 +54,7 @@ flowchart LR
 
 ### 全量离线质量审计与筛选
 
-`data/tools/audit_conditioned_dataset.py` 逐段核验来源哈希、维度、时间轴、Root/姿态连续性、旋转矩阵、实体骨段长度、脚接触标签复算及精确动作跨分区重复。它只写报告，不改资产和分区。全部 1,722 段通过完整性与接触标签复算，没有骨段长度或旋转矩阵超出本次宽松阈值的片段。
+`data/tools/audit/audit_conditioned_dataset.py` 逐段核验来源哈希、维度、时间轴、Root/姿态连续性、旋转矩阵、实体骨段长度、脚接触标签复算及精确动作跨分区重复。它只写报告，不改资产和分区。全部 1,722 段通过完整性与接触标签复算，没有骨段长度或旋转矩阵超出本次宽松阈值的片段。
 
 发现两组完全相同的姿态与 Root 数组分别跨越训练/测试、训练/验证：Jump 的 `Off` 与 `Start` 不同资产名。另有一组训练内部精确重复。审计版条件索引屏蔽训练侧清单索引 `620`、`660`、`672`，并从训练统计量中移除相应真实帧；来源 NPZ 保留。审计版有效训练片段为 1,337 段，训练/验证/测试窗口为 **26,861/4,052/3,820**，总计 **34,733**。再次审计后，实际启用片段之间的精确数组跨分区重复为 0；留出集保持原样。
 
@@ -63,7 +63,7 @@ flowchart LR
 复现与查看：
 
 ```powershell
-& .venv\Scripts\python.exe -m data.tools.audit_conditioned_dataset `
+& .venv\Scripts\python.exe -m data.tools.audit.audit_conditioned_dataset `
   --contract 'E:\AIAnimationSystemData\prepared\reference_guided_root_pose_v1_20260924_audited' `
   --output 'output\conditioned_data_audit_20260924_complete'
 ```
@@ -73,7 +73,7 @@ flowchart LR
 人工复核沿用项目已有的 `motion_review_server.py` 与 `review_web`，使用同一骨架播放器和 SQLite 结论库。prepared 模式读取固定的审计队列，按每页最多 50 条展示；来源 NPZ 经哈希验证，只读加载并合成 Root 轨迹。无需打开完整 UE 编辑器。
 
 ```powershell
-& .venv\Scripts\python.exe -m data.tools.motion_review_server `
+& .venv\Scripts\python.exe -m data.tools.review.motion_review_server `
   --library 'D:\MotionDataLibrary' `
   --conditioned-contract 'E:\AIAnimationSystemData\prepared\reference_guided_root_pose_v1_20260924_audited' `
   --conditioned-audit 'output\conditioned_data_audit_20260924_complete'
@@ -95,7 +95,7 @@ flowchart LR
 复现命令（项目根目录执行，输出目录必须不存在）：
 
 ```powershell
-& .venv\Scripts\python.exe -m data.tools.build_conditioned_motion_index `
+& .venv\Scripts\python.exe -m data.tools.build.build_conditioned_motion_index `
   --source 'E:\AIAnimationSystemData\prepared\native30_traversal_semantic_v1' `
   --output 'E:\AIAnimationSystemData\prepared\reference_guided_root_pose_v1_20260924_audited' `
   --history-frames 24 --future-frames 24 --stride-frames 4 `
@@ -112,7 +112,7 @@ flowchart LR
 
 107 条固定复核队列均记录为 `approved`，其中 95 条异常候选、12 条分类抽样；58 条备注保留批量标记。2026-09-25 用户又确认该 107 条全部通过，按逐条标记的结论处理；本次确认和旧 SQLite 标记的区别见 [P0 审计](experiments/2026-09-25-p0-stance-data-audit.md)。结论只覆盖该队列，旧批量标记不证明逐条观看，也不代表全部 1,722 条已逐条视觉验收。线框验收的蒙皮、IK、碰撞与场景落点边界仍适用。封版不代表已获准训练；等用户明确指示后，再从此版本开始训练实验。
 
-封版工具为 `data/tools/freeze_conditioned_dataset.py`，要求审计无完整性错误、有效分区无精确动作交叉、测试基线匹配契约、每页名单与 SQLite 结论一致且全部通过，并核对统计量和窗口数量。封版输出目录与锁文件都必须尚不存在；若来源或验收结论发生变化，应建立新版本，不能覆盖此版本。
+封版工具为 `data/tools/publish/freeze_conditioned_dataset.py`，要求审计无完整性错误、有效分区无精确动作交叉、测试基线匹配契约、每页名单与 SQLite 结论一致且全部通过，并核对统计量和窗口数量。封版输出目录与锁文件都必须尚不存在；若来源或验收结论发生变化，应建立新版本，不能覆盖此版本。
 
 ## 下一步的先后顺序
 

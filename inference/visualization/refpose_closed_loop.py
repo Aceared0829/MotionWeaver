@@ -18,8 +18,7 @@ sys.path.insert(0, str(ROOT / "inference" / "visualization"))
 import paths
 import render_refpose_gifs as g
 
-from tools.train_root_plan import RootPlanHead
-from training.pretrain.train_conditioned_pose import ReferenceGuidedPose
+from motionweaver.refpose import ReferenceGuidedPose, RootPlanHead
 
 POSE_W = paths.POSE_WEIGHT
 # 优先用 20 epoch 版；盘上没有就回退到早先那版。两个值必须保持不同，

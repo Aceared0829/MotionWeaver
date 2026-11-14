@@ -21,7 +21,13 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from data.runtime.conditioned_motion import CONTRACT_ID, load_window, with_references, read_json
+from data.runtime.conditioned_motion import (
+    CONTRACT_ID,
+    load_window,
+    read_json,
+    verify_source_manifest,
+    with_references,
+)
 from training.evaluation.evaluate_conditioned_baselines import (
     aggregate,
     predict,
@@ -88,19 +94,21 @@ def _chunks(rows, workers):
 
 
 def evaluate(contract_folder, output, *, split="test", per_clip=0, workers=16,
-             io_pause_ms=20):
+             io_pause_ms=20, limit_clips=0):
     folder, output = Path(contract_folder).resolve(), Path(output).resolve()
     contract_path = folder / "contract.json"
     contract = read_json(contract_path)
     if contract.get("contract_id") != CONTRACT_ID:
         raise ValueError("条件动作契约不匹配")
     source = Path(contract["source_dataset"])
-    if hashlib.sha256((source / "dataset.json").read_bytes()).hexdigest() != contract["source_manifest_sha256"]:
-        raise ValueError("来源数据清单已改变")
+    verify_source_manifest(contract)
     if hashlib.sha256((source / "skeleton.json").read_bytes()).hexdigest() != contract["skeleton_sha256"]:
         raise ValueError("骨架已改变")
 
     rows = select_windows(folder / "windows.jsonl", contract, split, per_clip)
+    if limit_clips:
+        # 冒烟用：只取前 N 个窗口，避免小改动也要等全量几分钟。
+        rows = rows[:limit_clips]
     if output.exists():
         raise FileExistsError(f"目标目录已存在：{output}")
 
@@ -164,10 +172,12 @@ def main():
                         help="并发进程数；超过磁盘 I/O 能力反而变慢")
     parser.add_argument("--io-pause-ms", type=int, default=20,
                         help="每处理完一个窗口休眠的毫秒数，用于给磁盘 I/O 留余量")
+    parser.add_argument("--limit-clips", type=int, default=0,
+                        help="只评估前 N 个窗口（冒烟用；0 表示全量）")
     args = parser.parse_args()
     report = evaluate(args.contract, args.output, split=args.split,
                       per_clip=args.per_clip, workers=args.workers,
-                      io_pause_ms=args.io_pause_ms)
+                      io_pause_ms=args.io_pause_ms, limit_clips=args.limit_clips)
     print(json.dumps(report["aggregate"], ensure_ascii=False, indent=2))
 
 
