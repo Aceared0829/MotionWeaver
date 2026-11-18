@@ -6,6 +6,7 @@
     "charliermarsh.ruff",
     "editorconfig.editorconfig",
     "llvm-vs-code-extensions.vscode-clangd",
+    "ms-vscode.cpptools",
     "tamasfe.even-better-toml",
     "redhat.vscode-yaml",
     "github.vscode-github-actions"

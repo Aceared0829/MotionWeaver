@@ -44,6 +44,118 @@
         "PYTHONPATH": "${workspaceFolder}",
         "PYTHONUTF8": "1"
       }
+    },
+    {
+      // 引擎通过 scripts/ue.sh 维护的 .vscode/ue-engine 链接定位，
+      // 仓库里不出现绝对引擎路径。
+      "name": "UE: Debug editor (Linux)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/ue-engine/Engine/Binaries/Linux/UnrealEditor",
+      "args": [
+        "${workspaceFolder}/unreal-sample/AIMotionSample/AIMotionSample.uproject",
+        "-log"
+      ],
+      "cwd": "${workspaceFolder}/unreal-sample/AIMotionSample",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "externalConsole": false,
+      "stopAtEntry": false,
+      "preLaunchTask": "UE: build editor (Linux Development)",
+      "setupCommands": [
+        {
+          "description": "读取本地符号文件，而不是通过 gdbserver 传输",
+          "text": "set sysroot /",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Enable pretty-printing",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Keep breakpoints for modules that load later",
+          "text": "set breakpoint pending on",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "UE: Run editor (Linux, no debug)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/ue-engine/Engine/Binaries/Linux/UnrealEditor",
+      "args": [
+        "${workspaceFolder}/unreal-sample/AIMotionSample/AIMotionSample.uproject",
+        "-log"
+      ],
+      "cwd": "${workspaceFolder}/unreal-sample/AIMotionSample",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "externalConsole": false,
+      "noDebug": true,
+      "preLaunchTask": "UE: build editor (Linux Development)"
+    },
+    {
+      // 先运行任务 "UE: launch editor under gdbserver"，再启动本配置。
+      // 走 gdbserver 可以绕开 kernel.yama.ptrace_scope=1 对直接附加的限制。
+      "name": "UE: Attach to editor (gdbserver :1234)",
+      "type": "cppdbg",
+      "request": "attach",
+      "program": "${workspaceFolder}/.vscode/ue-engine/Engine/Binaries/Linux/UnrealEditor",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "miDebuggerServerAddress": "127.0.0.1:1234",
+      "setupCommands": [
+        {
+          "description": "读取本地符号文件，而不是通过 gdbserver 传输",
+          "text": "set sysroot /",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Enable pretty-printing",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Keep breakpoints for modules that load later",
+          "text": "set breakpoint pending on",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "UE: Debug plugin tests (NullRHI)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/ue-engine/Engine/Binaries/Linux/UnrealEditor",
+      "args": [
+        "${workspaceFolder}/unreal-sample/AIMotionSample/AIMotionSample.uproject",
+        "-unattended",
+        "-nop4",
+        "-nosplash",
+        "-NullRHI",
+        "-log",
+        "-ExecCmds=Automation RunTests MotionWeaver;Quit"
+      ],
+      "cwd": "${workspaceFolder}/unreal-sample/AIMotionSample",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "externalConsole": false,
+      "stopAtEntry": false,
+      "preLaunchTask": "UE: build editor (Linux Development)",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Keep breakpoints for modules that load later",
+          "text": "set breakpoint pending on",
+          "ignoreFailures": true
+        }
+      ]
     }
   ]
 }

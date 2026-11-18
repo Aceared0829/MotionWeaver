@@ -52,14 +52,38 @@
     "*.uproject": "json",
     "*.uplugin": "json",
     "*.usf": "cpp",
+    "*.inl": "cpp",
     "*.ush": "cpp"
+  },
+  // UE C++ 只交给 clangd：两个语言服务器会给出互相矛盾的诊断，
+  // 而 MS C++ 扩展读不懂 UBT 生成的参数。
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.errorSquiggles": "disabled",
+  "clangd.arguments": [
+    // 这里不要传 --compile-commands-dir：clangd 只接受一个值，写多次时最后一个
+    // 生效、前面的静默丢弃。此前同时传宿主工程与 unreal-script，宿主工程的 UBT
+    // 数据库被覆盖，clangd 退回没有 include 路径的兜底参数，整个插件都报
+    // 「Pose/... file not found」。两个工程各自用目录下的 .clangd 指定数据库：
+    // unreal-sample/AIMotionSample/.clangd -> .vscode/，
+    // unreal-script/.clangd -> gen_compile_commands.py 生成的索引。
+    "--background-index",
+    "--header-insertion=never",
+    "--completion-style=detailed",
+    "--inlay-hints"
+  ],
+  "clangd.onConfigChanged": "restart",
+  "[cpp]": {
+    "editor.tabSize": 4,
+    "editor.insertSpaces": false
   },
   "files.exclude": {
     "**/__pycache__": true,
     "**/.pytest_cache": true,
     "**/.ruff_cache": true,
     "**/.mypy_cache": true,
-    "**/*.egg-info": true
+    "**/*.egg-info": true,
+    // scripts/ue.sh 维护的引擎链接；不排除会让搜索/监听跟进整个引擎目录。
+    "**/.vscode/ue-engine": true
   },
   "search.exclude": {
     "**/.venv": true,
@@ -73,6 +97,10 @@
     "**/unreal-sample/**/Content": true,
     "**/unreal-sample/**/Binaries": true,
     "**/unreal-sample/**/Intermediate": true,
+    "**/unreal-sample/**/Saved": true,
+    "**/unreal-sample/**/DerivedDataCache": true,
+    "**/unreal-sample/**/Plugins/**/ThirdParty": true,
+    "**/.vscode/ue-engine": true,
     "**/node_modules": true
   },
   "files.watcherExclude": {
@@ -89,7 +117,10 @@
     "**/model-weight/**": true,
     "**/unreal-sample/**/Content/**": true,
     "**/unreal-sample/**/Binaries/**": true,
-    "**/unreal-sample/**/Intermediate/**": true
+    "**/unreal-sample/**/Intermediate/**": true,
+    "**/unreal-sample/**/Saved/**": true,
+    "**/unreal-sample/**/DerivedDataCache/**": true,
+    "**/.vscode/ue-engine/**": true
   },
   "terminal.integrated.cwd": "${workspaceFolder}",
   "terminal.integrated.env.linux": {
