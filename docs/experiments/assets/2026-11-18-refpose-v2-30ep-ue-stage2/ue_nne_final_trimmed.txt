@@ -4,6 +4,6 @@ LogCsvProfiler: Display: Metadata set : engineversion="5.8.4-58902052+++UE5+Rele
 LogPluginManager: Mounting Engine plugin NNERuntimeORT
 LogAutomationController: Display: Test Started. Name={Numeric} Path={MotionWeaver.RefPose.NNE.Numeric}
 LogAutomationController: Display: Test Completed. Result={Success} Name={Numeric} Path={MotionWeaver.RefPose.NNE.Numeric}
-LogAutomationController: RefPose NNE: fixtures=72 values=1213056 mask_values=50544 max_abs=4.529953e-06 mask_abs=0 p50=0.815 ms p95=1.080 ms
+LogAutomationController: RefPose NNE: fixtures=72 values=1213056 mask_values=50544 max_abs=4.529953e-06 mask_abs=0 p50=0.732 ms p95=0.829 ms
 LogAutomationController: Display: Test Started. Name={RejectsBadInput} Path={MotionWeaver.RefPose.NNE.RejectsBadInput}
 LogAutomationController: Display: Test Completed. Result={Success} Name={RejectsBadInput} Path={MotionWeaver.RefPose.NNE.RejectsBadInput}

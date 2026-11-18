@@ -33,7 +33,9 @@ public:
 	int32 GetFutureFrames() const { return FutureFrames; }
 
 private:
-	TStrongObjectPtr<UNNEModelData> ModelData;
+	// 不持有 UObject：TStrongObjectPtr 的析构必须在游戏线程，而会话的生命周期终点
+	// 很可能落在动画工作线程（阶段三）。调用方保证 URefPoseModelAsset 比会话活得久；
+	// IEnumerable 内部的 NNE 实例已经持有它用到的模型数据。
 	TSharedPtr<UE::NNE::IModelCPU> Model;
 	TSharedPtr<UE::NNE::IModelInstanceCPU> Instance;
 	int32 BoneCount = 0;

@@ -26,7 +26,6 @@ TSharedPtr<FRefPoseSession> FRefPoseSession::Create(
 	}
 
 	TSharedPtr<FRefPoseSession> Session = MakeShared<FRefPoseSession>();
-	Session->ModelData.Reset(Asset.ModelData);
 	Session->Model = Runtime->CreateModelCPU(Asset.ModelData);
 	Session->Instance = Session->Model ? Session->Model->CreateModelInstanceCPU() : nullptr;
 	if (!Session->Instance)

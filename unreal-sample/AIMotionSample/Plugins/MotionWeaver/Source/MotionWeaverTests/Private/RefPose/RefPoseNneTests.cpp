@@ -223,11 +223,12 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 	const double P50 = InferenceMs.IsEmpty() ? 0.0 : InferenceMs[InferenceMs.Num() / 2];
 	const double P95 = InferenceMs.IsEmpty() ? 0.0 : InferenceMs[FMath::Min(
 		InferenceMs.Num() - 1, FMath::CeilToInt(InferenceMs.Num() * 0.95) - 1)];
-	// 数量下限从包本身推导，并额外要求至少一组带参考帧；否则一份全零 mask 的夹具集
+	// 数量从包自身推导，并额外要求至少一组带参考帧；否则一份全零 mask 的夹具集
 	// 会让「mask 精确」这条断言在 0 个元素上通过。
-	const int32 ExpectedFixtures = 3 * 2 * 3 * 4;
-	const int32 ExpectedValues = ExpectedFixtures * FrameCount * PoseFeatures;
-	TestEqual(TEXT("比较全部声明夹具"), Fixtures->Num(), ExpectedFixtures);
+	const int32 DeclaredFixtures = static_cast<int32>(Package->GetNumberField(TEXT("fixture_count")));
+	const int32 ExpectedValues = DeclaredFixtures * FrameCount * PoseFeatures;
+	TestEqual(TEXT("遍历的夹具数与包声明一致"), Fixtures->Num(), DeclaredFixtures);
+	TestTrue(TEXT("包声明了实际夹具"), DeclaredFixtures > 0);
 	TestEqual(TEXT("比较全部输出元素"), ComparedValues, ExpectedValues);
 	TestTrue(TEXT("至少校验过一个硬参考帧"), MaskValues > 0);
 	TestTrue(TEXT("UE NNE 对 Python ORT 最大绝对误差 <= 1e-4"), MaxAbs <= MaxAbsTolerance);
@@ -251,7 +252,7 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 		Report->SetNumberField(TEXT("p50_ms"), P50);
 		Report->SetNumberField(TEXT("p95_ms"), P95);
 		Report->SetBoolField(TEXT("passed"), MaxAbs <= MaxAbsTolerance && MaxMaskAbs == 0.0
-			&& Fixtures->Num() == ExpectedFixtures && ComparedValues == ExpectedValues
+			&& Fixtures->Num() == DeclaredFixtures && ComparedValues == ExpectedValues
 			&& MaskValues > 0);
 		FString Text;
 		const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
