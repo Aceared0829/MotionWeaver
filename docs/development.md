@@ -78,6 +78,9 @@ python tools/dev.py bootstrap --system-site-packages
 - Ruff：使用 `pyproject.toml` 固定的 lint 规则；
 - EditorConfig：遵循 `.editorconfig` 的缩进与换行；
 - clangd：解析 `unreal-script/` 与 `unreal-sample/` 的 UE C++；
+- C++ 只启用 clangd：共享 `settings.json` 关闭了 MS C++ 的 IntelliSense，
+  两个语言服务器会给出互相矛盾的诊断；编译数据库与 `query-driver` 的处理见
+  [UE 实验宿主](../unreal-sample/README.md) 的 Linux 开发环境一节；
 - TOML / YAML / GitHub Actions：配置与 CI 文件的基础支持。
 
 项目配置默认：
@@ -89,6 +92,16 @@ python tools/dev.py bootstrap --system-site-packages
 - 保存时不自动格式化、不自动整理 import，避免把历史格式差异混进功能改动；
 - `Dev: doctor`、`Dev: test`、`Dev: lint`、`Dev: check` 等任务可直接从
   `Terminal → Run Task` 运行；
+- `UE: check environment` / `UE: build editor (Linux Development)` /
+  `UE: generate clang database` / `UE: launch editor` /
+  `UE: run plugin automation tests` 调用 `scripts/ue.sh`，引擎路径从
+  `UE_ROOT` 或 `.vscode/ue-root` 读取；
+- `UE: watch clang database` 在打开仓库时自动启动，按源码清单增删/改名重建
+  clangd 编译数据库（改内容不触发，单次约 3 秒）；首次运行需允许工作区的
+  自动任务；
+- `.vscode/launch.json` 提供 UE 的 gdb 启动、无调试运行、gdbserver 附加与
+  插件测试调试配置；引擎路径通过 `scripts/ue.sh` 维护的
+  `.vscode/ue-engine` 链接定位；
 - `UE: generate clangd compile database` 仍保留给 `unreal-script/` 的镜像插件，
   调用 `unreal-script/gen_compile_commands.py`。镜像没有宿主 `.uproject`，无法由
   UBT 直接索引，脚本因此复用宿主 UBT 已生成的权威编译命令，展开其中的 `.rsp`
