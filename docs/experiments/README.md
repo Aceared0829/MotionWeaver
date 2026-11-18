@@ -11,6 +11,7 @@
 新记录在这里新增一行，注明日期、类型、状态和主要证据：
 
 | 日期 | 实验 | 类型 | 状态 | 主要证据 |
+| 2026-11-18 | [RefPose v2 30ep UE 阶段一二](2026-11-18-refpose-v2-30ep-ue-stage2.md) | ONNX 导出 / UE NNE CPU | 完成；72 组真实窗口 UE 数值门禁通过，未做蒙皮 | [导出摘要](assets/2026-11-18-refpose-v2-30ep-ue-stage2/python_export_summary.json)、[UE 报告](assets/2026-11-18-refpose-v2-30ep-ue-stage2/ue_nne_report.json) |
 | 2026-09-23 | [参考姿态实验审查与验证](2026-09-23-pose-reference-review.md) | 参考姿态 / 审查 | 完成；修复路径、绘图与浏览器存储退化 | 审查项、复测结论与限制 |
 | 2026-09-23 | [手选跑酷参考与已知代理动画对照](2026-09-23-proxy-reference-results.md) | 参考姿态 / 手选参考 | 完成；案例研究，不作为未见测试集结论 | 四条动作的参考帧与逐窗口记录 |
 | 2026-09-23 | [跑酷阶段参考与条件遵守审计](2026-09-23-phase-reference-results.md) | 参考姿态 / 阶段候选 | 完成；中间阶段候选未确认真值 | 13 条跑酷的候选阶段与条件对照 |

@@ -238,7 +238,7 @@ def test_export_script_reads_shapes_from_manifest():
     这条不需要数据，只读源码，所以不加 requires_onnx：
     换台机器门禁会 SKIP，但这条应该一直跑。
     """
-    source = (REPO / "benchmark" / "manifest" / "export_onnx.py").read_text(encoding="utf-8")
+    source = (REPO / "inference" / "export" / "refpose" / "onnx.py").read_text(encoding="utf-8")
     body = source.split('if __name__ == "__main__":')[0]
     # 常见硬编码形状不该出现
     for hardcoded in ("709", "702", "[1, 24,", "24, 78"):
@@ -298,7 +298,7 @@ def test_export_supports_path_override():
 
     这条只读源码，不需要数据。
     """
-    source = (REPO / "benchmark" / "manifest" / "export_onnx.py").read_text(encoding="utf-8")
+    source = (REPO / "inference" / "export" / "refpose" / "onnx.py").read_text(encoding="utf-8")
     assert "MW_RELEASE_DIR" in source, "应有 MW_RELEASE_DIR 覆盖 release 路径"
     assert "MW_MMAP_DIR" in source, "应有 MW_MMAP_DIR 覆盖 mmap 路径"
     # 路径无效时应给出可操作的错误，而不是裸 FileNotFoundError

@@ -4,7 +4,7 @@
 
 `runtime/backbone/` 保留上游生成编排；`runtime/experiment/` 是 G1 参考演示兼容加载路径，仍需 Lightning 模型封装。它与轻量 UE VQ-VAE 导出路径的依赖要求不同。
 
-`export/` 导出 FP32 权重、骨架、统计量和契约；`profiling/` 测量神经网络推理与实验播放质量；`cli/`、`demo/`、`assets/` 提供 G1 MuJoCo 参考演示。
+`export/` 导出 FP32 权重、骨架、统计量和契约；`export_refpose_ue` 为当前四输入 RefPose 生成 NNE CPU 验证包与真实窗口夹具（不做蒙皮）。`profiling/` 测量神经网络推理与实验播放质量；`cli/`、`demo/`、`assets/` 提供 G1 MuJoCo 参考演示。
 
 ```powershell
 python -m inference.export.export_unreal_inference --help

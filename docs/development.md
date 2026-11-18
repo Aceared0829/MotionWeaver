@@ -89,8 +89,13 @@ python tools/dev.py bootstrap --system-site-packages
 - 保存时不自动格式化、不自动整理 import，避免把历史格式差异混进功能改动；
 - `Dev: doctor`、`Dev: test`、`Dev: lint`、`Dev: check` 等任务可直接从
   `Terminal → Run Task` 运行；
-- `UE: generate clangd compile database` 调用
-  `unreal-script/gen_compile_commands.py` 生成 clangd 索引；
+- `UE: generate clangd compile database` 仍保留给 `unreal-script/` 的镜像插件，
+  调用 `unreal-script/gen_compile_commands.py`。镜像没有宿主 `.uproject`，无法由
+  UBT 直接索引，脚本因此复用宿主 UBT 已生成的权威编译命令，展开其中的 `.rsp`
+  并把源文件换成镜像路径；宿主缺少插件编译命令时它会明确报错，不会静默生成空索引。
+  镜像源码与宿主不一致时 clangd 会报错，先跑同步脚本；Linux 无 `pwsh` 时用
+  `rsync -a --delete --exclude Binaries/ --exclude Intermediate/ --exclude Saved/
+  --exclude Content/ unreal-sample/AIMotionSample/Plugins/MotionWeaver/ unreal-script/MotionWeaver/`；
 - `UE: sync plugin mirror` / `UE: check plugin mirror` 调用插件同步脚本；
   这两个任务需要 PowerShell 7（`pwsh`），Linux 未安装 `pwsh` 时会失败；
 - 在 Markdown 文件中输入 `mwexp` 可插入实验记录骨架。

@@ -215,7 +215,7 @@ def test_column_concat_layout_must_fail(manifest):
 
 def test_rebuild_does_not_import_training_code():
     """独立脚本必须真的独立：不许 import 训练侧装配逻辑。"""
-    source = (REPO / "benchmark" / "manifest" / "rebuild_inputs.py").read_text(encoding="utf-8")
+    source = (REPO / "inference" / "export" / "refpose" / "inputs.py").read_text(encoding="utf-8")
     forbidden = ["MotionWindows", "train_conditioned_pose", "conditioned_motion"]
     # 注释里会提到这些名字，所以只在 import 行上判
     import_lines = [line for line in source.splitlines()
