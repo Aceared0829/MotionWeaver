@@ -18,3 +18,17 @@ MotionWeaver 的唯一开发源为 `unreal-sample/AIMotionSample/Plugins/MotionW
 ```
 
 同步脚本只复制插件源码和元数据，排除 `Content/` 和 `Binaries/`、`Intermediate/`、`Saved/` 等 UE 生成物，并删除镜像中已从源插件移除的文件。它拒绝通过非排除目录中的 Junction 或其他链接读写、删除文件；保留排除目录和空目录。`-Check` 返回非零状态时，说明合并前镜像尚未同步。
+
+## 镜像的 clangd 索引
+
+镜像目录没有挂到任何 `.uproject`，UBT 不会为它生成编译数据库。运行
+`.venv/bin/python unreal-script/gen_compile_commands.py` 生成
+`unreal-script/compile_commands.json`（不入库）：脚本复用宿主 UBT 已生成的权威
+编译命令，展开其中的 `.rsp`，只把被编译的源文件换成镜像路径。
+
+前置条件是宿主已构建并生成过数据库（`bash scripts/ue.sh BuildEditor` 与
+`bash scripts/ue.sh GenerateClangDatabase`）。镜像源文件由同步脚本保持与宿主一致；
+Linux 没有 `pwsh` 时用 `rsync -a --delete --exclude Binaries/ --exclude Intermediate/
+--exclude Saved/ --exclude Content/ unreal-sample/AIMotionSample/Plugins/MotionWeaver/
+unreal-script/MotionWeaver/`。镜像若落后于宿主，clangd 会报成员不存在之类的诊断，
+这时先同步再重跑索引。
