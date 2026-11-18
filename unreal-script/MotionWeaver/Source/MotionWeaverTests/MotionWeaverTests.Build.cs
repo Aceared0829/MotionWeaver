@@ -24,8 +24,13 @@ public class MotionWeaverTests : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"MotionWeaver",
+			"Json",
+			"JsonUtilities",
 			// 自动化测试框架在 UnrealEd 里。
 			"UnrealEd",
+			// Linux 通用 FGenericPlatformMisc::GetSHA256Signature 只有断言占位；
+			// 测试使用引擎提供的可移植 OpenSSL 校验模型文件。
+			"OpenSSL",
 		});
 	}
 }

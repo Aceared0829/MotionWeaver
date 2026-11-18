@@ -14,6 +14,7 @@ public class MotionWeaver : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"NNE",
 			// TypedElementFramework 提供元素类型注册与 handle；
 			// TypedElementRuntime 提供选择集。编辑器侧的变换手柄只认这两种类型，
 			// 缺一个都会在链接期报未解析符号。

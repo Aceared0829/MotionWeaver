@@ -5,7 +5,19 @@ UE 5.8 动画工具链插件。当前提供两条链路：
 1. **姿态代理**：从动画预览的暂停帧抽出全身姿态，存成独立 `.uasset`
 2. **姿态代理组**：把多个姿态按帧号串成一段运动，支持求解轨迹与视口拖动编辑
 
-不接推理、不做骨架转换、不碰 AnimGraph。
+当前另提供 **RefPose 阶段二 NNE 推理**：加载四输入 ONNX，在 `NNERuntimeORTCpu`
+上执行并校验 `joints` 输出。暂不做骨架转换、蒙皮或 AnimGraph；也没有异步调度。
+`Public/RefPose/` 下是模型资产和会话，`MotionWeaverTests` 提供真实窗口数值门禁。
+
+本地运行门禁前先按 `inference/export/export_refpose_ue.py` 导出模型包，再执行：
+
+```bash
+export MW_REFPOSE_UE_PACKAGE=/path/to/refpose_ue
+export MW_REFPOSE_UE_REPORT=/path/to/ue_nne_report.json
+bash scripts/ue.sh RunTests
+```
+
+当前 Linux 只验 CPU；Windows DirectML、骨架映射与阶段三蒙皮另行验证。
 
 本文件说明源码怎么分目录、模块怎么依赖，以及新功能该放哪。
 
@@ -27,6 +39,8 @@ Runtime 模块内部按 **四层** 组织，依赖只能从上往下：
 ② Pose/Solve/     求解算法，只依赖 Data
        ↓
 ③ Pose/Runtime/   关卡里的 Actor，依赖 Data + Solve
+
+RefPose/          NNE 模型资产与四输入 CPU 会话；独立于 Pose 编辑链
 ```
 
 Editor 模块横向按职责分：

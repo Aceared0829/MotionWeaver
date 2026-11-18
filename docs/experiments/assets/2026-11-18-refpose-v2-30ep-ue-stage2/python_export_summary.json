@@ -1,0 +1,32 @@
+{
+  "checkpoint_sha256": "12908bcb0df88e721d7f4fa84f61aedd7e346dd56e770103e61139248550c849",
+  "onnx_sha256": "34d4d27f970b018ddefa383ffca4c74dcd7aab32d5b1a9925e65439fa88034f7",
+  "opset": 17,
+  "ir_version": 8,
+  "node_count": 257,
+  "onnx_bytes": 12393645,
+  "fixture_count": 72,
+  "fixture_samples_per_split": 72,
+  "max_abs_torch_vs_ort_cpu": 1.3113021850585938e-05,
+  "max_rel_torch_vs_ort_cpu": 6.042042813449661e-06,
+  "environment": {
+    "torch": "2.15.0",
+    "onnx": "1.23.2",
+    "onnxruntime": "1.32.0",
+    "providers": [
+      "CPUExecutionProvider"
+    ]
+  },
+  "mask_cases": [
+    "none",
+    "middle_12",
+    "end_23",
+    "middle_12_end_23"
+  ],
+  "fixture_positions": [
+    "start",
+    "middle",
+    "end"
+  ],
+  "scope": "stage2_numeric_only_no_skinning_or_animgraph"
+}
