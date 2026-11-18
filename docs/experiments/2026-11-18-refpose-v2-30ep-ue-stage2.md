@@ -49,10 +49,10 @@ MW_REFPOSE_UE_REPORT=/home/acear/项目/MotionWeaver/docs/experiments/assets/202
 | 指标或观察 | 对照 | 本次 | 口径与样本 |
 | --- | ---: | ---: | --- |
 | ONNX | PyTorch CPU | opset 17 / IR 8 / 257 节点 / 12,393,645 字节 | 静态 batch=1，四输入一输出 |
-| torch 对 ORT CPU 最大绝对差 | 既有 allclose 与相对门禁 | **1.3113e-05** | 216 个真实窗口；最大相对差 6.0420e-06，门禁通过 |
+| torch 对 ORT CPU 最大绝对差 | 既有 allclose 与相对门禁 | **1.3113e-05** | 72 个真实窗口；最大相对差 6.0420e-06，门禁通过 |
 | UE NNE 对 Python ORT 最大绝对差 | <= 1e-4 | **4.529953e-06** | 72 组真实窗口 × 24 × 702 = **1,213,056** 个输出值 |
-| mask 硬覆盖最大绝对差 | 精确 0 | **0** | ()/(12)/(23)/(12,23) 四档 |
-| UE NNE 单实例延迟 | 只作本机参考 | **p50 0.728 / p95 0.775 ms** | Linux、NullRHI、单角色、72 次，含 RunSync；不是帧预算或多角色结论 |
+| mask 硬覆盖最大绝对差 | 精确 0 | **0**（50,544 个被 mask 选中的值） | ()/(12)/(23)/(12,23) 四档；`mask_values` 为 0 时该断言会失败 |
+| UE NNE 单实例延迟 | 只作本机参考 | **p50 0.73–0.82 / p95 0.78–1.08 ms** | Linux、NullRHI、单角色、72 次，含 RunSync；不是帧预算或多角色结论 |
 | UE 自动化 | 两项均须成功 | **Numeric / RejectsBadInput 均 Success，进程退出 0** | UE 5.8.4、NNERuntimeORTCpu、NullRHI |
 
 - 导出包：本机 `/home/acear/MotionWeaverData/model_weight/refpose_v2_30ep_ue_stage2/`（72 个目录、每目录四输入与 expected.f32）。ONNX sha256 `34d4d27f970b018ddefa383ffca4c74dcd7aab32d5b1a9925e65439fa88034f7`；skeleton sha256 `159050ea134c282c7d60ebc92d3b3a80f839e5ab30693e54f1b98c0b24cd1345`；stats.bin sha256 `a2ce1570117cd857da1b0aeaebef3589a31c461595bd8447337f8abedb10f779`。

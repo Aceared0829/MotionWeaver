@@ -126,7 +126,6 @@ def build_package(checkpoint, release, mmap, output, clips_per_split=2):
                 "expected": manifest["output"]["shape"],
             },
             "fixtures": fixtures,
-            "artifacts_sha256": {},
         }
         (staging / "package.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         shutil.move(str(staging / "onnx" / "model.onnx"), staging / "model.onnx")

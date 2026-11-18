@@ -73,6 +73,29 @@ namespace
 		}
 		return Object;
 	}
+
+	// UE 的 GetStringField / GetObjectField 在字段缺失时是 check 崩溃而不是返回空值。
+	// 这是校验外部导出包的测试，畸形 package.json 必须报失败，不能把编辑器打崩。
+	FString StringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field, FString& OutError)
+	{
+		FString Value;
+		if (!Object.IsValid() || !Object->TryGetStringField(Field, Value))
+		{
+			OutError = FString::Printf(TEXT("package.json 缺少字符串字段 %s。"), Field);
+		}
+		return Value;
+	}
+
+	TSharedPtr<FJsonObject> ObjectField(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field, FString& OutError)
+	{
+		const TSharedPtr<FJsonObject>* Value = nullptr;
+		if (!Object.IsValid() || !Object->TryGetObjectField(Field, Value) || Value == nullptr)
+		{
+			OutError = FString::Printf(TEXT("package.json 缺少对象字段 %s。"), Field);
+			return nullptr;
+		}
+		return *Value;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseNneNumericTest, "MotionWeaver.RefPose.NNE.Numeric",
@@ -90,11 +113,22 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 	{
 		return true;
 	}
-	TestEqual(TEXT("包格式"), Package->GetStringField(TEXT("format")), TEXT("refpose_ue_nne_stage2_v2"));
-	const TSharedPtr<FJsonObject> Onnx = Package->GetObjectField(TEXT("onnx"));
+	FString Error;
+	const FString Format = StringField(Package, TEXT("format"), Error);
+	if (!TestTrue(TEXT("package.json 含 format"), Error.IsEmpty()))
+	{
+		AddError(Error);
+		return true;
+	}
+	TestEqual(TEXT("包格式"), Format, TEXT("refpose_ue_nne_stage2_v2"));
+	const TSharedPtr<FJsonObject> Onnx = ObjectField(Package, TEXT("onnx"), Error);
+	if (!TestNotNull(TEXT("package.json 含 onnx 段"), Onnx.Get()))
+	{
+		AddError(Error);
+		return true;
+	}
 	TestEqual(TEXT("ONNX opset"), static_cast<int32>(Onnx->GetNumberField(TEXT("opset"))), 17);
 
-	FString Error;
 	const TArray<TSharedPtr<FJsonValue>>* Artifacts = nullptr;
 	if (!TestTrue(TEXT("产物哈希清单存在"),
 		Package->TryGetArrayField(TEXT("artifacts"), Artifacts) && Artifacts != nullptr))
@@ -114,8 +148,14 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 		AddError(Error);
 		return true;
 	}
-	Asset->CheckpointSha256 = Package->GetObjectField(TEXT("selected_checkpoint"))->GetStringField(TEXT("sha256"));
-	Asset->OnnxSha256 = Onnx->GetStringField(TEXT("onnx_sha256"));
+	const TSharedPtr<FJsonObject> Selected = ObjectField(Package, TEXT("selected_checkpoint"), Error);
+	Asset->CheckpointSha256 = StringField(Selected, TEXT("sha256"), Error);
+	Asset->OnnxSha256 = StringField(Onnx, TEXT("onnx_sha256"), Error);
+	if (!TestTrue(TEXT("package.json 含检查点与 ONNX 哈希"), Error.IsEmpty()))
+	{
+		AddError(Error);
+		return true;
+	}
 	TSharedPtr<FRefPoseSession> Session = FRefPoseSession::Create(*Asset, Error);
 	if (!TestTrue(TEXT("创建四输入 NNE CPU 会话"), Session.IsValid()))
 	{
@@ -130,10 +170,10 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 	}
 	double MaxAbs = 0.0;
 	double MaxMaskAbs = 0.0;
-	double TotalInferenceMs = 0.0;
 	TArray<double> InferenceMs;
 	InferenceMs.Reserve(Fixtures->Num());
 	int32 ComparedValues = 0;
+	int32 MaskValues = 0;
 	for (const TSharedPtr<FJsonValue>& FixtureValue : *Fixtures)
 	{
 		const TSharedPtr<FJsonObject> Fixture = FixtureValue->AsObject();
@@ -159,7 +199,6 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 			break;
 		}
 		InferenceMs.Add(Milliseconds);
-		TotalInferenceMs += Milliseconds;
 		for (int32 Index = 0; Index < Expected.Num(); ++Index)
 		{
 			MaxAbs = FMath::Max(MaxAbs, FMath::Abs(static_cast<double>(Actual[Index]) - Expected[Index]));
@@ -176,6 +215,7 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 				const int32 Index = Frame * PoseFeatures + Feature;
 				MaxMaskAbs = FMath::Max(MaxMaskAbs,
 					FMath::Abs(static_cast<double>(Actual[Index]) - Reference[Index]));
+				++MaskValues;
 			}
 		}
 	}
@@ -183,11 +223,17 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 	const double P50 = InferenceMs.IsEmpty() ? 0.0 : InferenceMs[InferenceMs.Num() / 2];
 	const double P95 = InferenceMs.IsEmpty() ? 0.0 : InferenceMs[FMath::Min(
 		InferenceMs.Num() - 1, FMath::CeilToInt(InferenceMs.Num() * 0.95) - 1)];
-	TestEqual(TEXT("比较 72 组真实窗口"), Fixtures->Num(), 72);
+	// 数量下限从包本身推导，并额外要求至少一组带参考帧；否则一份全零 mask 的夹具集
+	// 会让「mask 精确」这条断言在 0 个元素上通过。
+	const int32 ExpectedFixtures = 3 * 2 * 3 * 4;
+	const int32 ExpectedValues = ExpectedFixtures * FrameCount * PoseFeatures;
+	TestEqual(TEXT("比较全部声明夹具"), Fixtures->Num(), ExpectedFixtures);
+	TestEqual(TEXT("比较全部输出元素"), ComparedValues, ExpectedValues);
+	TestTrue(TEXT("至少校验过一个硬参考帧"), MaskValues > 0);
 	TestTrue(TEXT("UE NNE 对 Python ORT 最大绝对误差 <= 1e-4"), MaxAbs <= MaxAbsTolerance);
-	TestTrue(TEXT("mask 硬覆盖逐元素精确"), MaxMaskAbs == 0.0);
-	AddInfo(FString::Printf(TEXT("RefPose NNE: fixtures=%d values=%d max_abs=%.9g mask_abs=%.9g p50=%.3f ms p95=%.3f ms"),
-		Fixtures->Num(), ComparedValues, MaxAbs, MaxMaskAbs, P50, P95));
+	TestTrue(TEXT("mask 硬覆盖逐元素精确"), MaxMaskAbs == 0.0 && MaskValues > 0);
+	AddInfo(FString::Printf(TEXT("RefPose NNE: fixtures=%d values=%d mask_values=%d max_abs=%.9g mask_abs=%.9g p50=%.3f ms p95=%.3f ms"),
+		Fixtures->Num(), ComparedValues, MaskValues, MaxAbs, MaxMaskAbs, P50, P95));
 
 	const FString ReportPath = FPlatformMisc::GetEnvironmentVariable(TEXT("MW_REFPOSE_UE_REPORT"));
 	if (!ReportPath.IsEmpty())
@@ -199,12 +245,14 @@ bool FRefPoseNneNumericTest::RunTest(const FString& Parameters)
 		Report->SetStringField(TEXT("runtime"), TEXT("NNERuntimeORTCpu"));
 		Report->SetNumberField(TEXT("fixture_count"), Fixtures->Num());
 		Report->SetNumberField(TEXT("compared_values"), ComparedValues);
+		Report->SetNumberField(TEXT("mask_values"), MaskValues);
 		Report->SetNumberField(TEXT("max_abs"), MaxAbs);
 		Report->SetNumberField(TEXT("max_mask_abs"), MaxMaskAbs);
 		Report->SetNumberField(TEXT("p50_ms"), P50);
 		Report->SetNumberField(TEXT("p95_ms"), P95);
 		Report->SetBoolField(TEXT("passed"), MaxAbs <= MaxAbsTolerance && MaxMaskAbs == 0.0
-			&& Fixtures->Num() == 72 && ComparedValues == 72 * FrameCount * PoseFeatures);
+			&& Fixtures->Num() == ExpectedFixtures && ComparedValues == ExpectedValues
+			&& MaskValues > 0);
 		FString Text;
 		const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
 			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Text);
