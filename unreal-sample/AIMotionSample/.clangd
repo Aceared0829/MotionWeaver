@@ -1,0 +1,17 @@
+# 由 scripts/ue.sh GenerateClangDatabase 生成的 UBT 编译数据库。
+# 路径相对本文件所在目录解析。
+CompileFlags:
+  CompilationDatabase: .vscode
+  # UE_LOG 宏在 clangd 内置 clang 下每个调用点报一次 invalid-token-paste，
+  # 默认 20 条错误上限会被吃满并中断解析，冒出连锁假错误。
+  Add: [-ferror-limit=0]
+  # UBT 给引擎 clang / MSVC 准备的参数，本机 clangd 不认。
+  Remove: [-resource-dir, -Werror, -WX, /WX, -mwaitpkg, -fms-hotpatch]
+Index:
+  Background: Build
+Diagnostics:
+  Suppress:
+    - 'invalid-token-paste'
+  # IncludeCleaner 不理解 UE 的共享 PCH 与传递包含的 *.generated.h，
+  # 会把 CoreMinimal.h 判成未使用并给出破坏编译的修复。
+  UnusedIncludes: None

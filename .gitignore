@@ -161,6 +161,9 @@ cython_debug/
 !.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/experiments.code-snippets
+!.vscode/mcp.json
+# 本机 UE 安装路径，scripts/ue.sh 只从这里读取。
+/.vscode/ue-root
 .codex/
 
 # log
@@ -236,12 +239,12 @@ MotionBricks-launcher.log
 /unreal-sample/**/.vsconfig
 # UBT 生成的 C++ 索引数据（本机路径与绝对路径，不入库）；.clangd 配置本身保留在版本库。
 /unreal-sample/**/compile_commands.json
+# scripts/ue.sh 生成的编译数据库目录（含源码清单快照）。
+/unreal-sample/**/.vscode/
 /unreal-sample/**/.cache/
 /unreal-sample/**/.ignore
 /unreal-script/**/compile_commands.json
 /unreal-script/**/.cache/
-# clangd fallback 用的 UHT 生成头存根，由 unreal-script/gen_compile_commands.py 重新生成。
-/unreal-script/.clangd-stubs/
 .clangd-index/
 # UE writes local preview-lighting profiles into this file; keep functional Config/ defaults.
 /unreal-sample/AIMotionSample/Config/DefaultEditor.ini

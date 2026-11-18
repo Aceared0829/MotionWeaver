@@ -247,6 +247,121 @@
         "panel": "shared",
         "clear": true
       }
+    },
+    {
+      "label": "UE: check environment",
+      "type": "process",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/ue.sh", "Check"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "UE: build editor (Linux Development)",
+      "type": "process",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/ue.sh", "BuildEditor"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "UE: generate clang database",
+      "type": "process",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/ue.sh", "GenerateClangDatabase"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      // 后台监听源码清单（增删/改名/Build.cs 依赖），变化时自动重建 clangd 数据库。
+      // 只在文件清单变化时重建，改内容不触发；单次约 3 秒。
+      "label": "UE: watch clang database",
+      "type": "process",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/ue.sh", "WatchClangDatabase"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "UE: launch editor",
+      "type": "process",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/ue.sh", "LaunchEditor"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "UE: run plugin automation tests",
+      "type": "process",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/ue.sh", "RunTests"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "UE: launch editor under gdbserver",
+      "type": "process",
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/ue.sh", "DebugServer"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
     }
   ]
 }
