@@ -209,6 +209,14 @@ Python 侧（本轮复跑）：`tools/dev.py lint` 通过；`pytest` 为
 `tools/verify_refpose_ue_contract.py` 的三条 clip 四项判据全部为 true；
 判据实现（而不是自证公式）放在 `data/runtime/refpose/__init__.py`。
 
+```bash
+MW_DATA_ROOT=/path/to/MotionWeaverData \
+  .venv/bin/python tools/verify_refpose_ue_contract.py
+```
+
+脚本不写死本机路径；数据根从 `MW_DATA_ROOT` 读，也可以用
+`--release/--source/--mmap` 分别指定。
+
 ## 尚未验证、不能据此宣称
 
 - 完整蒙皮：手指已映射并随模型输出运动；面部 4 骨与 12 根末端骨仍未映射，

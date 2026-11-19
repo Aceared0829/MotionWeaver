@@ -834,7 +834,8 @@ bool FRefPoseRealPoseGroupSoftTrajectoryTest::RunTest(const FString& Parameters)
 				- Result.Frames[FrameIndex - 1][0].GetTranslation()).Size()));
 	}
 	AddInfo(FString::Printf(TEXT("Root 相邻帧最大跳变 = %.2f cm"), MaxRootJumpCm));
-	TestTrue(TEXT("窗口接缝处 Root 不跳变"), MaxRootJumpCm < 100.0);
+	// 实测约 12 cm；如果接缝重复叠加了窗口原点，跳变会接近整段位移（数十厘米）。
+	TestTrue(TEXT("窗口接缝处 Root 不跳变"), MaxRootJumpCm < 50.0);
 	return true;
 }
 
@@ -1297,6 +1298,14 @@ bool FRefPoseSkeletonMapBuildTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("残缺映射仍可建立"), FRefPoseSkeletonMap::Build(
 		ModelNames, SkeletonNames, Broken, BrokenMap, BrokenUnmapped, Error));
 	TestEqual(TEXT("不存在的目标骨被记为未映射"), BrokenUnmapped.Num(), 1);
+
+	// 两根模型骨对到同一根 UE 骨：后写的会覆盖前一根，必须显式拒绝。
+	TMap<FName, FName> Duplicate = Mapping;
+	Duplicate.Add(TEXT("UnmappedBone"), TEXT("spine_01"));
+	FRefPoseSkeletonMap DuplicateMap;
+	TArray<FName> DuplicateUnmapped;
+	TestFalse(TEXT("重复映射目标被拒绝"), FRefPoseSkeletonMap::Build(
+		ModelNames, SkeletonNames, Duplicate, DuplicateMap, DuplicateUnmapped, Error));
 	return true;
 }
 

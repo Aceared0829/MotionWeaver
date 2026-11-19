@@ -153,6 +153,12 @@ void SPoseKeyTimeline::RebuildRows()
 	if (ListView.IsValid())
 	{
 		ListView->RequestListRefresh();
+		// 行对象是新建的，SListView 会丢掉旧的选中指针；按编辑器当前下标重新选中，
+		// 否则点完「生成并播放」后时间轴看起来像什么都没选。
+		if (Editor.IsValid())
+		{
+			SetSelectedIndex(Editor.Pin()->GetSelectedKeyIndex());
+		}
 	}
 }
 
@@ -348,6 +354,12 @@ void SPoseKeyTimeline::OnSecondsCommitted(
 	if (const TSharedPtr<FPoseGroupProxyAssetEditor> Editor = EditorPtr.Pin())
 	{
 		Editor->SetKeyTimeSeconds(Row->Index, NewSeconds);
+		// 被拒绝时资产里的帧号没有变，输入框却还显示刚敲的值。
+		// 重新生成行，让界面回到资产真值（接受时 RefreshFromAsset 也会做一次）。
+		if (ListView.IsValid())
+		{
+			ListView->RequestListRefresh();
+		}
 	}
 }
 

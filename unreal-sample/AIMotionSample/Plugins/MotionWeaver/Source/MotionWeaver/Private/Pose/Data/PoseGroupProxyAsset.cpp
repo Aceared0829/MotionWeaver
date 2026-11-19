@@ -2,6 +2,7 @@
 
 #include "Pose/Data/PoseGroupProxyAsset.h"
 
+#include "Core/MotionWeaverLog.h"
 #include "Pose/Solve/PoseChain.h"
 
 #include "Misc/DataValidation.h"
@@ -92,8 +93,36 @@ void UPoseGroupProxyAsset::PostEditChangeProperty(FPropertyChangedEvent& Propert
 		const int32 KeyIndex = PropertyChangedEvent.GetArrayIndex(TEXT("Keys"));
 		if (Keys.IsValidIndex(KeyIndex) && Settings.FrameRate > 0.0)
 		{
-			Keys[KeyIndex].Frame = FMath::Max(
-				0, FMath::RoundToInt(Keys[KeyIndex].Seconds * Settings.FrameRate));
+			const int32 OldFrame = Keys[KeyIndex].Frame;
+			const double FrameValue = Keys[KeyIndex].Seconds * Settings.FrameRate;
+
+			// 细节面板这条路径没有时间轴那样的错误提示，但也不能把资产改坏：
+			// 非法帧号直接拒绝（恢复成旧秒数），并写日志说明原因。
+			const bool bValidRange =
+				FMath::IsFinite(FrameValue)
+				&& FrameValue >= 0.0
+				&& FrameValue <= static_cast<double>(TNumericLimits<int32>::Max());
+			const int32 NewFrame = bValidRange
+				? FMath::Max(0, FMath::RoundToInt(FrameValue))
+				: OldFrame;
+			const bool bHasPrev = KeyIndex > 0;
+			const bool bHasNext = Keys.IsValidIndex(KeyIndex + 1);
+			const bool bValidOrder =
+				(!bHasPrev || NewFrame > Keys[KeyIndex - 1].Frame)
+				&& (!bHasNext || NewFrame < Keys[KeyIndex + 1].Frame);
+			if (!bValidRange || !bValidOrder)
+			{
+				Keys[KeyIndex].Seconds =
+					static_cast<double>(OldFrame) / Settings.FrameRate;
+				UE_LOG(LogMotionWeaver, Warning,
+					TEXT("拒绝关键帧 %d 的秒数修改：%s。"),
+					KeyIndex,
+					!bValidRange ? TEXT("换算后的帧号超出范围") : TEXT("帧号不满足严格递增"));
+			}
+			else
+			{
+				Keys[KeyIndex].Frame = NewFrame;
+			}
 		}
 	}
 	Solve();

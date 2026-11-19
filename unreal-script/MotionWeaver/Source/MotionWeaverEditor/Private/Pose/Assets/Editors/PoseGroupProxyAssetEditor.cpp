@@ -325,9 +325,18 @@ void FPoseGroupProxyAssetEditor::SetKeyTimeSeconds(int32 KeyIndex, double Second
 		GenerationStatus = TEXT("帧率必须大于 0，无法按秒换算帧号。");
 		return;
 	}
+	const double FrameValue = Seconds * GroupAsset->Settings.FrameRate;
+	if (!FMath::IsFinite(FrameValue)
+		|| FrameValue < 0.0
+		|| FrameValue > static_cast<double>(TNumericLimits<int32>::Max()))
+	{
+		bLastGenerationFailed = true;
+		GenerationStatus = TEXT("秒数换算后的帧号超出范围，已保持原值。");
+		return;
+	}
 	SetKeyFrame(
 		KeyIndex,
-		FMath::RoundToInt(Seconds * GroupAsset->Settings.FrameRate));
+		FMath::RoundToInt(FrameValue));
 }
 
 void FPoseGroupProxyAssetEditor::SetKeyFrame(int32 KeyIndex, int32 NewFrame)
@@ -385,6 +394,12 @@ void FPoseGroupProxyAssetEditor::SetKeyFrame(int32 KeyIndex, int32 NewFrame)
 			? static_cast<double>(NewFrame) / GroupAsset->Settings.FrameRate
 			: 0.0,
 		NewFrame);
+	if (bGenerationStale)
+	{
+		// MarkGenerationStale 的通用文案会被上面的具体改动覆盖；
+		// 这里显式补回「已过期」，否则状态条只剩「改成功了」。
+		GenerationStatus += TEXT("｜结果已过期，请重新生成。");
+	}
 
 	RefreshFromAsset();
 }

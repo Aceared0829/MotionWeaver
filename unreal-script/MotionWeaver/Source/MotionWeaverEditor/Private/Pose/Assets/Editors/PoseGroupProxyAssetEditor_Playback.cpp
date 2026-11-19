@@ -372,8 +372,14 @@ FString FPoseGroupProxyAssetEditor::GetPlaybackStatusText() const
 			GeneratedFrames.Num(),
 			GeneratedFrames.Num() / FramesPerSecond);
 
+	// 「停止」会退出播放预览，此时不能说成「已暂停」——画面已经回到关键帧视图。
+	const bool bPreviewVisible = ViewportWidget.IsValid()
+		&& ViewportWidget->IsPlaybackVisible();
+	const TCHAR* PlaybackState = !bPreviewVisible
+		? TEXT("已停止（关键帧视图）")
+		: (bIsPlaying ? TEXT("播放中") : TEXT("已暂停"));
 	return FString::Printf(TEXT("%s｜%s｜%s"),
-		bIsPlaying ? TEXT("播放中") : TEXT("已暂停"),
+		PlaybackState,
 		*FrameText,
 		*GenerationStatus);
 }

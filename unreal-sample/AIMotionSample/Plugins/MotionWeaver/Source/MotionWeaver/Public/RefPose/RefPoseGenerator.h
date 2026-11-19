@@ -32,8 +32,9 @@ struct MOTIONWEAVER_API FRefPoseGenerationMetrics
 /**
  * 单窗口生成：装配 → 推理 → 解码 → 解算局部变换。
  *
- * 为什么先只做单窗口：多窗口的接缝与漂移是另一类问题。把单窗口做成
- * 可复算的一步，能先排除坐标与骨长错误，再接窗口调度。
+ * 单窗口是整条链里可独立复算的一步：坐标与骨长错误会在这里暴露。
+ * 整段动作的多窗口调度由 `FRefPoseGroupGenerator` 负责；它复用同一个
+ * `FRefPoseSession`，逐窗口调用这里的 GenerateWindow。
  */
 struct MOTIONWEAVER_API FRefPoseGenerator
 {

@@ -148,7 +148,8 @@ private:
 	/** 播放时钟。 */
 	double PlaybackTimeSeconds = 0.0;
 	bool bIsPlaying = false;
-	bool bGenerationStale = true;
+	/** 没有生成结果时谈「过期」没有意义；只有已有结果被资产改动后才置 true。 */
+	bool bGenerationStale = false;
 
 	/** 生成诊断，显示在编辑器状态里。 */
 	FString GenerationStatus;
@@ -201,8 +202,8 @@ private:
 	 *
 	 * 编辑器不负责导入模型：它只消费已经在资产里配好的 RefPose 模型。
 	 * 没配模型时「生成并播放」应当明确报错，而不是静默生成静态姿态。
+	 * 用 TStrongObjectPtr 持有：编辑器不是 UObject，普通成员指针不会被 GC 扫描。
 	 */
-	/** 强引用：编辑器不是 UObject，普通 UPROPERTY 不会被 GC 扫描。 */
 	TStrongObjectPtr<URefPoseModelAsset> ModelAsset;
 
 	/** 生成结果（每帧每骨 UE 局部变换）。 */
