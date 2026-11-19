@@ -450,12 +450,13 @@ FText FPoseGroupProxyAssetEditor::GetBaseToolkitName() const
 
 FText FPoseGroupProxyAssetEditor::GetToolkitName() const
 {
-	return FText::FromString(GroupAsset != nullptr ? GroupAsset->GetName() : TEXT("Pose Group"));
+	return FText::FromString(
+		GroupAsset != nullptr ? GroupAsset->GetName() : TEXT("姿态代理组"));
 }
 
 FString FPoseGroupProxyAssetEditor::GetWorldCentricTabPrefix() const
 {
-	return LOCTEXT("WorldCentricTabPrefix", "Pose Group ").ToString();
+	return LOCTEXT("WorldCentricTabPrefix", "姿态代理组 ").ToString();
 }
 
 FLinearColor FPoseGroupProxyAssetEditor::GetWorldCentricTabColorScale() const

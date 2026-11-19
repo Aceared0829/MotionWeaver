@@ -85,6 +85,57 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "RefPose|Contract")
 	TArray<float> PoseStd;
 
+	/**
+	 * 模型旋转通道的稳定先验，长度 = BoneCount * 6（逐骨 6D）。
+	 *
+	 * 为什么需要它：`r.npy` 是 SOMA 骨架自己的局部旋转（骨轴沿该骨局部 +X），
+	 * 与 UE 骨骼的局部旋转**不同源**（U1 未闭合）。把 UE 旋转直接写进这个
+	 * 通道，会让模型看到位置与旋转互相矛盾的姿态：实测同一窗口位姿误差
+	 * 0.95 m、重建骨长最大偏差 0.51 m（模型输出直接塌成一团）。
+	 *
+	 * 这里取模型包 fixtures 里真实训练样本的平均旋转作为先验：它保证旋转
+	 * 通道始终落在训练分布内，身体姿态由位置通道表达。同一窗口实测位姿误差
+	 * 降到 0.09 m、骨长最大偏差 0.12 m。
+	 *
+	 * 先验只用于**历史帧**。参考帧（mask 命中、会被硬覆盖进输出）仍用
+	 * `EncodeRotationsFromPositions` 的方向编码，否则参考帧只剩位置、没有朝向。
+	 * 等 U1 闭合、拿到逐骨旋转基变换后，两者都应改为真正的 UE→模型转换。
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "RefPose|Contract")
+	TArray<float> RotationPrior6D;
+
+	/**
+	 * 每根骨的「方向编码骨轴」：主子骨方向在该骨旋转坐标系里的平均表达。
+	 *
+	 * 由 fixtures 逐帧统计 `R^T · normalize(child - bone)` 的均值得到。
+	 * 注意它**不是**「真实骨轴」：同一根骨在不同片段之间可以差 90–180°，
+	 * 同一片段内也会随局部旋转变化（实测最大偏差 119°）。用它只能把
+	 * 「骨朝哪个方向」单调地编码进 6D，不能还原训练标签本身的旋转。
+	 *
+	 * 因此它只用于**参考帧**的方向编码：`R = Swing(Axis, currentDirection)`。
+	 * 历史帧改用 `RotationPrior6D`，不要在历史里用它——会把分布外数值
+	 * 喂回模型，实测整段姿态塌陷。
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "RefPose|Contract")
+	TArray<FVector3d> RotationAxis;
+
+	/** RotationAxis 对应的子骨槽位；叶子骨为 INDEX_NONE。 */
+	UPROPERTY(VisibleAnywhere, Category = "RefPose|Contract")
+	TArray<int32> RotationChild;
+
+	/** 旋转通道标定是否可用（三个数组长度一致）。 */
+	bool HasRotationCalibration() const;
+
+	/**
+	 * 由逐骨位置编码旋转通道。
+	 *
+	 * 只接受与契约同骨的米制 Y-up 位置；叶子骨沿用父骨的旋转。
+	 * 标定缺失时返回 false，调用方必须显式选择回退路径，不能静默写零。
+	 */
+	bool EncodeRotationsFromPositions(
+		TConstArrayView<FVector3d> PositionsMeters,
+		TArray<float>& OutRotations6D) const;
+
 	/** 从磁盘创建未 Cook 的模型；只装 ONNX 与哈希。 */
 	static URefPoseModelAsset* CreateFromOnnxFile(const FString& OnnxPath, FString& OutError);
 

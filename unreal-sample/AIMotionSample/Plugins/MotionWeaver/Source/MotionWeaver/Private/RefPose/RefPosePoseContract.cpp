@@ -25,10 +25,83 @@ namespace
 
 	FQuat4d ChangeRotationBasis(const FQuat4d& Rotation, const FMatrix44d& Basis)
 	{
-		// 旋转的基变换：R' = Bᵀ · R · B。B 正交，逆等于转置。
+		// 旋转的基变换：R' = B · R · B⁻¹ = B · R · Bᵀ。B 正交，逆等于转置。
+		//
+		// 这里曾经写成 Bᵀ·R·B，方向正好反了：往返仍然自洽（B·(BᵀRB)·Bᵀ = R），
+		// 所以往返测试发现不了；但把「绕 UE +Z 的偏航」变成「绕模型 +X 的翻滚」，
+		// 姿态组的 Heading 会把整个角色侧翻。判断依据不是公式自证，而是
+		// 偏航在模型侧的轴向：motion ±Y 才是「上」。
 		const FMatrix44d Matrix = Rotation.ToMatrix();
-		return (Basis.GetTransposed() * Matrix * Basis).ToQuat();
+		return (Basis * Matrix * Basis.GetTransposed()).ToQuat();
 	}
+
+	/** 模型空间（米制 Y-up）的位移 → UE 组件空间（厘米）的轴向。 */
+	FVector3d ModelDeltaToUe(const FVector3d& Delta)
+	{
+		return FVector3d(Delta.Z, -Delta.X, Delta.Y);
+	}
+
+	/**
+	 * 把一个「骨轴 + 第二轴」的骨帧搬运到新的骨轴，得到唯一的全局旋转。
+	 *
+	 * 只用最短弧 `SwingBetween` 时，骨轴一旦接近静止轴的反方向，
+	 * 最短弧的旋转轴就不唯一：相邻两帧可能一根选 +Y、一根选 -Y，
+	 * 于是骨头的扭转每帧翻 180°（实测脚趾/小腿在硬参考帧处 179.9°）。
+	 *
+	 * 这里先用最短弧把骨轴对齐，再绕新骨轴补一个扭转角，把第二轴转回
+	 * 「父级静止骨帧搬运过来」的投影方向。第二步只依赖当前骨轴与第二轴，
+	 * 所以最短弧选了哪条轴都不影响最终结果，翻转消失。
+	 */
+	FQuat4d TransportFrame(
+		const FVector3d& FromAxis,
+		const FVector3d& FromSecond,
+		const FVector3d& ToAxis,
+		const FVector3d& ToSecond)
+	{
+		const FVector3d From = FromAxis.GetSafeNormal();
+		const FVector3d To = ToAxis.GetSafeNormal();
+		const FVector3d Second = FromSecond.GetSafeNormal();
+		const FVector3d TargetSecond =
+			(ToSecond - To * (ToSecond | To)).GetSafeNormal();
+		FQuat4d Swing = FRefPosePoseContract::SwingBetween(From, To);
+		if (Second.IsNearlyZero() || TargetSecond.IsNearlyZero())
+		{
+			return Swing;
+		}
+		// 搬运后的第二轴与新骨轴仍然正交（刚体旋转保角），只需补扭转。
+		const FVector3d RotatedSecond = Swing.RotateVector(Second);
+		const double Dot = FMath::Clamp(RotatedSecond | TargetSecond, -1.0, 1.0);
+		const double Sin =
+			FVector3d::CrossProduct(RotatedSecond, TargetSecond) | To;
+		return FQuat4d(To, FMath::Atan2(Sin, Dot)) * Swing;
+	}
+
+}
+
+FQuat4d FRefPosePoseContract::SwingBetween(const FVector3d& From, const FVector3d& To)
+{
+	const FVector3d A = From.GetSafeNormal();
+	const FVector3d B = To.GetSafeNormal();
+	if (A.IsNearlyZero() || B.IsNearlyZero())
+	{
+		return FQuat4d::Identity;
+	}
+	const double Dot = FMath::Clamp(A | B, -1.0, 1.0);
+	if (Dot >= 1.0 - 1e-12)
+	{
+		return FQuat4d::Identity;
+	}
+	if (Dot <= -1.0 + 1e-9)
+	{
+		FVector3d Axis = FVector3d::CrossProduct(A, FVector3d(0.0, 0.0, 1.0));
+		if (Axis.IsNearlyZero())
+		{
+			Axis = FVector3d::CrossProduct(A, FVector3d(1.0, 0.0, 0.0));
+		}
+		return FQuat4d(Axis.GetSafeNormal(), UE_PI);
+	}
+	return FQuat4d(
+		FVector3d::CrossProduct(A, B).GetSafeNormal(), FMath::Acos(Dot));
 }
 
 FQuat4d FRefPosePoseContract::Decode6D(TConstArrayView<float> Values)
@@ -200,7 +273,8 @@ bool FRefPoseSkeletonSolver::Solve(
 	TConstArrayView<FRefPosePoseContract::FDecodedFrame> Decoded,
 	TArray<TArray<FTransform>>& OutLocal,
 	FMetrics& OutMetrics,
-	FString& OutError)
+	FString& OutError,
+	TConstArrayView<bool> ChildUsable)
 {
 	const int32 BoneCount = Parents.Num();
 	if (BoneCount <= 0)
@@ -231,8 +305,9 @@ bool FRefPoseSkeletonSolver::Solve(
 	OutLocal.Reset(Decoded.Num());
 	OutMetrics = FMetrics();
 
-	// 每根骨取一个「主子骨」作为 +X 朝向的锚点。分支骨（骨盆、胸、手）
-	// 有多个孩子，选与参考 +X 最接近的那个，避免无谓扭转。
+	// 每根骨取一个「主子骨」作为朝向锚点。分支骨（骨盆、胸、手）有多个孩子，
+	// 选与参考骨轴 +X 最接近的那个：这样静止时主子骨就是 UE 骨骼本身指向
+	// 的那条链，不会在骨盆上错误地跟着大腿走。
 	TArray<TArray<int32>> Children;
 	Children.SetNum(BoneCount);
 	for (int32 Bone = 0; Bone < BoneCount; ++Bone)
@@ -244,16 +319,102 @@ bool FRefPoseSkeletonSolver::Solve(
 		}
 	}
 
-	// 参考骨长只算一次；它是 UE 骨架的唯一真值来源。
+	// 参考骨架的全局位置与全局旋转。
+	//
+	// RefLocal 的**旋转**是 UE 参考旋转，**平移长度**是模型契约骨长（见
+	// BuildSolverReference）。骨架形状必须由 UE 旋转说了算：UE 约定每根骨
+	// 的局部 +X 就是骨轴，因此参考位置只能按「父级全局旋转 × +X × 骨长」
+	// 累加。
+	//
+	// 不能直接把 RefLocal 的平移当向量累加：那是模型空间（Y-up、每骨 +X）
+	// 的父级相对偏移，与 UE 旋转的骨轴不是同一套方向。用错基准会让
+	// `RestDirectionLocal` 变成随机方向，最短弧遇到接近反平行就翻 180°。
+	TArray<FVector3d> RestPositions;
+	TArray<FQuat4d> RestGlobalRotations;
+	TArray<FVector3d> RestDirectionLocal;
+	TArray<FVector3d> RestSecondLocal;
+	TArray<int32> PrimaryChild;
 	TArray<double> ReferenceLengths;
+	RestPositions.SetNumUninitialized(BoneCount);
+	RestGlobalRotations.SetNumUninitialized(BoneCount);
+	RestDirectionLocal.SetNumUninitialized(BoneCount);
+	RestSecondLocal.SetNumUninitialized(BoneCount);
+	RestDirectionLocal.Init(FVector3d::ZeroVector, BoneCount);
+	RestSecondLocal.Init(FVector3d::ZeroVector, BoneCount);
 	ReferenceLengths.SetNumUninitialized(BoneCount);
+	PrimaryChild.Init(INDEX_NONE, BoneCount);
 	for (int32 Bone = 0; Bone < BoneCount; ++Bone)
 	{
-		ReferenceLengths[Bone] = RefLocal[Bone].GetTranslation().Size();
+		const int32 Parent = Parents[Bone];
+		const FVector3d LocalTranslation(RefLocal[Bone].GetTranslation());
+		const FQuat4d LocalRotation =
+			FQuat4d(RefLocal[Bone].GetRotation()).GetNormalized();
+		ReferenceLengths[Bone] = LocalTranslation.Size();
+		RestPositions[Bone] = Parent >= 0
+			? RestPositions[Parent]
+				+ RestGlobalRotations[Parent].RotateVector(
+					FVector3d::ForwardVector * ReferenceLengths[Bone])
+			: LocalTranslation;
+		RestGlobalRotations[Bone] = Parent >= 0
+			? (RestGlobalRotations[Parent] * LocalRotation).GetNormalized()
+			: LocalRotation;
 	}
 
-	for (const FRefPosePoseContract::FDecodedFrame& Frame : Decoded)
+	for (int32 Bone = 0; Bone < BoneCount; ++Bone)
 	{
+		if (Children[Bone].Num() == 0)
+		{
+			continue;
+		}
+		const FVector3d RestAxis =
+			RestGlobalRotations[Bone].RotateVector(FVector3d::ForwardVector);
+		double BestDot = -2.0;
+		for (const int32 Child : Children[Bone])
+		{
+			// 目标骨架里没有的骨（模型 `*End`、面部）不能当朝向锚点：
+			// 它们的位置不受任何绑定约束，模型预测一旦偏到另一侧，
+			// 父骨就会整根翻 180°（实测 Head/Pinky4/ToeBase 都在硬参考
+			// 帧前后翻过一次）。宁可让父骨保持静止朝向。
+			if (ChildUsable.IsValidIndex(Child) && !ChildUsable[Child])
+			{
+				continue;
+			}
+			const FVector3d Direction =
+				(RestPositions[Child] - RestPositions[Bone]).GetSafeNormal();
+			const double Dot = Direction.IsNearlyZero() ? -2.0 : RestAxis | Direction;
+			if (Dot > BestDot)
+			{
+				BestDot = Dot;
+				PrimaryChild[Bone] = Child;
+			}
+		}
+		if (PrimaryChild[Bone] != INDEX_NONE)
+		{
+			const FVector3d Direction =
+				(RestPositions[PrimaryChild[Bone]] - RestPositions[Bone]).GetSafeNormal();
+			// 把静止方向存进骨骼自身的静止坐标系：之后父级怎么转，都能用
+			// BaseGlobal * RestDirectionLocal 还原「这根骨现在应该指向哪」。
+			RestDirectionLocal[Bone] =
+				RestGlobalRotations[Bone].Inverse().RotateVector(Direction);
+
+			// 第二轴只用来约束扭转。取世界「上」在骨轴垂直平面上的投影；
+			// 骨轴本身朝上时退化，再退到世界「右」。
+			FVector3d Second =
+				FVector3d::UpVector
+				- RestDirectionLocal[Bone] * (FVector3d::UpVector | RestDirectionLocal[Bone]);
+			if (Second.IsNearlyZero())
+			{
+				Second = FVector3d::RightVector
+					- RestDirectionLocal[Bone]
+						* (FVector3d::RightVector | RestDirectionLocal[Bone]);
+			}
+			RestSecondLocal[Bone] = Second.GetSafeNormal();
+		}
+	}
+
+	for (int32 FrameIndex = 0; FrameIndex < Decoded.Num(); ++FrameIndex)
+	{
+		const FRefPosePoseContract::FDecodedFrame& Frame = Decoded[FrameIndex];
 		if (Frame.PositionsMeters.Num() != BoneCount)
 		{
 			OutError = FString::Printf(
@@ -311,48 +472,49 @@ bool FRefPoseSkeletonSolver::Solve(
 			{
 				const FVector3d UnitDirection = DirectionUe.GetSafeNormal();
 
-				// 平移：把世界方向转回父级局部空间，再乘参考骨长。
+				// Root → 骨盆不是刚性骨链：模型里 Root 被钉在世界原点，
+				// Hips 才在角色脚下；两者距离（实测 2.2–2.9 m）随片段变化，
+				// 不能乘 UE 参考骨长，否则整个人会被拉到根骨附近。
+				// 模型帧的原点就是骨盆在地面的水平投影，因此这里直接用
+				// Hips 自身的模型位置（= 角色根到骨盆的偏移）。
+				const bool bRootTrackLink = Parent == 0;
+				const FVector3d LocalVector = bRootTrackLink
+					? FVector3d(FRefPosePoseContract::ToUePosition(Frame.PositionsMeters[Bone]))
+					: UnitDirection * ReferenceLengthCm;
+
+				// 平移：把世界方向转回父级局部空间；刚性骨再乘参考骨长。
 				const FVector3d Translation =
-					ParentGlobal.Inverse().RotateVector(UnitDirection * ReferenceLengthCm);
+					ParentGlobal.Inverse().RotateVector(LocalVector);
 
-				// 朝向：UE 约定骨轴 +X 指向子骨。参考姿态给出扭转，位置给出方向。
-				const FQuat4d BaseGlobal =
-					ParentGlobal * FQuat4d(Reference.GetRotation());
-				const FVector3d BaseAxis = BaseGlobal.RotateVector(FVector3d::ForwardVector);
+				// 朝向：先取「父级当前朝向携带过来的静止骨帧」作为基准，再用
+				// 最短弧把骨轴修正到当前主子骨方向。
+				//
+				// 基准只依赖当前父级与固定参考，不依赖上一帧、也不依赖窗口起点。
+				// 之前用「上一帧解」播种，窗口首帧与硬参考帧会退回参考旋转：
+				// 只要参考轴与当前方向接近反平行，最短弧就会翻 180°，
+				// 于是每 24 帧、每个参考帧都抽一下（实测 179.6°/帧）。
+				const FQuat4d RestLocal = (RestGlobalRotations[Parent].Inverse()
+					* RestGlobalRotations[Bone]).GetNormalized();
+				const FQuat4d BaseGlobal = (ParentGlobal * RestLocal).GetNormalized();
 				FQuat4d DesiredGlobal = BaseGlobal;
-
-				int32 BestChild = INDEX_NONE;
-				double BestDot = -2.0;
-				for (const int32 Child : Children[Bone])
+				if (PrimaryChild[Bone] != INDEX_NONE)
 				{
 					const FVector3d ChildDelta =
-						Frame.PositionsMeters[Child] - Frame.PositionsMeters[Bone];
-					const FVector3d ChildDirectionUe(
-						ChildDelta.Z, -ChildDelta.X, ChildDelta.Y);
-					if (ChildDirectionUe.IsNearlyZero(1e-9))
+						Frame.PositionsMeters[PrimaryChild[Bone]] - Frame.PositionsMeters[Bone];
+					const FVector3d ChildDirectionUe =
+						ModelDeltaToUe(ChildDelta);
+					if (!ChildDirectionUe.IsNearlyZero(1e-9)
+						&& !RestDirectionLocal[Bone].IsNearlyZero(1e-9))
 					{
-						continue;
-					}
-					const double Dot = BaseAxis.GetSafeNormal().Dot(
-						ChildDirectionUe.GetSafeNormal());
-					if (Dot > BestDot)
-					{
-						BestDot = Dot;
-						BestChild = Child;
+						const FVector3d BaseAxis =
+							BaseGlobal.RotateVector(RestDirectionLocal[Bone]);
+						const FVector3d BaseSecond =
+							BaseGlobal.RotateVector(RestSecondLocal[Bone]);
+						DesiredGlobal = TransportFrame(
+							BaseAxis, BaseSecond, ChildDirectionUe, BaseSecond)
+							* BaseGlobal;
 					}
 				}
-
-				if (BestChild != INDEX_NONE && !BaseAxis.IsNearlyZero(1e-9))
-				{
-					const FVector3d ChildDelta =
-						Frame.PositionsMeters[BestChild] - Frame.PositionsMeters[Bone];
-					const FVector3d ChildDirectionUe(
-						ChildDelta.Z, -ChildDelta.X, ChildDelta.Y);
-					DesiredGlobal = FQuat4d::FindBetweenNormals(
-						BaseAxis.GetSafeNormal(),
-						ChildDirectionUe.GetSafeNormal()) * BaseGlobal;
-				}
-
 				Local[Bone] = FTransform(
 					ParentGlobal.Inverse() * DesiredGlobal,
 					FVector(Translation));
@@ -364,13 +526,15 @@ bool FRefPoseSkeletonSolver::Solve(
 			const double LengthCm = Translation.Size();
 			OutMetrics.MinBoneLengthCm = FMath::Min(OutMetrics.MinBoneLengthCm, LengthCm);
 			OutMetrics.MaxBoneLengthCm = FMath::Max(OutMetrics.MaxBoneLengthCm, LengthCm);
-			if (!bZeroDirection && !bZeroLength)
+			// Root → 骨盆是辅助链，长度本来就随片段变化，不参与骨长偏差统计。
+			if (!bZeroDirection && !bZeroLength && Parent != 0)
 			{
 				OutMetrics.MaxBoneLengthDeviationCm = FMath::Max(
 					OutMetrics.MaxBoneLengthDeviationCm,
 					FMath::Abs(LengthCm - ReferenceLengthCm));
 			}
 		}
+
 	}
 
 	if (OutMetrics.MinBoneLengthCm == TNumericLimits<double>::Max())

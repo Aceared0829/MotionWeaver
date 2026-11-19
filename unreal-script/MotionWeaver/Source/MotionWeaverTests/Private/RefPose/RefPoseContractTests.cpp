@@ -362,6 +362,56 @@ namespace
 		Test.TestTrue(What, bEqual);
 		return bEqual;
 	}
+
+	/**
+	 * 三个关键帧的软轨迹姿态组：0 / 12 / 36 帧、120 fps。
+	 *
+	 * 12→36 段超速，求解器会做时长膨胀，正好覆盖「原始跨度短于窗口、
+	 * 求解后样本足够」的场景，也保证起点后移时仍有足够 history。
+	 */
+	TStrongObjectPtr<UPoseGroupProxyAsset> MakeSoftTrajectoryGroup(
+		UPoseProxyAsset* PoseA, UPoseProxyAsset* PoseB)
+	{
+		TStrongObjectPtr<UPoseGroupProxyAsset> Group(
+			NewObject<UPoseGroupProxyAsset>());
+
+		FPoseKey KeyA;
+		KeyA.PoseAsset = PoseA;
+		KeyA.Frame = 0;
+		KeyA.LocalLocation = FVector(0.0, 0.0, 0.0);
+		KeyA.SetHeadingDegrees(0.0);
+
+		FPoseKey KeyB;
+		KeyB.PoseAsset = PoseB;
+		KeyB.Frame = 12;
+		KeyB.LocalLocation = FVector(400.0, 0.0, 0.0);
+		KeyB.SetHeadingDegrees(0.0);
+
+		FPoseKey KeyC;
+		KeyC.PoseAsset = PoseA;
+		KeyC.Frame = 36;
+		KeyC.LocalLocation = FVector(800.0, 0.0, 0.0);
+		KeyC.SetHeadingDegrees(0.0);
+
+		Group->Keys.Add(KeyA);
+		Group->Keys.Add(KeyB);
+		Group->Keys.Add(KeyC);
+		Group->Settings.FrameRate = 120.0;
+		Group->Solve();
+		return Group;
+	}
+
+	FRefPoseWindowBuilder::FRootSample MakeSampleRoot(
+		const FChainTrajectorySample& Sample)
+	{
+		FRefPoseWindowBuilder::FRootSample Root;
+		Root.PositionMeters =
+			FRefPosePoseContract::ToMotionPosition(Sample.LocalLocation);
+		Root.Rotation = FRefPosePoseContract::ToMotionRotation(FQuat4d(
+			FVector3d(0.0, 0.0, 1.0),
+			FMath::DegreesToRadians(Sample.HeadingDegrees)));
+		return Root;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseKeyframePoseInputTest,
@@ -415,13 +465,15 @@ bool FRefPoseKeyframePoseInputTest::RunTest(const FString& Parameters)
 	FRefPoseGenerator::FPoseInput Pose;
 	if (!TestTrue(TEXT("关键帧姿态转换成功"),
 		FRefPoseGenerator::SkeletonPoseToPoseInput(
-			*Model, Map, SkeletonLocal, SkeletonParents, Track, Pose, Error)))
+			*Model, Map, SkeletonLocal, SkeletonParents, Track,
+			/*bEncodeReferenceRotations=*/true, Pose, Error)))
 	{
 		AddError(Error);
 		return true;
 	}
 
 	// 由 UE 局部变换独立重建组件空间；这里不复用被测函数。
+	// FTransform 的 `A * B` 是「先 A 后 B」，所以父子链必须写成 Local * Parent。
 	TArray<FTransform> Global;
 	Global.SetNum(SkeletonLocal.Num());
 	for (int32 Index = 0; Index < SkeletonLocal.Num(); ++Index)
@@ -429,7 +481,7 @@ bool FRefPoseKeyframePoseInputTest::RunTest(const FString& Parameters)
 		const int32 Parent = SkeletonParents[Index];
 		Global[Index] = Parent < 0
 			? SkeletonLocal[Index]
-			: Global[Parent] * SkeletonLocal[Index];
+			: SkeletonLocal[Index] * Global[Parent];
 	}
 	const FQuat4d RootRotationInv =
 		FQuat4d(Global[0].GetRotation()).GetNormalized().Inverse();
@@ -441,19 +493,52 @@ bool FRefPoseKeyframePoseInputTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Root 局部位置满足 world=0"),
 		RootWorld.Equals(FVector3d::ZeroVector, 1e-9));
 
+	// 模型输入的位置口径（与训练数据一致，实测训练集 Hips 的 X/Z 恒为 0）：
+	//   1) 去掉 UE 根骨旋转，转成米制 Y-up；
+	//   2) 减去骨盆的水平分量，让骨盆落在 Root 局部空间的原点正上方；
+	//   3) 已映射骨的方向沿用 UE 骨架，骨长换成模型契约值。
+	auto ConvertedPosition = [&](int32 ModelIndex) -> FVector3d
+	{
+		const int32 SkeletonIndex = Map.ModelToSkeleton[ModelIndex];
+		return FRefPosePoseContract::ToMotionPosition(
+			RootRotationInv.RotateVector(
+				Global[SkeletonIndex].GetTranslation() - Global[0].GetTranslation()));
+	};
+	TArray<FVector3d> BeforeRigid;
+	BeforeRigid.SetNum(5);
+	for (int32 ModelIndex = 1; ModelIndex <= 3; ++ModelIndex)
+	{
+		BeforeRigid[ModelIndex] = ConvertedPosition(ModelIndex);
+	}
+	const FVector3d PelvisHorizontal(
+		BeforeRigid[1].X, 0.0, BeforeRigid[1].Z);
+	for (int32 ModelIndex = 1; ModelIndex <= 3; ++ModelIndex)
+	{
+		BeforeRigid[ModelIndex] -= PelvisHorizontal;
+	}
+
+	TestTrue(TEXT("骨盆水平位置归零"),
+		Pose.PositionsMeters[1].Equals(BeforeRigid[1], 1e-9));
+	TestTrue(TEXT("骨盆 X 为零"), FMath::IsNearlyZero(Pose.PositionsMeters[1].X, 1e-9));
+	TestTrue(TEXT("骨盆 Z 为零"), FMath::IsNearlyZero(Pose.PositionsMeters[1].Z, 1e-9));
+
+	for (int32 ModelIndex = 2; ModelIndex <= 3; ++ModelIndex)
+	{
+		const int32 Parent = Model->Bones[ModelIndex].Parent;
+		const FVector3d Direction =
+			(BeforeRigid[ModelIndex] - BeforeRigid[Parent]).GetSafeNormal();
+		const double ModelLength =
+			Model->Bones[ModelIndex].LocalPositionMeters.Size();
+		const FVector3d Expected =
+			FVector3d(Pose.PositionsMeters[Parent]) + Direction * ModelLength;
+		TestTrue(
+			FString::Printf(TEXT("骨 %d 的方向来自 UE、骨长来自模型"), ModelIndex),
+			Pose.PositionsMeters[ModelIndex].Equals(Expected, 1e-9));
+	}
+
 	for (int32 ModelIndex = 1; ModelIndex <= 3; ++ModelIndex)
 	{
 		const int32 SkeletonIndex = Map.ModelToSkeleton[ModelIndex];
-		const FVector ExpectedMotion = FRefPosePoseContract::ToMotionPosition(
-			RootRotationInv.RotateVector(
-				Global[SkeletonIndex].GetTranslation() - Global[0].GetTranslation()));
-		const FVector3d ActualWorld =
-			TrackRotation.RotateVector(Pose.PositionsMeters[ModelIndex])
-			+ Track.PositionMeters;
-		TestTrue(
-			FString::Printf(TEXT("骨 %d 的 Root 局部位置"), ModelIndex),
-			ActualWorld.Equals(FVector3d(ExpectedMotion), 1e-9));
-
 		const FQuat4d ExpectedWorldRotation =
 			FRefPosePoseContract::ToMotionRotation((
 				RootRotationInv
@@ -474,8 +559,10 @@ bool FRefPoseKeyframePoseInputTest::RunTest(const FString& Parameters)
 	const FQuat4d HeadRotation = DecodePoseBone(Pose, 3);
 	const FVector3d HeadLocalDirection =
 		HeadRotation.Inverse().RotateVector(HeadToEnd);
+	// 旋转通道是 float32 的 6D，往返精度约 1e-7；这里按 float 实际精度比较，
+	// 不用 1e-9 的 double 级容差（那是自欺欺人的断言）。
 	TestTrue(TEXT("HeadEnd 相对 Head 的模型参考偏移"),
-		HeadLocalDirection.Equals(FVector3d(0.2, 0.0, 0.0), 1e-9));
+		HeadLocalDirection.Equals(FVector3d(0.2, 0.0, 0.0), 1e-5));
 	TestRotationEquals(
 		*this,
 		TEXT("HeadEnd 旋转跟随 Head 参考"),
@@ -488,7 +575,8 @@ bool FRefPoseKeyframePoseInputTest::RunTest(const FString& Parameters)
 	FRefPoseGenerator::FPoseInput NoRootPose;
 	if (!TestTrue(TEXT("无根变换版本转换成功"),
 		FRefPoseGenerator::SkeletonPoseToPoseInput(
-			*Model, Map, NoRootLocal, SkeletonParents, Track, NoRootPose, Error)))
+			*Model, Map, NoRootLocal, SkeletonParents, Track,
+			/*bEncodeReferenceRotations=*/true, NoRootPose, Error)))
 	{
 		AddError(Error);
 		return true;
@@ -505,6 +593,118 @@ bool FRefPoseKeyframePoseInputTest::RunTest(const FString& Parameters)
 			DecodePoseBone(Pose, ModelIndex),
 			DecodePoseBone(NoRootPose, ModelIndex));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseHistoryRotationPriorTest,
+	"MotionWeaver.RefPose.Input.HistoryUsesRotationPrior",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRefPoseHistoryRotationPriorTest::RunTest(const FString& Parameters)
+{
+	// 历史帧的旋转通道必须原样使用训练分布先验：UE 旋转与 SOMA 骨轴不同源
+	// （U1 未闭合），把它直接写进通道会把模型输入整体推出分布。
+	// 这条测试把先验设成一个「+X 转到 +Y」的可识别常量，逐骨核对是否原样写入。
+	TStrongObjectPtr<URefPoseModelAsset> Model(NewObject<URefPoseModelAsset>());
+	AddModelBone(*Model, TEXT("Root"), -1, FVector3d::ZeroVector, FQuat4d::Identity);
+	AddModelBone(*Model, TEXT("Hips"), 0, FVector3d(0.0, 1.0, 0.0), FQuat4d::Identity);
+	AddModelBone(*Model, TEXT("Spine1"), 1, FVector3d(0.0, 0.2, 0.0), FQuat4d::Identity);
+	AddModelBone(*Model, TEXT("Head"), 2, FVector3d(0.0, 0.4, 0.0), FQuat4d::Identity);
+
+	const FQuat4d PriorRotation(FVector3d::ForwardVector, UE_PI * 0.5);
+	Model->RotationPrior6D.SetNumUninitialized(
+		Model->BoneCount * FRefPosePoseContract::RotationStride);
+	for (int32 Bone = 0; Bone < Model->BoneCount; ++Bone)
+	{
+		FRefPosePoseContract::Encode6D(
+			PriorRotation,
+			Model->RotationPrior6D.GetData()
+				+ Bone * FRefPosePoseContract::RotationStride);
+	}
+	// 参考帧走方向编码，需要一份标定；这里把骨轴设为 +X、主子骨设为下一个槽位。
+	Model->RotationAxis.Init(FVector3d::ForwardVector, Model->BoneCount);
+	Model->RotationChild.Init(INDEX_NONE, Model->BoneCount);
+	for (int32 Bone = 0; Bone + 1 < Model->BoneCount; ++Bone)
+	{
+		Model->RotationChild[Bone] = Bone + 1;
+	}
+
+	const TArray<FName> SkeletonNames = {
+		TEXT("root"), TEXT("pelvis"), TEXT("spine_01"), TEXT("head") };
+	const TArray<int32> SkeletonParents = { -1, 0, 1, 2 };
+	TMap<FName, FName> Names;
+	Names.Add(TEXT("Root"), TEXT("root"));
+	Names.Add(TEXT("Hips"), TEXT("pelvis"));
+	Names.Add(TEXT("Spine1"), TEXT("spine_01"));
+	Names.Add(TEXT("Head"), TEXT("head"));
+
+	FRefPoseSkeletonMap Map;
+	TArray<FName> Unmapped;
+	FString Error;
+	const TArray<FName> ModelNames = {
+		TEXT("Root"), TEXT("Hips"), TEXT("Spine1"), TEXT("Head") };
+	if (!TestTrue(TEXT("映射建立成功"), FRefPoseSkeletonMap::Build(
+		ModelNames, SkeletonNames, Names, Map, Unmapped, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TArray<FTransform> SkeletonLocal;
+	SkeletonLocal.Add(FTransform::Identity);
+	SkeletonLocal.Add(FTransform(FQuat4d(FVector3d::RightVector, 0.3), FVector(0.0, 0.0, 100.0)));
+	SkeletonLocal.Add(FTransform(FQuat4d(FVector3d::RightVector, -0.2), FVector(0.0, 0.0, 20.0)));
+	SkeletonLocal.Add(FTransform(FQuat4d(FVector3d::UpVector, 0.7), FVector(0.0, 0.0, 40.0)));
+
+	const FRefPoseWindowBuilder::FRootSample Track =
+		MakeTrackSample(FVector3d(0.5, 0.0, 1.0), 30.0);
+
+	FRefPoseGenerator::FPoseInput HistoryPose;
+	if (!TestTrue(TEXT("历史姿态转换成功"),
+		FRefPoseGenerator::SkeletonPoseToPoseInput(
+			*Model, Map, SkeletonLocal, SkeletonParents, Track,
+			/*bEncodeReferenceRotations=*/false, HistoryPose, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+	TestEqual(TEXT("历史旋转通道长度"),
+		HistoryPose.Rotations6D.Num(), Model->RotationPrior6D.Num());
+	for (int32 Index = 0; Index < Model->RotationPrior6D.Num(); ++Index)
+	{
+		if (!TestEqual(
+			*FString::Printf(TEXT("历史旋转通道第 %d 个分量等于先验"), Index),
+			HistoryPose.Rotations6D[Index], Model->RotationPrior6D[Index]))
+		{
+			return true;
+		}
+	}
+	TestTrue(TEXT("先验本身不是单位旋转（否则测试无区分力）"),
+		FMath::RadiansToDegrees(
+			DecodePoseBone(HistoryPose, 0).AngularDistance(FQuat4d::Identity))
+			> 45.0);
+
+	// 参考帧仍走「方向编码」：它与先验必须不同，否则两条路径没有区分。
+	FRefPoseGenerator::FPoseInput ReferencePose;
+	if (!TestTrue(TEXT("参考姿态转换成功"),
+		FRefPoseGenerator::SkeletonPoseToPoseInput(
+			*Model, Map, SkeletonLocal, SkeletonParents, Track,
+			/*bEncodeReferenceRotations=*/true, ReferencePose, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+	int32 DifferingBones = 0;
+	for (int32 Bone = 0; Bone < Model->BoneCount; ++Bone)
+	{
+		const FQuat4d Reference = DecodePoseBone(ReferencePose, Bone);
+		const FQuat4d Prior = DecodePoseBone(HistoryPose, Bone);
+		if (FMath::RadiansToDegrees(Reference.AngularDistance(Prior)) > 1.0)
+		{
+			++DifferingBones;
+		}
+	}
+	TestTrue(TEXT("参考帧旋转通道与历史先验显式分开"), DifferingBones > 0);
 	return true;
 }
 
@@ -836,6 +1036,375 @@ bool FRefPoseRealPoseGroupSoftTrajectoryTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("Root 相邻帧最大跳变 = %.2f cm"), MaxRootJumpCm));
 	// 实测约 12 cm；如果接缝重复叠加了窗口原点，跳变会接近整段位移（数十厘米）。
 	TestTrue(TEXT("窗口接缝处 Root 不跳变"), MaxRootJumpCm < 50.0);
+	// 诊断值必须来自同一份输出，而不是另算一条轨迹。
+	TestTrue(
+		TEXT("诊断记录了 Root 接缝"),
+		FMath::IsNearlyEqual(
+			Result.Metrics.MaxRootSeamJumpCm, MaxRootJumpCm, 1e-6));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseGroupStartKeyIndexTest,
+	"MotionWeaver.RefPose.Input.PoseGroupStartKeyIndex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRefPoseGroupStartKeyIndexTest::RunTest(const FString& Parameters)
+{
+	// 起点不是「跳过前 N 个输出帧」这么简单：它决定第一个窗口的 history
+	// 与播放原点。这里逐项核对生成帧数、起点样本、播放原点与首帧 Root。
+	const FString PackageDir =
+		FPlatformMisc::GetEnvironmentVariable(TEXT("MW_REFPOSE_UE_PACKAGE"));
+	if (PackageDir.IsEmpty())
+	{
+		AddInfo(TEXT("未设置 MW_REFPOSE_UE_PACKAGE，跳过起点检查。"));
+		return true;
+	}
+
+	USkeletalMesh* Mesh = Cast<USkeletalMesh>(FSoftObjectPath(
+		TEXT("/Game/Characters/UE5_Mannequins/Meshes/SKM_Manny")).TryLoad());
+	if (Mesh == nullptr || Mesh->GetSkeleton() == nullptr)
+	{
+		AddInfo(TEXT("SKM_Manny 不可用，跳过起点检查。"));
+		return true;
+	}
+	const FReferenceSkeleton& Reference = Mesh->GetSkeleton()->GetReferenceSkeleton();
+	const TArray<FTransform>& ReferenceLocal = Reference.GetRefBonePose();
+	const int32 UpperArm = Reference.FindBoneIndex(TEXT("upperarm_l"));
+	if (UpperArm == INDEX_NONE)
+	{
+		AddInfo(TEXT("SKM_Manny 没有 upperarm_l，跳过起点检查。"));
+		return true;
+	}
+
+	FString Error;
+	TStrongObjectPtr<URefPoseModelAsset> Model(
+		URefPoseModelAsset::CreateFromOnnxFile(
+			PackageDir / TEXT("model.onnx"), Error));
+	if (!TestTrue(TEXT("创建模型资产"), Model.IsValid()))
+	{
+		AddError(Error);
+		return true;
+	}
+	if (!TestTrue(TEXT("读取模型契约"),
+		Model->LoadContractFromPackage(PackageDir, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TStrongObjectPtr<UPoseProxyAsset> PoseA =
+		MakeTestPose(Mesh, Reference, ReferenceLocal, UpperArm, -35.0);
+	TStrongObjectPtr<UPoseProxyAsset> PoseB =
+		MakeTestPose(Mesh, Reference, ReferenceLocal, UpperArm, 35.0);
+	TStrongObjectPtr<UPoseGroupProxyAsset> Group =
+		MakeSoftTrajectoryGroup(PoseA.Get(), PoseB.Get());
+
+	const TArray<FChainTrajectorySample>& Samples = Group->GetSamples();
+	if (Samples.Num() < Model->HistoryFrames + Model->FutureFrames)
+	{
+		AddInfo(TEXT("求解样本不足以覆盖一个窗口，跳过起点检查。"));
+		return true;
+	}
+
+	// 与实现相同的取法：第一个满足 sample.Frame >= key.Frame 的样本。
+	int32 StartSampleIndex = INDEX_NONE;
+	for (int32 SampleIndex = 0; SampleIndex < Samples.Num(); ++SampleIndex)
+	{
+		if (Samples[SampleIndex].Frame >= Group->Keys[2].Frame)
+		{
+			StartSampleIndex = SampleIndex;
+			break;
+		}
+	}
+	if (!TestTrue(TEXT("起点后还有求解样本"), StartSampleIndex != INDEX_NONE))
+	{
+		return true;
+	}
+	if (!TestTrue(
+		FString::Printf(
+			TEXT("起点样本 %d 之前有足够 history"), StartSampleIndex),
+		StartSampleIndex >= Model->HistoryFrames))
+	{
+		return true;
+	}
+
+	FRefPoseGenerationSettings Settings;
+	Settings.StartKeyIndex = 2;
+	FRefPoseGroupGenerationResult Result;
+	if (!TestTrue(TEXT("从第 2 个关键帧开始生成"),
+		FRefPoseGroupGenerator::Generate(
+			*Group, *Model, Settings, Result, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TestEqual(
+		TEXT("生成帧数从起点样本算起"),
+		Result.Frames.Num(),
+		Samples.Num() - StartSampleIndex);
+	TestEqual(
+		TEXT("诊断记录起点样本帧"),
+		Result.Metrics.StartSampleFrame,
+		Samples[StartSampleIndex].Frame);
+	TestEqual(
+		TEXT("诊断记录播放原点帧"),
+		Result.Metrics.PlaybackOriginFrame,
+		Samples[StartSampleIndex - 1].Frame);
+
+	// 首帧 Root = 起点样本相对原点的位移，表达在原点朝向里。
+	// 如果实现仍然固定从 Samples[0] 起算，这里的数值会明显不同。
+	const FRefPoseWindowBuilder::FRootSample Origin =
+		MakeSampleRoot(Samples[StartSampleIndex - 1]);
+	const FRefPoseWindowBuilder::FRootSample First =
+		MakeSampleRoot(Samples[StartSampleIndex]);
+	const FVector3d ExpectedDelta = Origin.Rotation.Inverse().RotateVector(
+		First.PositionMeters - Origin.PositionMeters);
+	const FVector ExpectedUe = FRefPosePoseContract::ToUePosition(ExpectedDelta);
+	TestTrue(
+		TEXT("首帧 Root 对应起点样本"),
+		Result.Frames[0][0].GetTranslation().Equals(ExpectedUe, 0.01));
+
+	// 同一个资产用默认重载（读资产上的设置）时，StartKeyIndex=0 应从第 0 帧起算。
+	FRefPoseGroupGenerationResult DefaultResult;
+	if (!TestTrue(TEXT("默认设置生成成功"),
+		FRefPoseGroupGenerator::Generate(*Group, *Model, DefaultResult, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+	TestEqual(
+		TEXT("默认重载使用资产上的起点"),
+		DefaultResult.Frames.Num(),
+		Samples.Num() - Model->HistoryFrames);
+	TestTrue(
+		TEXT("自定义起点的输出短于整段"),
+		Result.Frames.Num() < DefaultResult.Frames.Num());
+	TestEqual(
+		TEXT("默认重载的起点样本"),
+		DefaultResult.Metrics.StartSampleFrame,
+		Samples[Model->HistoryFrames].Frame);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseGroupReferencePatternsTest,
+	"MotionWeaver.RefPose.Input.PoseGroupReferencePatterns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRefPoseGroupReferencePatternsTest::RunTest(const FString& Parameters)
+{
+	// 只开放训练验证过的四档。这里核对「档位 → 硬参考帧数」，
+	// 并比较无参考与中间+末端的输出，确认参考真的进了模型而不是只改了状态文字。
+	const FString PackageDir =
+		FPlatformMisc::GetEnvironmentVariable(TEXT("MW_REFPOSE_UE_PACKAGE"));
+	if (PackageDir.IsEmpty())
+	{
+		AddInfo(TEXT("未设置 MW_REFPOSE_UE_PACKAGE，跳过参考档位检查。"));
+		return true;
+	}
+
+	USkeletalMesh* Mesh = Cast<USkeletalMesh>(FSoftObjectPath(
+		TEXT("/Game/Characters/UE5_Mannequins/Meshes/SKM_Manny")).TryLoad());
+	if (Mesh == nullptr || Mesh->GetSkeleton() == nullptr)
+	{
+		AddInfo(TEXT("SKM_Manny 不可用，跳过参考档位检查。"));
+		return true;
+	}
+	const FReferenceSkeleton& Reference = Mesh->GetSkeleton()->GetReferenceSkeleton();
+	const TArray<FTransform>& ReferenceLocal = Reference.GetRefBonePose();
+	const int32 UpperArm = Reference.FindBoneIndex(TEXT("upperarm_l"));
+	if (UpperArm == INDEX_NONE)
+	{
+		AddInfo(TEXT("SKM_Manny 没有 upperarm_l，跳过参考档位检查。"));
+		return true;
+	}
+
+	FString Error;
+	TStrongObjectPtr<URefPoseModelAsset> Model(
+		URefPoseModelAsset::CreateFromOnnxFile(
+			PackageDir / TEXT("model.onnx"), Error));
+	if (!TestTrue(TEXT("创建模型资产"), Model.IsValid()))
+	{
+		AddError(Error);
+		return true;
+	}
+	if (!TestTrue(TEXT("读取模型契约"),
+		Model->LoadContractFromPackage(PackageDir, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TStrongObjectPtr<UPoseProxyAsset> PoseA =
+		MakeTestPose(Mesh, Reference, ReferenceLocal, UpperArm, -35.0);
+	TStrongObjectPtr<UPoseProxyAsset> PoseB =
+		MakeTestPose(Mesh, Reference, ReferenceLocal, UpperArm, 35.0);
+	TStrongObjectPtr<UPoseGroupProxyAsset> Group =
+		MakeSoftTrajectoryGroup(PoseA.Get(), PoseB.Get());
+
+	const int32 GeneratedCount =
+		Group->GetSamples().Num() - Model->HistoryFrames;
+	const int32 WindowCount =
+		(GeneratedCount + Model->FutureFrames - 1) / Model->FutureFrames;
+
+	const ERefPoseReferencePattern Patterns[] = {
+		ERefPoseReferencePattern::None,
+		ERefPoseReferencePattern::Middle,
+		ERefPoseReferencePattern::End,
+		ERefPoseReferencePattern::MiddleAndEnd,
+	};
+
+	FRefPoseGroupGenerationResult NoReferenceResult;
+	FRefPoseGroupGenerationResult FullReferenceResult;
+	for (const ERefPoseReferencePattern Pattern : Patterns)
+	{
+		FRefPoseGenerationSettings Settings;
+		Settings.ReferencePattern = Pattern;
+
+		TArray<int32> Offsets;
+		if (!TestTrue(TEXT("档位映射成功"),
+			Settings.ToReferenceOffsets(Offsets, Error)))
+		{
+			AddError(Error);
+			return true;
+		}
+
+		int32 ExpectedHardReferenceFrames = 0;
+		for (int32 WindowIndex = 0; WindowIndex < WindowCount; ++WindowIndex)
+		{
+			const int32 ValidFuture = FMath::Min(
+				Model->FutureFrames,
+				GeneratedCount - WindowIndex * Model->FutureFrames);
+			for (const int32 Offset : Offsets)
+			{
+				if (Offset < ValidFuture)
+				{
+					++ExpectedHardReferenceFrames;
+				}
+			}
+		}
+
+		FRefPoseGroupGenerationResult Result;
+		if (!TestTrue(
+			FString::Printf(TEXT("档位 %d 生成成功"), static_cast<int32>(Pattern)),
+			FRefPoseGroupGenerator::Generate(
+				*Group, *Model, Settings, Result, Error)))
+		{
+			AddError(Error);
+			return true;
+		}
+		TestEqual(
+			FString::Printf(TEXT("档位 %d 的硬参考帧数"),
+				static_cast<int32>(Pattern)),
+			Result.Metrics.HardReferenceFrames,
+			ExpectedHardReferenceFrames);
+
+		if (Pattern == ERefPoseReferencePattern::None)
+		{
+			NoReferenceResult = MoveTemp(Result);
+		}
+		else if (Pattern == ERefPoseReferencePattern::MiddleAndEnd)
+		{
+			FullReferenceResult = MoveTemp(Result);
+		}
+	}
+
+	if (!TestEqual(TEXT("无参考与完整参考帧数一致"),
+		NoReferenceResult.Frames.Num(), FullReferenceResult.Frames.Num()))
+	{
+		return true;
+	}
+	double MaxDifferenceCm = 0.0;
+	for (int32 FrameIndex = 0; FrameIndex < NoReferenceResult.Frames.Num(); ++FrameIndex)
+	{
+		for (int32 BoneIndex = 1;
+			BoneIndex < NoReferenceResult.Frames[FrameIndex].Num(); ++BoneIndex)
+		{
+			MaxDifferenceCm = FMath::Max(
+				MaxDifferenceCm,
+				static_cast<double>(
+					(NoReferenceResult.Frames[FrameIndex][BoneIndex].GetTranslation()
+						- FullReferenceResult.Frames[FrameIndex][BoneIndex].GetTranslation())
+						.Size()));
+		}
+	}
+	AddInfo(FString::Printf(
+		TEXT("无参考 vs 中间+末端的最大局部位置差 = %.4f cm"), MaxDifferenceCm));
+	TestTrue(TEXT("参考档位确实进入模型输入"), MaxDifferenceCm > 1e-4);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseGroupInsufficientHistoryTest,
+	"MotionWeaver.RefPose.Input.PoseGroupInsufficientHistory",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRefPoseGroupInsufficientHistoryTest::RunTest(const FString& Parameters)
+{
+	// 起点太靠前时必须明确报错，不能静默退回第 0 帧：
+	// 那会让作者以为「从第 2 秒开始」的参数生效了，实际播放的却是整段。
+	const FString PackageDir =
+		FPlatformMisc::GetEnvironmentVariable(TEXT("MW_REFPOSE_UE_PACKAGE"));
+	if (PackageDir.IsEmpty())
+	{
+		AddInfo(TEXT("未设置 MW_REFPOSE_UE_PACKAGE，跳过历史不足检查。"));
+		return true;
+	}
+
+	USkeletalMesh* Mesh = Cast<USkeletalMesh>(FSoftObjectPath(
+		TEXT("/Game/Characters/UE5_Mannequins/Meshes/SKM_Manny")).TryLoad());
+	if (Mesh == nullptr || Mesh->GetSkeleton() == nullptr)
+	{
+		AddInfo(TEXT("SKM_Manny 不可用，跳过历史不足检查。"));
+		return true;
+	}
+	const FReferenceSkeleton& Reference = Mesh->GetSkeleton()->GetReferenceSkeleton();
+	const TArray<FTransform>& ReferenceLocal = Reference.GetRefBonePose();
+	const int32 UpperArm = Reference.FindBoneIndex(TEXT("upperarm_l"));
+	if (UpperArm == INDEX_NONE)
+	{
+		AddInfo(TEXT("SKM_Manny 没有 upperarm_l，跳过历史不足检查。"));
+		return true;
+	}
+
+	FString Error;
+	TStrongObjectPtr<URefPoseModelAsset> Model(
+		URefPoseModelAsset::CreateFromOnnxFile(
+			PackageDir / TEXT("model.onnx"), Error));
+	if (!TestTrue(TEXT("创建模型资产"), Model.IsValid()))
+	{
+		AddError(Error);
+		return true;
+	}
+	if (!TestTrue(TEXT("读取模型契约"),
+		Model->LoadContractFromPackage(PackageDir, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TStrongObjectPtr<UPoseProxyAsset> PoseA =
+		MakeTestPose(Mesh, Reference, ReferenceLocal, UpperArm, -35.0);
+	TStrongObjectPtr<UPoseProxyAsset> PoseB =
+		MakeTestPose(Mesh, Reference, ReferenceLocal, UpperArm, 35.0);
+	TStrongObjectPtr<UPoseGroupProxyAsset> Group =
+		MakeSoftTrajectoryGroup(PoseA.Get(), PoseB.Get());
+
+	FRefPoseGenerationSettings Settings;
+	// 第 1 个关键帧在帧 12，前面只有 12 个求解样本，少于 24 帧 history。
+	Settings.StartKeyIndex = 1;
+	FRefPoseGroupGenerationResult Result;
+	Error.Reset();
+	TestFalse(TEXT("起点前历史不足时拒绝生成"),
+		FRefPoseGroupGenerator::Generate(*Group, *Model, Settings, Result, Error));
+	TestTrue(TEXT("错误信息说明历史不足"), Error.Contains(TEXT("历史")));
+	AddInfo(FString::Printf(TEXT("错误信息：%s"), *Error));
+
+	// 越界下标也要明确报错，而不是悄悄截断。
+	Settings.StartKeyIndex = Group->Keys.Num();
+	Error.Reset();
+	TestFalse(TEXT("起点下标越界时拒绝生成"),
+		FRefPoseGroupGenerator::Generate(*Group, *Model, Settings, Result, Error));
+	TestTrue(TEXT("错误信息说明下标越界"), Error.Contains(TEXT("越界")));
 	return true;
 }
 
@@ -925,7 +1494,9 @@ bool FRefPoseSolverBoneLengthTest::RunTest(const FString& Parameters)
 
 	for (int32 FrameIndex = 0; FrameIndex < Local.Num(); ++FrameIndex)
 	{
-		for (int32 Bone = 1; Bone < TestBoneCount; ++Bone)
+		// 骨 1 是 Root→骨盆辅助链：模型里 Root 是独立轨道，它到骨盆的距离
+		// 随片段变化（2.2–2.9 m），本来就不该等于参考骨长，因此从骨 2 起检查。
+		for (int32 Bone = 2; Bone < TestBoneCount; ++Bone)
 		{
 			TestTrue(
 				FString::Printf(TEXT("帧 %d 骨 %d 骨长"), FrameIndex, Bone),
@@ -1671,9 +2242,10 @@ bool FRefPoseRealSkeletonConversionTest::RunTest(const FString& Parameters)
 	for (int32 Index = 0; Index < SkeletonParents.Num(); ++Index)
 	{
 		const int32 Parent = SkeletonParents[Index];
+		// FTransform 的 `A * B` 是「先 A 后 B」：父子链必须写成 Local * Parent。
 		SkeletonGlobal[Index] = Parent < 0
 			? ReferenceLocal[Index]
-			: SkeletonGlobal[Parent] * ReferenceLocal[Index];
+			: ReferenceLocal[Index] * SkeletonGlobal[Parent];
 	}
 	const FQuat4d SkeletonRootInv =
 		FQuat4d(SkeletonGlobal[0].GetRotation()).GetNormalized().Inverse();
@@ -1719,30 +2291,69 @@ bool FRefPoseRealSkeletonConversionTest::RunTest(const FString& Parameters)
 		MakeTrackSample(FVector3d::ZeroVector, 0.0);
 	if (!TestTrue(TEXT("真实参考姿态转模型输入成功"),
 		FRefPoseGenerator::SkeletonPoseToPoseInput(
-			*Model, Map, ReferenceLocal, SkeletonParents, Track, Pose, Error)))
+			*Model, Map, ReferenceLocal, SkeletonParents, Track,
+			/*bEncodeReferenceRotations=*/true, Pose, Error)))
 	{
 		AddError(Error);
 		return true;
 	}
 	TestEqual(TEXT("模型输入骨数"), Pose.PositionsMeters.Num(), Model->BoneCount);
 	TestEqual(TEXT("模型输入旋转长度"), Pose.Rotations6D.Num(), Model->BoneCount * 6);
-	TestTrue(TEXT("Root 在原点"),
-		Pose.PositionsMeters[0].Equals(FVector3d::ZeroVector, 1e-9));
+
+	// 训练数据里 Hips 的 X/Z 恒为 0（std≈1e-4 m），所以模型输入必须以
+	// 「骨盆水平投影」为原点；Root 只是辅助轨道，它的局部位置是
+	// -Rᵀ·k_pelvis，并不等于零。
+	const int32 PelvisModelIndex = 1;
+	auto ConvertedPosition = [&](int32 ModelIndex) -> FVector3d
+	{
+		const int32 SkeletonIndex = Map.ModelToSkeleton[ModelIndex];
+		return FRefPosePoseContract::ToMotionPosition(
+			SkeletonRootInv.RotateVector(
+				SkeletonGlobal[SkeletonIndex].GetTranslation()
+				- SkeletonGlobal[0].GetTranslation()));
+	};
+	const FVector3d PelvisMotion = ConvertedPosition(PelvisModelIndex);
+	const FVector3d PelvisHorizontal(PelvisMotion.X, 0.0, PelvisMotion.Z);
+	TestTrue(TEXT("Hips 水平位置归零"),
+		FMath::IsNearlyZero(Pose.PositionsMeters[PelvisModelIndex].X, 1e-9)
+		&& FMath::IsNearlyZero(Pose.PositionsMeters[PelvisModelIndex].Z, 1e-9));
+	TestTrue(TEXT("Root 局部位置 = -骨盆水平位置"),
+		Pose.PositionsMeters[0].Equals(
+			FVector3d(-PelvisHorizontal.X, 0.0, -PelvisHorizontal.Z), 1e-9));
 
 	for (int32 ModelIndex = 1; ModelIndex < Model->BoneCount; ++ModelIndex)
 	{
 		const int32 SkeletonIndex = Map.ModelToSkeleton[ModelIndex];
 		if (SkeletonIndex != INDEX_NONE)
 		{
-			const FVector Expected = FRefPosePoseContract::ToMotionPosition(
-				SkeletonRootInv.RotateVector(
-					SkeletonGlobal[SkeletonIndex].GetTranslation()
-					- SkeletonGlobal[0].GetTranslation()));
-			TestTrue(
-				FString::Printf(TEXT("%s 的静止位置与 UE 组件空间一致"),
-					*Model->Bones[ModelIndex].Name.ToString()),
-				Pose.PositionsMeters[ModelIndex].Equals(
-					FVector3d(Expected), 1e-9));
+			const FVector3d Expected = ConvertedPosition(ModelIndex) - PelvisHorizontal;
+			if (ModelIndex == PelvisModelIndex)
+			{
+				TestTrue(
+					FString::Printf(TEXT("%s 的静止位置与 UE 组件空间一致"),
+						*Model->Bones[ModelIndex].Name.ToString()),
+					Pose.PositionsMeters[ModelIndex].Equals(Expected, 1e-9));
+			}
+			else
+			{
+				// 已映射骨：方向来自 UE 姿态，长度来自模型契约。
+				// UE 人偶与 SOMA 的骨长最多差 40%，直接用 UE 长度喂模型
+				// 等于让它看一个没见过的骨架（实测位姿误差 0.9 m）。
+				const int32 Parent = Model->Bones[ModelIndex].Parent;
+				const FVector3d ParentConverted =
+					ConvertedPosition(Parent) - PelvisHorizontal;
+				const FVector3d Direction =
+					(ConvertedPosition(ModelIndex) - PelvisHorizontal - ParentConverted)
+						.GetSafeNormal();
+				const double ModelLength =
+					Model->Bones[ModelIndex].LocalPositionMeters.Size();
+				const FVector3d ExpectedRigid =
+					FVector3d(Pose.PositionsMeters[Parent]) + Direction * ModelLength;
+				TestTrue(
+					FString::Printf(TEXT("%s 的方向来自 UE、骨长来自模型"),
+						*Model->Bones[ModelIndex].Name.ToString()),
+					Pose.PositionsMeters[ModelIndex].Equals(ExpectedRigid, 1e-9));
+			}
 		}
 		else
 		{
@@ -1765,5 +2376,169 @@ bool FRefPoseRealSkeletonConversionTest::RunTest(const FString& Parameters)
 			}
 		}
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseTwistTransferPreservesJointsTest,
+	"MotionWeaver.RefPose.Contract.TwistTransferPreservesJoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRefPoseTwistTransferPreservesJointsTest::RunTest(const FString& Parameters)
+{
+	// 骨盆带一条主轴 + 一条**离轴**分支：分支子骨的局部平移不在父骨 +X 上。
+	// 这正是「绕骨轴旋转不改位置」不成立的场景，也是 v1/v2 把角色拧散的根因。
+	//   0 root → 1 hips → 2 spine → 3 arm_l → 5 hand_l
+	//                              ↘ 4 arm_r（离轴分支，局部平移 -X）
+	const TArray<int32> Parents = { -1, 0, 1, 2, 2, 3 };
+	TArray<FTransform> Reference;
+	Reference.Add(FTransform(FQuat::Identity, FVector(0.0, 0.0, 0.0)));
+	Reference.Add(FTransform(FQuat::Identity, FVector(0.0, 0.0, 85.0)));
+	Reference.Add(FTransform(FQuat::Identity, FVector(10.0, 0.0, 0.0)));
+	Reference.Add(FTransform(FQuat::Identity, FVector(12.0, 0.0, 0.0)));
+	Reference.Add(FTransform(FQuat::Identity, FVector(-12.0, 0.0, 0.0)));
+	Reference.Add(FTransform(FQuat::Identity, FVector(25.0, 0.0, 0.0)));
+
+	// 全部槽位都映射到模型骨 0..5；1 是 Hips（对齐基准）。
+	const TArray<int32> SkeletonToModel = { 0, 1, 2, 3, 4, 5 };
+
+	const FQuat SpineRotation(FVector(0.0, 0.0, 1.0), FMath::DegreesToRadians(20.0));
+	const FQuat ArmRotation(FVector(0.0, 1.0, 0.0), FMath::DegreesToRadians(10.0));
+
+	TArray<FTransform> Generated;
+	Generated.Add(Reference[0]);
+	Generated.Add(Reference[1]);
+	Generated.Add(FTransform(SpineRotation, Reference[2].GetTranslation()));
+	Generated.Add(FTransform(ArmRotation, Reference[3].GetTranslation()));
+	Generated.Add(FTransform(FQuat::Identity, Reference[4].GetTranslation()));
+	Generated.Add(FTransform(FQuat::Identity, Reference[5].GetTranslation()));
+
+	// 作者姿态：只给「绕骨轴的自转」，骨轴与平移全部相同。
+	TArray<FTransform> Author = Generated;
+	const FQuat SpineTwist(FVector::ForwardVector, FMath::DegreesToRadians(35.0));
+	const FQuat ArmTwist(FVector::ForwardVector, FMath::DegreesToRadians(-40.0));
+	Author[2].SetRotation(SpineRotation * SpineTwist);
+	Author[3].SetRotation(ArmRotation * ArmTwist);
+
+	TArray<TArray<FTransform>> GeneratedFrames = { Generated };
+	TArray<TArray<FTransform>> AuthorFrames = { Author };
+
+	// 迁移前的骨架空间位置。
+	TArray<TArray<FVector>> PositionsBefore;
+	FString Error;
+	if (!TestTrue(TEXT("迁移前复算成功"), FRefPoseSkeletonSolver::RebuildSkeletonPositions(
+		Parents, GeneratedFrames, PositionsBefore, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	double MeanTwist = 0.0;
+	double MaxTwist = 0.0;
+	if (!TestTrue(TEXT("扭转迁移成功"), FRefPoseGenerator::TransferAuthoredTwist(
+		GeneratedFrames, AuthorFrames, Parents, SkeletonToModel, MeanTwist, MaxTwist, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TestTrue(TEXT("确实迁移了扭转（不是空操作）"), MaxTwist > 30.0);
+
+	TArray<TArray<FVector>> PositionsAfter;
+	TestTrue(TEXT("迁移后复算成功"), FRefPoseSkeletonSolver::RebuildSkeletonPositions(
+		Parents, GeneratedFrames, PositionsAfter, Error));
+
+	double MaxPositionDeltaCm = 0.0;
+	for (int32 Bone = 0; Bone < Parents.Num(); ++Bone)
+	{
+		MaxPositionDeltaCm = FMath::Max(
+			MaxPositionDeltaCm,
+			static_cast<double>(
+				(PositionsAfter[0][Bone] - PositionsBefore[0][Bone]).Size()));
+	}
+	TestTrue(
+		FString::Printf(TEXT("关节位置严格不变（实测 %.6f cm）"), MaxPositionDeltaCm),
+		MaxPositionDeltaCm < 1e-3);
+
+	// 骨轴方向也必须不变：扭转只改 roll，不改骨指向。
+	for (int32 Bone = 0; Bone < Parents.Num(); ++Bone)
+	{
+		const FVector Before = Generated[Bone].GetRotation().RotateVector(FVector::ForwardVector);
+		const FVector After = GeneratedFrames[0][Bone].GetRotation()
+			.RotateVector(FVector::ForwardVector);
+		TestTrue(
+			FString::Printf(TEXT("骨 %d 骨轴不变"), Bone),
+			Before.Equals(After, 1e-6));
+	}
+
+	// Root 的旋转来自轨迹，不能被作者数据改写。
+	TestTrue(TEXT("Root 旋转不变"),
+		GeneratedFrames[0][0].GetRotation().Equals(Generated[0].GetRotation(), 1e-9));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseSolverUnusableChildTest,
+	"MotionWeaver.RefPose.Contract.SolverIgnoresUnusableChild",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRefPoseSolverUnusableChildTest::RunTest(const FString& Parameters)
+{
+	// 四骨链，骨 3 是骨 2 的**唯一**子骨。位置让骨 2 的方向指向米制 +Y（UE +Z）：
+	//  - 子骨可用：骨 2 必须转成 +Z（swing 90°）；
+	//  - 子骨不可用：骨 2 退回静止朝向 +X，不能被目标骨架里不存在的骨带偏。
+	const TArray<int32> Parents = { -1, 0, 1, 2 };
+	TArray<FTransform> Reference;
+	Reference.Add(FTransform(FQuat::Identity, FVector(0.0, 0.0, 0.0)));
+	Reference.Add(FTransform(FQuat::Identity, FVector(0.0, 0.0, 0.0)));
+	Reference.Add(FTransform(FQuat::Identity, FVector(10.0, 0.0, 0.0)));
+	Reference.Add(FTransform(FQuat::Identity, FVector(10.0, 0.0, 0.0)));
+
+	FRefPosePoseContract::FDecodedFrame Frame;
+	Frame.PositionsMeters = {
+		FVector3d(0.0, 0.0, 0.0),
+		FVector3d(0.0, 0.0, 0.0),
+		FVector3d(0.0, 0.10, 0.0),  // 骨 1 → 骨 2：米制 +Y → UE +Z
+		FVector3d(0.0, 0.20, 0.0),  // 骨 2 → 骨 3：同为 +Z
+	};
+	Frame.Rotations.Init(FQuat4d::Identity, 4);
+	const TArray<FRefPosePoseContract::FDecodedFrame> Frames = { Frame };
+
+	auto SolveWith = [&Parents, &Reference, &Frames](
+		TConstArrayView<bool> Usable, TArray<TArray<FTransform>>& Out, FString& Error)
+	{
+		FRefPoseSkeletonSolver::FMetrics Metrics;
+		return FRefPoseSkeletonSolver::Solve(
+			Parents, Reference, Frames, Out, Metrics, Error, Usable);
+	};
+
+	TArray<TArray<FTransform>> AllUsable;
+	TArray<TArray<FTransform>> LeafUnusable;
+	FString Error;
+	TArray<bool> AllUsableFlags;
+	const TArray<bool> LeafUnusableFlags = { true, true, true, false };
+	if (!TestTrue(TEXT("子骨可用时解算成功"),
+			SolveWith(AllUsableFlags, AllUsable, Error))
+		|| !TestTrue(TEXT("子骨不可用时解算成功"),
+			SolveWith(LeafUnusableFlags, LeafUnusable, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	const FVector UsableAxis =
+		AllUsable[0][2].GetRotation().RotateVector(FVector::ForwardVector);
+	const FVector UnusableAxis =
+		LeafUnusable[0][2].GetRotation().RotateVector(FVector::ForwardVector);
+
+	TestTrue(TEXT("子骨可用时骨 2 跟随 +Z"), UsableAxis.Equals(FVector(0.0, 0.0, 1.0), 1e-4));
+	TestTrue(TEXT("子骨不可用时骨 2 保持静止 +X"),
+		UnusableAxis.Equals(FVector(1.0, 0.0, 0.0), 1e-4));
+
+	// 位置不受影响：平移始终来自位置差分，和朝向锚点无关。
+	TArray<TArray<FVector>> Rebuilt;
+	TestTrue(TEXT("复算成功"), FRefPoseSkeletonSolver::RebuildSkeletonPositions(
+		Parents, LeafUnusable, Rebuilt, Error));
+	TestTrue(TEXT("骨 3 仍落在模型给的位置上"),
+		(Rebuilt[0][3] - Rebuilt[0][2]).GetSafeNormal().Equals(
+			FVector(0.0, 0.0, 1.0), 1e-4));
 	return true;
 }

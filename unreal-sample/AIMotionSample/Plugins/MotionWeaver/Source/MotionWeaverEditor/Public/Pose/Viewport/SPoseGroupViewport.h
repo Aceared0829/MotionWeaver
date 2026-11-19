@@ -11,6 +11,7 @@
 class UPoseGroupProxyAsset;
 class UPoseComponent;
 class FPoseGroupViewportClient;
+class USkeletalMesh;
 
 /**
  * 姿态代理组的预览视口。
@@ -55,6 +56,17 @@ public:
 	/** 播放游标：把生成结果的某一帧贴到预览组件上。 */
 	void SetPlaybackFrame(int32 FrameIndex);
 
+	/**
+	 * 作者参考姿态（参考幽灵）。
+	 *
+	 * 与生成结果逐帧对齐，用来直接对照「模型输出 vs 关键帧插值出的参考姿态」。
+	 * 它只是对照显示，不能被当成播放结果。
+	 */
+	void SetAuthorFrames(const TArray<TArray<FTransform>>& LocalPerFrame);
+	void ClearAuthorFrames();
+	void SetShowAuthorGhost(bool bShow);
+	bool GetShowAuthorGhost() const { return bShowAuthorGhost; }
+
 	/** 当前是否有可播放的生成结果。 */
 	bool HasPlaybackFrames() const { return PlaybackFrames.Num() > 0; }
 	int32 GetPlaybackFrameCount() const { return PlaybackFrames.Num(); }
@@ -63,6 +75,10 @@ public:
 	/** 是否显示生成结果（播放中）而隐藏关键帧组件。 */
 	void SetPlaybackVisible(bool bVisible);
 	bool IsPlaybackVisible() const { return bPlaybackVisible; }
+
+	/** 播放时保留关键帧幽灵，便于和生成结果对照。 */
+	void SetPlaybackKeepKeyframes(bool bKeep);
+	bool GetPlaybackKeepKeyframes() const { return bKeepKeyframesDuringPlayback; }
 
 	/** 视口里拖拽产生的改动。由编辑器接走，避免控件直接改资产。 */
 	DECLARE_DELEGATE_OneParam(FOnPoseKeyDragged, const FPoseKey& /*NewKeyValue*/);
@@ -85,6 +101,12 @@ protected:
 private:
 	/** 让组件数量与 Keys 对齐，并把每一帧的姿态贴进去。 */
 	void SyncPoseComponents();
+
+	/** 懒创建参考幽灵组件，并与播放组件共用同一套网格。 */
+	UPoseComponent* EnsureAuthorComponent();
+
+	/** 把参考姿态的某一帧贴到幽灵组件上。 */
+	void ApplyAuthorFrame(int32 FrameIndex);
 
 	/** 把某一帧的位置、朝向与姿态写进对应组件。 */
 	void ApplyKeyToComponent(int32 KeyIndex);
@@ -132,6 +154,20 @@ private:
 	/** 每帧每骨的局部变换；空表示还没有生成结果。 */
 	TArray<TArray<FTransform>> PlaybackFrames;
 
+	/**
+	 * 参考幽灵组件。
+	 *
+	 * 与播放组件用同一套网格/材质，但强制线框、不投影：实体是模型输出，
+	 * 线框是参考插值，重叠时一眼能看出偏离多少。
+	 */
+	TObjectPtr<UPoseComponent> AuthorComponent = nullptr;
+	TArray<TArray<FTransform>> AuthorFrames;
+	bool bShowAuthorGhost = false;
+
+	/** 播放组件当前用的网格；参考幽灵必须与它一致，否则骨槽位对不上。 */
+	TWeakObjectPtr<USkeletalMesh> PlaybackMeshAsset;
+
 	int32 PlaybackFrameIndex = INDEX_NONE;
 	bool bPlaybackVisible = false;
+	bool bKeepKeyframesDuringPlayback = true;
 };

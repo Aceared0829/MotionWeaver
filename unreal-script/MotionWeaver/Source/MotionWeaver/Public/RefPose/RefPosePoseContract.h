@@ -80,6 +80,15 @@ struct MOTIONWEAVER_API FRefPosePoseContract
 
 	/** UE 旋转 → 米制 Y-up 旋转。 */
 	static FQuat4d ToMotionRotation(const FQuat4d& Rotation);
+
+	/**
+	 * 把 From 转到 To 的最短弧，180° 反向时用确定性轴。
+	 *
+	 * 模型旋转通道与位置通道共用同一套骨轴约定（见 RotationAxis），
+	 * 因此「位置差分方向 → 旋转」这一步必须与契约层使用同一个最短弧实现，
+	 * 否则同一姿态在 UE 侧和解码侧会得到不同的四元数分支。
+	 */
+	static FQuat4d SwingBetween(const FVector3d& From, const FVector3d& To);
 };
 
 /**
@@ -90,6 +99,9 @@ struct MOTIONWEAVER_API FRefPosePoseContract
  *    参考骨长，不能直接写模型的米制绝对偏移。
  *  - 模型的旋转与位置骨轴未闭合（U1），所以方向从位置差分得到，
  *    长度取参考骨长。这样重建出的位置与模型输出方向一致、骨长恒定。
+ *  - 朝向用「父级当前姿态携带的静止骨帧 + 最短弧摆动」求得：基准只依赖
+ *    当前父级与固定参考，不依赖上一帧或窗口起点。逐窗口重播、硬参考覆盖
+ *    都不会因为重新播种而翻 180°。
  *
  * 输出可用 RebuildSkeletonPositions 精确复算，这是本求解器的自检闭环。
  */
@@ -113,9 +125,16 @@ struct MOTIONWEAVER_API FRefPoseSkeletonSolver
 
 	/**
 	 * @param Parents  父索引（父先子后，根为 -1）。
-	 * @param RefLocal 每根骨相对父骨的参考局部变换（UE 骨架）。
+	 * @param RefLocal 每根骨的参考局部变换：**旋转**是 UE 参考骨架的局部旋转
+	 *                （决定骨轴），**平移长度**是模型契约骨长。求解器只用
+	 *                平移的模长，方向一律由 UE 旋转的 +X 轴给出。
 	 * @param Decoded  逐帧位置与旋转（米制 Y-up、Root 局部）。
 	 * @param OutLocal [FrameCount][BoneCount] 的 UE 局部变换。
+	 * @param ChildUsable 可选：子骨能否作为「朝向锚点」。空表示全部可用。
+	 *                目标骨架里不存在的骨（模型 `*End`、面部）位置上不可见，
+	 *                模型对它们的预测也不受任何绑定约束；让它们决定父骨朝向，
+	 *                会出现整根手指/头/脚掌翻 180° 的假动作。传 false 后，
+	 *                这类父骨退回「父级携带的静止朝向」。
 	 */
 	static bool Solve(
 		TConstArrayView<int32> Parents,
@@ -123,7 +142,8 @@ struct MOTIONWEAVER_API FRefPoseSkeletonSolver
 		TConstArrayView<FRefPosePoseContract::FDecodedFrame> Decoded,
 		TArray<TArray<FTransform>>& OutLocal,
 		FMetrics& OutMetrics,
-		FString& OutError);
+		FString& OutError,
+		TConstArrayView<bool> ChildUsable = TConstArrayView<bool>());
 
 	/**
 	 * 用局部变换复算每帧每骨的骨架空间位置（厘米），用于闭环自检。
