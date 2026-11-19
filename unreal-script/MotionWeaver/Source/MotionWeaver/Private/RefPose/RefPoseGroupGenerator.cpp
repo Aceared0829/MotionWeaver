@@ -635,14 +635,12 @@ bool FRefPoseGroupGenerator::Generate(
 		TotalMetrics.MaxBoneLengthDeviationCm = FMath::Max(
 			TotalMetrics.MaxBoneLengthDeviationCm,
 			WindowMetrics.MaxBoneLengthDeviationCm);
-		// 逐窗口的「模型 vs 作者」平均误差按帧数加权，得到一个整段口径的均值；
 		// 最大值保留最差窗口，方便一眼看出哪一段跑偏。
-		TotalMetrics.MeanPredictionErrorCm +=
-			WindowMetrics.MeanPredictionErrorCm * WindowMetrics.FrameCount;
+		// 末窗口会用末帧补齐 24 帧输入，但补齐帧不是生成帧；平均值只累计
+		// ValidFuture 帧，保证与 OutResult.FramePredictionErrorCm 是同一批帧。
 		TotalMetrics.MaxPredictionErrorCm = FMath::Max(
 			TotalMetrics.MaxPredictionErrorCm,
 			WindowMetrics.MaxPredictionErrorCm);
-		PredictionErrorFrameCount += WindowMetrics.FrameCount;
 		// 求解器指标是逐帧累计值，跨窗口应当求和而不是取最大。
 		TotalMetrics.DegenerateBones += WindowMetrics.DegenerateBones;
 		// 硬参考只统计真正进入播放输出的帧；末窗口补齐的 12/23 不算生成帧。
@@ -657,10 +655,13 @@ bool FRefPoseGroupGenerator::Generate(
 		for (int32 Offset = 0; Offset < ValidFuture; ++Offset)
 		{
 			AllModelFrames.Local.Add(MoveTemp(WindowFrames.Local[Offset]));
-			OutResult.FramePredictionErrorCm.Add(
+			const double FramePredictionErrorCm =
 				WindowFrames.FramePredictionErrorCm.IsValidIndex(Offset)
 					? WindowFrames.FramePredictionErrorCm[Offset]
-					: 0.0);
+					: 0.0;
+			OutResult.FramePredictionErrorCm.Add(FramePredictionErrorCm);
+			TotalMetrics.MeanPredictionErrorCm += FramePredictionErrorCm;
+			++PredictionErrorFrameCount;
 			OutResult.FrameIsHardReference.Add(Offsets.Contains(Offset));
 		}
 	}
@@ -755,7 +756,8 @@ bool FRefPoseGroupGenerator::Generate(
 	//  - 位置跳变直接对应画面上的抽搐；
 	//  - 旋转跳变必须看骨架空间，局部跳变会把「父骨转、子骨反向补偿」误报成抽搐；
 	//  - 辅助骨（VB/ik/prop/poi/attach/weapon）离手足很远又不蒙皮，
-	//    留在统计里会把最大值放大一个数量级（实测 198 cm vs 23 cm）。
+	//    留在统计里会把最大值放大一个数量级（同一段结果实测含辅助骨
+	//    159 cm，只算蒙皮骨 74 cm）。
 	//
 	// 排除哪些骨随结果带出，诊断里要写明口径，否则作者会以为指标被「调小了」。
 	TArray<FVector> PreviousPositions;

@@ -1371,9 +1371,20 @@ FText SPoseKeyTimeline::GetKeyframeStripText() const
 			TEXT("%s%d=%.3fs"), Index > 0 ? TEXT("  ·  ") : TEXT(""),
 			Index, Seconds);
 	}
-	if (Asset->RefPoseGeneration.ReferencePattern != ERefPoseReferencePattern::None)
+	switch (Asset->RefPoseGeneration.ReferencePattern)
 	{
-		Text += TEXT("    ｜ 硬参考按窗口 offset 12 / 23 覆盖（每 24 帧一次）");
+	case ERefPoseReferencePattern::Middle:
+		Text += TEXT("    ｜ 硬参考：每窗口 offset 12（中间帧）");
+		break;
+	case ERefPoseReferencePattern::End:
+		Text += TEXT("    ｜ 硬参考：每窗口 offset 23（末端帧）");
+		break;
+	case ERefPoseReferencePattern::MiddleAndEnd:
+		Text += TEXT("    ｜ 硬参考：每窗口 offset 12 / 23（每 24 帧一次）");
+		break;
+	case ERefPoseReferencePattern::None:
+	default:
+		break;
 	}
 	return FText::FromString(Text);
 }

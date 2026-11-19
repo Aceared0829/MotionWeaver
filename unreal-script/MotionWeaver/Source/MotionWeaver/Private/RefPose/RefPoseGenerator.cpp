@@ -1007,7 +1007,7 @@ bool FRefPoseGenerator::TransferAuthoredTwist(
 
 			const int32 ModelIndex = SkeletonToModel.IsValidIndex(BoneIndex)
 				? SkeletonToModel[BoneIndex] : INDEX_NONE;
-			// 未映射骨保持 UE 参考旋转（手指/面部/扭转辅助骨都在这里），
+			// 未映射骨保持 UE 参考旋转（面部、末端骨与扭转辅助骨都在这里），
 			// 它们没有「模型骨轴」可比，强行迁移只会得到 180° 翻面。
 			if (ModelIndex == INDEX_NONE
 				|| BoneIndex == RootBone

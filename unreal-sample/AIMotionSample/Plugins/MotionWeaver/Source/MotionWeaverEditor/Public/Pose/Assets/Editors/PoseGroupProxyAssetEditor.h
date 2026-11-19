@@ -296,7 +296,7 @@ private:
 	/** 生成结果（每帧每骨 UE 局部变换）。 */
 	TArray<TArray<FTransform>> GeneratedFrames;
 
-	/** 没有映射到 UE 骨架的模型骨数（手指、面部、末端骨）。 */
+	/** 没有映射到 UE 骨架的模型骨数（面部与末端骨）。 */
 	int32 UnmappedBoneCount = 0;
 
 	/** 与 GeneratedFrames 对齐的诊断。 */

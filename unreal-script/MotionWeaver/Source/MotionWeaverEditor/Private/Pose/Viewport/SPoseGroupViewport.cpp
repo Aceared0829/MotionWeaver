@@ -387,6 +387,7 @@ void SPoseGroupViewport::SetShowAuthorGhost(bool bShow)
 void SPoseGroupViewport::ClearPlaybackFrames()
 {
 	PlaybackFrames.Reset();
+	AuthorFrames.Reset();
 	PlaybackFrameIndex = INDEX_NONE;
 	bPlaybackVisible = false;
 	if (PlaybackComponent != nullptr)

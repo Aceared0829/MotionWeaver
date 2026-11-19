@@ -298,6 +298,10 @@ NNE 推理耗时大于 0、输出不是静态参考姿态、Root 朝向随轨迹
 没有接缝跳变（本轮实测最大约 11.95 cm）；同时核对诊断里的
 `MaxRootSeamJumpCm` 与逐帧实测值一致（防止诊断另算一条轨迹）。
 
+诊断一致性：`metrics.mean_prediction_error_cm` 只对实际进入播放的生成帧求平均，
+不把末窗口用末帧补齐的输入帧重复计权；`max_prediction_error_cm` 仍是逐骨最大值。
+因此 JSON 里的均值与逐帧数组 `frame_prediction_error_cm` 是同一批帧。
+
 `-NullRHI` 下 `SK_UEFN_Mannequin` 可能加载不出 `USkeletalMesh`，
 因此测试骨架统一用 `/Game/Characters/UE5_Mannequins/Meshes/SKM_Manny`。
 
