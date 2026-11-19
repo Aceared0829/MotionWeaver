@@ -191,7 +191,7 @@ bool FRefPoseSkeletonMap::Retarget(
 			return false;
 		}
 
-		// 从参考姿态起步：未映射的骨（手指、面部、末端）保持参考，而不是零变换。
+		// 从参考姿态起步：未映射的骨（面部、末端）保持参考，而不是零变换。
 		TArray<FTransform>& Frame = OutSkeletonLocal.AddDefaulted_GetRef();
 		Frame = SkeletonReference;
 
@@ -215,6 +215,10 @@ bool FRefPoseSkeletonMap::Retarget(
 			// 平移长度取 UE 参考骨长：78 骨与 161 骨的骨长不同，
 			// 直接沿用模型长度会把角色拉长或压扁。方向仍用模型给的。
 			// 父级含未映射中间骨时，先把方向从最近映射祖先空间转回直接父级空间。
+			//
+			// 例外：Root → 骨盆不是骨，是「角色根 → 骨盆」的辅助链，
+			// 距离随片段变化（模型里 Root 钉在世界原点）。这条链必须保留
+			// 求解器算出的实际偏移，用 UE 参考骨长会把人拉到根骨附近。
 			const FVector SourceTranslation = ChainInverse.RotateVector(Source.GetTranslation());
 			const FVector ReferenceTranslation = SkeletonReference[SkeletonIndex].GetTranslation();
 			const double ReferenceLength = ReferenceTranslation.Size();
@@ -222,9 +226,11 @@ bool FRefPoseSkeletonMap::Retarget(
 			const FVector Direction = SourceLength > UE_KINDA_SMALL_NUMBER
 				? SourceTranslation / SourceLength
 				: ReferenceTranslation.GetSafeNormal();
+			const bool bRootTrackLink = ModelParents[ModelIndex] == 0;
 
 			Target.SetRotation(ChainInverse * Source.GetRotation());
-			Target.SetTranslation(Direction * ReferenceLength);
+			Target.SetTranslation(
+				bRootTrackLink ? SourceTranslation : Direction * ReferenceLength);
 		}
 	}
 	return true;

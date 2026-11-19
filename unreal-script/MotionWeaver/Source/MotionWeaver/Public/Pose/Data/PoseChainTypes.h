@@ -29,18 +29,21 @@ struct MOTIONWEAVER_API FPoseKey
 	GENERATED_BODY()
 
 	/** 这一帧的全身姿态。可以为空——空条目仍参与轨迹，只是画不出火柴人。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Key")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "关键帧",
+		meta = (DisplayName = "姿态资产"))
 	TObjectPtr<UPoseProxyAsset> PoseAsset = nullptr;
 
 	/** 相对本 Actor 的位置，cm。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Key")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "关键帧",
+		meta = (DisplayName = "位置（cm）"))
 	FVector LocalLocation = FVector::ZeroVector;
 
 	/**
 	 * 本帧全身朝向，真值。Pitch / Roll 只影响显示，不参与 Root 轨迹求解。
 	 * 在编辑器里拖旋转 gizmo 改的就是它。
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Key")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "关键帧",
+		meta = (DisplayName = "身体朝向"))
 	FRotator BodyRotation = FRotator::ZeroRotator;
 
 	/**
@@ -51,11 +54,13 @@ struct MOTIONWEAVER_API FPoseKey
 	 * 不要直接写这个字段——写 BodyRotation 或调用 SetHeadingDegrees，
 	 * 否则两者会失配。
 	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Key")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "关键帧",
+		meta = (DisplayName = "偏航（度）"))
 	double HeadingDegrees = 0.0;
 
 	/** 链内帧号，从 0 起，按 Settings.FrameRate 换算成秒。必须严格递增。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Key", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "关键帧",
+		meta = (DisplayName = "帧号", ClampMin = "0"))
 	int32 Frame = 0;
 
 	/**
@@ -65,16 +70,18 @@ struct MOTIONWEAVER_API FPoseKey
 	 * 避免「帧号」和「秒数」两份真值互相漂移。改这个字段后，
 	 * UPoseGroupProxyAsset::PostEditChangeProperty 会换算回 Frame。
 	 */
-	UPROPERTY(EditAnywhere, Transient, BlueprintReadWrite, Category = "Key",
+	UPROPERTY(EditAnywhere, Transient, BlueprintReadWrite, Category = "关键帧",
 		meta = (DisplayName = "时间（秒）", ClampMin = "0.0"))
 	double Seconds = 0.0;
 
 	/** 标记这一帧确实停住（速度归零）。不标则曲线连续穿过。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Key")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "关键帧",
+		meta = (DisplayName = "在此停住"))
 	bool bStopHere = false;
 
 	/** 给人看的备注，不参与求解。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Key")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "关键帧",
+		meta = (DisplayName = "备注"))
 	FString Label;
 
 	/** 只改偏航（求解器看到的那一份），并同步 BodyRotation 的 Yaw，保留已有 Pitch/Roll。 */
@@ -115,60 +122,72 @@ struct MOTIONWEAVER_API FChainSettings
 	GENERATED_BODY()
 
 	/** 帧率。模型契约是 120，别按 30 填。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "帧率", ClampMin = "1.0"))
 	double FrameRate = 120.0;
 
 	/** 水平速度上限，cm/s。超过即判定该段超速。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "水平速度上限（cm/s）", ClampMin = "1.0"))
 	double MaxSpeedCmPerSecond = 400.0;
 
 	/** 转身速率上限，deg/s。超过即判定该段转不过去。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "转身速率上限（deg/s）", ClampMin = "1.0"))
 	double MaxTurnRateDegPerSecond = 720.0;
 
 	/**
 	 * 超限时自动插 key 并膨胀该段时长。
 	 * 光插 key 不降速——速度 = 距离 / 时间，时间不变就不会变慢。
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "超限自动插帧并膨胀时长"))
 	bool bAutoInsertKeys = true;
 
 	/** 单次求解最多把总时长拉长到几倍。超过就报错，不再拉。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "最大时长膨胀倍率", ClampMin = "1.0"))
 	double MaxTimeDilation = 2.0;
 
 	/** 插 key 后切线会变，可能又微超。最多迭代几轮。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain", meta = (ClampMin = "1", ClampMax = "32"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "最大求解迭代次数", ClampMin = "1", ClampMax = "32"))
 	int32 MaxSolveIterations = 6;
 
 	/**
 	 * 朝向改为跟随水平位移方向。
 	 * 开启后每个 key 的 HeadingDegrees 不再参与求解。
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "朝向跟随速度方向"))
 	bool bFollowVelocityHeading = false;
 
 	/** 每隔多少帧画一支方向箭头。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "箭头间隔（帧）", ClampMin = "1"))
 	int32 ArrowStrideFrames = 6;
 
 	/** 箭头杆长，cm。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "箭头长度（cm）", ClampMin = "1.0"))
 	double ArrowLengthCm = 20.0;
 
 	/**
 	 * 用真蒙皮显示每个关键帧的姿势（资产记录里的 PreviewMesh + PreviewMaterials）。
 	 * 关掉或资产没有预览网格时，退回画骨架线。
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "显示蒙皮关键帧"))
 	bool bShowSkinnedPoses = true;
 
 	/** 没有预览网格时是否画骨架线兜底。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "显示骨架线兜底"))
 	bool bDrawStickFigures = true;
 
 	/** 从视口拖入新 key 时，帧号取「最后一个 key 的帧号 + 这个值」。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "链求解",
+		meta = (DisplayName = "新关键帧间隔（帧）", ClampMin = "1"))
 	int32 NewKeyFrameStride = 24;
 };
 

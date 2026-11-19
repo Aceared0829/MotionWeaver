@@ -252,6 +252,7 @@ void SPoseGroupViewport::AddReferencedObjects(FReferenceCollector& Collector)
 		Collector.AddReferencedObject(Component);
 	}
 	Collector.AddReferencedObject(PlaybackComponent);
+	Collector.AddReferencedObject(AuthorComponent);
 	Collector.AddReferencedObject(GroupAsset);
 }
 
@@ -286,12 +287,101 @@ void SPoseGroupViewport::SetPlaybackFrames(const TArray<TArray<FTransform>>& Loc
 				&& Key.PoseAsset->IsValidPose())
 			{
 				PlaybackComponent->ApplyPoseAsset(Key.PoseAsset);
+				PlaybackMeshAsset = Key.PoseAsset->PreviewMesh.LoadSynchronous();
 				break;
 			}
 		}
 	}
 
 	SetPlaybackFrame(PlaybackFrameIndex);
+}
+
+void SPoseGroupViewport::SetAuthorFrames(const TArray<TArray<FTransform>>& LocalPerFrame)
+{
+	AuthorFrames = LocalPerFrame;
+	if (AuthorFrames.Num() == 0)
+	{
+		ClearAuthorFrames();
+		return;
+	}
+	if (bShowAuthorGhost)
+	{
+		ApplyAuthorFrame(PlaybackFrameIndex);
+	}
+}
+
+void SPoseGroupViewport::ClearAuthorFrames()
+{
+	AuthorFrames.Reset();
+	if (AuthorComponent != nullptr)
+	{
+		AuthorComponent->SetVisibility(false);
+	}
+}
+
+UPoseComponent* SPoseGroupViewport::EnsureAuthorComponent()
+{
+	if (AuthorComponent == nullptr)
+	{
+		AuthorComponent = CreatePoseComponent();
+		if (AuthorComponent != nullptr)
+		{
+			// 参考幽灵只做对照：线框 + 不投影，避免和实体互相遮挡。
+			AuthorComponent->SetForceWireframe(true);
+			AuthorComponent->SetCastShadow(false);
+		}
+	}
+	if (AuthorComponent != nullptr)
+	{
+		// 网格必须跟随播放组件，否则两边骨架槽位对不上，幽灵会乱飞。
+		USkeletalMesh* Mesh = PlaybackMeshAsset.Get();
+		if (Mesh != nullptr)
+		{
+			AuthorComponent->SetSkinnedAssetAndUpdate(Mesh);
+		}
+	}
+	return AuthorComponent;
+}
+
+void SPoseGroupViewport::ApplyAuthorFrame(int32 FrameIndex)
+{
+	if (!AuthorFrames.IsValidIndex(FrameIndex))
+	{
+		if (AuthorComponent != nullptr)
+		{
+			AuthorComponent->SetVisibility(false);
+		}
+		return;
+	}
+	UPoseComponent* Component = EnsureAuthorComponent();
+	if (Component == nullptr)
+	{
+		return;
+	}
+
+	const TArray<FTransform>& Frame = AuthorFrames[FrameIndex];
+	const int32 BoneCount = FMath::Min(Frame.Num(), Component->BoneSpaceTransforms.Num());
+	for (int32 BoneIndex = 0; BoneIndex < BoneCount; ++BoneIndex)
+	{
+		Component->BoneSpaceTransforms[BoneIndex] = Frame[BoneIndex];
+	}
+	Component->MarkRefreshTransformDirty();
+	Component->RefreshBoneTransforms();
+	Component->SetVisibility(bShowAuthorGhost && bPlaybackVisible);
+}
+
+void SPoseGroupViewport::SetShowAuthorGhost(bool bShow)
+{
+	bShowAuthorGhost = bShow;
+	if (!bShow)
+	{
+		if (AuthorComponent != nullptr)
+		{
+			AuthorComponent->SetVisibility(false);
+		}
+		return;
+	}
+	ApplyAuthorFrame(PlaybackFrameIndex);
 }
 
 void SPoseGroupViewport::ClearPlaybackFrames()
@@ -302,6 +392,10 @@ void SPoseGroupViewport::ClearPlaybackFrames()
 	if (PlaybackComponent != nullptr)
 	{
 		PlaybackComponent->SetVisibility(false);
+	}
+	if (AuthorComponent != nullptr)
+	{
+		AuthorComponent->SetVisibility(false);
 	}
 	SetPlaybackVisible(false);
 }
@@ -329,6 +423,12 @@ void SPoseGroupViewport::SetPlaybackFrame(int32 FrameIndex)
 	// 否则最终骨骼矩阵 = 组件变换 × 根局部变换会把根运动叠加两次。
 	PlaybackComponent->MarkRefreshTransformDirty();
 	PlaybackComponent->RefreshBoneTransforms();
+
+	// 参考幽灵必须与生成帧同帧推进，否则对照的是两个时刻。
+	if (bShowAuthorGhost)
+	{
+		ApplyAuthorFrame(FrameIndex);
+	}
 }
 
 void SPoseGroupViewport::SetPlaybackVisible(bool bVisible)
@@ -338,11 +438,27 @@ void SPoseGroupViewport::SetPlaybackVisible(bool bVisible)
 	{
 		if (Component != nullptr)
 		{
-			Component->SetVisibility(!bVisible);
+			// 默认播放时隐藏关键帧；勾选「保留关键帧幽灵」后继续显示，
+			// 方便作者直接对照「生成到哪一帧、原关键帧长什么样」。
+			Component->SetVisibility(!bVisible || bKeepKeyframesDuringPlayback);
 		}
 	}
 	if (PlaybackComponent != nullptr)
 	{
 		PlaybackComponent->SetVisibility(bVisible);
+	}
+	if (AuthorComponent != nullptr)
+	{
+		AuthorComponent->SetVisibility(bVisible && bShowAuthorGhost);
+	}
+}
+
+void SPoseGroupViewport::SetPlaybackKeepKeyframes(bool bKeep)
+{
+	bKeepKeyframesDuringPlayback = bKeep;
+	if (bPlaybackVisible)
+	{
+		// 立刻重算可见性，而不是等下一次播放。
+		SetPlaybackVisible(true);
 	}
 }

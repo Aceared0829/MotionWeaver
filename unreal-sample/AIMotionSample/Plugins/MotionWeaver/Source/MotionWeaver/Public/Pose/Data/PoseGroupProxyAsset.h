@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Pose/Data/PoseChainTypes.h"
+#include "RefPose/RefPoseGenerationSettings.h"
 #include "UObject/SoftObjectPtr.h"
 #include "Misc/DataValidation.h"
 #include "PoseGroupProxyAsset.generated.h"
@@ -36,30 +37,47 @@ class MOTIONWEAVER_API UPoseGroupProxyAsset final : public UDataAsset
 public:
 	UPoseGroupProxyAsset();
 	/** 组名，给人看的。留空时用资产名。 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Group")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "姿态组",
+		meta = (DisplayName = "显示名称"))
 	FString DisplayName;
 
 	/** 用途备注：跑酷 / 翻越 / 起身，便于在内容浏览器里筛。 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Group")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "姿态组",
+		meta = (DisplayName = "用途"))
 	FString Usage;
 
 	/** 有序关键帧。帧号必须严格递增，语义与链 Actor 上的 Keys 完全一致。 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Group|Keys")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "姿态组|关键帧",
+		meta = (DisplayName = "关键帧"))
 	TArray<FPoseKey> Keys;
 
 	/** 帧率与速度上限等求解参数。 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Group|Settings")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "姿态组|求解设置",
+		meta = (DisplayName = "求解设置"))
 	FChainSettings Settings;
+
+	/**
+	 * 「生成并播放」的参数。
+	 *
+	 * 与 Settings 分开：Settings 是链式求解的创作参数，这里只影响
+	 * RefPose 推理入口（起点、参考档位、模型包、播放帧率）。
+	 * 存进资产是为了让同一次创作重开后仍按同一组生成参数复现。
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "姿态组|RefPose 生成",
+		meta = (DisplayName = "RefPose 生成设置"))
+	FRefPoseGenerationSettings RefPoseGeneration;
 
 	/**
 	 * 预备姿态：进入这段运动之前应该处于的状态。
 	 * 为空表示不限制，衔接由调用方决定。
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Group|Transition")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "姿态组|过渡",
+		meta = (DisplayName = "预备姿态"))
 	TObjectPtr<UPoseProxyAsset> EntryPose = nullptr;
 
 	/** 结束姿态：这段运动结束时应当抵达的状态。 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Group|Transition")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "姿态组|过渡",
+		meta = (DisplayName = "结束姿态"))
 	TObjectPtr<UPoseProxyAsset> ExitPose = nullptr;
 
 	/** 关键帧数量。 */

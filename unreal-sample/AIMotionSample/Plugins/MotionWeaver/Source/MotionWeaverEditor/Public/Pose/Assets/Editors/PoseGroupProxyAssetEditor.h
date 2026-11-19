@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "Pose/Data/PoseChainTypes.h"
+#include "RefPose/RefPoseGroupGenerator.h"
 #include "RefPose/RefPoseGenerator.h"
+#include "RefPose/RefPoseGenerationSettings.h"
 #include "RefPose/RefPoseModel.h"
 #include "Toolkits/AssetEditorToolkit.h"
 #include "UObject/StrongObjectPtr.h"
@@ -108,6 +110,58 @@ public:
 	/** 停止并回到起点。 */
 	void StopPlayback();
 
+	/** 把播放游标拖到指定帧；拖拽即暂停，便于逐帧检查。 */
+	void ScrubPlayback(int32 FrameIndex);
+
+	/** 逐帧步进（正数向后、负数向前），从暂停状态也能用。 */
+	void StepPlayback(int32 Delta);
+
+	/** 跳到上/下一个作者关键帧对应的生成帧。 */
+	void JumpPlaybackToAdjacentKey(bool bNext);
+
+	/**
+	 * 跳到「异常最大」的那一帧。
+	 *
+	 * 异常 = 相邻帧的骨架空间位置跳变 > 5 cm 或旋转跳变 > 45°，两者取更严重的一条。
+	 * 没有异常时返回 false（时间轴据此显示「无异常帧」而不是静默不动）。
+	 */
+	bool JumpPlaybackToWorstFrame();
+
+	/** 跳到上/下一个异常帧；没有时返回 false。 */
+	bool StepPlaybackToAdjacentAnomaly(int32 Direction);
+
+	/** 当前帧是否被判定为异常帧（供时间轴/状态文字标注）。 */
+	bool IsAnomalyFrame(int32 FrameIndex) const;
+
+	/** 异常帧总数（位置 >5cm 或旋转 >45°）；没有结果时为 0。 */
+	int32 GetAnomalyFrameCount() const;
+
+	/** 当前播放帧是否异常；没有在播放时返回 false。 */
+	bool IsCurrentPlaybackFrameAnomaly() const;
+
+	/** 当前帧的调试信息：生成帧 → 求解帧 → 作者时间、窗口、硬参考。 */
+	FString GetPlaybackDebugText() const;
+
+	/** 生成结果帧数；没有结果时为 0。时间轴进度条用。 */
+	int32 GetGeneratedFrameCount() const { return GeneratedFrames.Num(); }
+
+	/** 当前播放帧；停止或没有结果时为 INDEX_NONE。 */
+	int32 GetCurrentPlaybackFrame() const;
+
+	/** 播放时是否保留关键帧幽灵，便于和生成结果对照。 */
+	void SetShowKeyframesDuringPlayback(bool bShow);
+	bool GetShowKeyframesDuringPlayback() const { return bShowKeyframesDuringPlayback; }
+
+	/**
+	 * 是否在播放时叠加「作者参考幽灵」。
+	 *
+	 * 线框显示的是同一帧的关键帧插值姿态（模型实际看到的参考分布），
+	 * 实体是模型输出。两者重合说明模型跟上了；偏离量就是模型误差，
+	 * 可以直接判断「畸形来自模型还是解算」。
+	 */
+	void SetShowAuthorGhost(bool bShow);
+	bool GetShowAuthorGhost() const { return bShowAuthorGhost; }
+
 	/** 生成结果是否已过期（资产或模型改过）。 */
 	bool IsGenerationStale() const { return bGenerationStale; }
 
@@ -116,6 +170,39 @@ public:
 
 	/** 播放状态文字，供时间轴显示。 */
 	FString GetPlaybackStatusText() const;
+
+	//~ Begin RefPose 生成设置
+	ERefPoseReferencePattern GetReferencePattern() const;
+	void SetReferencePattern(ERefPoseReferencePattern InPattern);
+
+	int32 GetStartKeyIndex() const;
+	void SetStartKeyIndex(int32 InKeyIndex);
+
+	FString GetModelPackagePath() const;
+	void SetModelPackagePath(const FString& InPath);
+
+	bool GetUseGroupFrameRateForPlayback() const;
+	void SetUseGroupFrameRateForPlayback(bool bInUse);
+
+	/**
+	 * 是否把作者关键帧的翻滚（roll）迁移到生成姿态。
+	 *
+	 * 模型只输出位置，绕骨轴的自转在位置上完全不可见（前臂旋前、手腕翻转、
+	 * 头朝向）。关闭后回到「父级携带的静止扭转」，用来对照「畸形是模型位置
+	 * 错了，还是 roll 缺失」。
+	 */
+	bool GetTransferAuthoredTwist() const;
+	void SetTransferAuthoredTwist(bool bInTransfer);
+
+	/** 起点关键帧换算出的秒数，供时间轴显示；没有资产时返回 0。 */
+	double GetStartKeyTimeSeconds() const;
+	//~ End RefPose 生成设置
+
+	/** 多行生成诊断：窗口耗时、接缝、锚点误差、告警。 */
+	FString GetGenerationDiagnosticsText() const;
+
+	/** 把当前诊断导出为 JSON；成功时 OutPath 为写入路径。 */
+	bool ExportGenerationDiagnostics(FString& OutPath, FString& OutError);
 
 	/** 标记当前生成结果已过期，播放前必须重新生成。 */
 	void MarkGenerationStale();
@@ -214,4 +301,40 @@ private:
 
 	/** 与 GeneratedFrames 对齐的诊断。 */
 	FRefPoseGenerationMetrics GenerationMetrics;
+
+	/** 锚点对齐误差（参考量，不是模型精度）。 */
+	TArray<FRefPoseAnchorAlignment> AnchorAlignments;
+
+	/** 没有参与锚点比较的关键帧及原因。 */
+	TArray<FString> AnchorSkips;
+
+	/** 逐帧调试信息，与 GeneratedFrames 一一对应。 */
+	TArray<int32> FrameSolvedFrames;
+	TArray<double> FrameAuthorFrames;
+	TArray<double> FrameMaxRotationStepDeg;
+	TArray<int32> FrameWorstRotationBoneIndex;
+	TArray<double> FrameMaxPoseStepCm;
+	TArray<int32> FrameWorstPoseBoneIndex;
+
+	/**
+	 * 作者参考姿态（与 GeneratedFrames 一一对应）。
+	 *
+	 * 只用来在视口里叠加「参考幽灵」，让作者一眼看出偏差来自模型还是解算。
+	 * 它不是播放数据，任何播放路径都不能读它。
+	 */
+	TArray<TArray<FTransform>> AuthorFrames;
+
+	/** 逐帧「模型原始输出 vs 作者参考」的平均位置差（厘米）。 */
+	TArray<double> FramePredictionErrorCm;
+
+	TArray<FName> SkeletonBoneNames;
+
+	/** 播放时保留关键帧幽灵（编辑器临时状态，不写进资产）。 */
+	bool bShowKeyframesDuringPlayback = true;
+
+	/** 播放时叠加作者参考幽灵（编辑器临时状态）。 */
+	bool bShowAuthorGhost = false;
+
+	/** 写设置时的统一收尾：标脏、判过期。 */
+	void OnGenerationSettingChanged(const FText& TransactionText);
 };

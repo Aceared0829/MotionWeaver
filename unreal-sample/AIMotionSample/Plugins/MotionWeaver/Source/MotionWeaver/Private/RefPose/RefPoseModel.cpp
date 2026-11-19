@@ -2,8 +2,10 @@
 
 #include "RefPose/RefPoseModel.h"
 
+#include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "NNEModelData.h"
+#include "RefPose/RefPosePoseContract.h"
 #include "RefPose/RefPoseWindowBuilder.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -179,6 +181,245 @@ namespace
 		OutFutureFrames = static_cast<int32>(FutureFrames);
 		return true;
 	}
+
+	/**
+	 * 从 fixtures 统计旋转通道的稳定先验。
+	 *
+	 * fixtures 是真实训练窗口（history 24 × (78*9+7)）。这里把所有 fixture
+	 * 帧的逐骨 6D 旋转按列求平均，再对两列做一次 Gram–Schmidt，得到每根骨
+	 * 一个正交的 6D 先验。它不是「某个姿态」，而是训练分布的中心朝向；
+	 * 用途见 URefPoseModelAsset::RotationPrior6D 的注释。
+	 *
+	 * 包没有 fixtures 时返回 false，调用方退回逐帧 UE 旋转（并明确告警）。
+	 */
+	bool LoadRotationPrior(
+		const FString& PackageDir,
+		int32 BoneCount,
+		int32 HistoryFrames,
+		TConstArrayView<FRefPoseBoneContract> Bones,
+		TConstArrayView<float> Mean,
+		TConstArrayView<float> Std,
+		TArray<float>& OutPrior,
+		TArray<FVector3d>& OutAxis,
+		TArray<int32>& OutChild,
+		FString& OutError)
+	{
+		const FString FixtureRoot = PackageDir / TEXT("fixtures");
+		TArray<FString> FixtureFiles;
+		// 注意：IFileManager::FindFiles 只支持「文件名」部分的通配符，
+		// `fixtures/*/history.f32` 这种目录段带通配的写法永远匹配不到文件。
+		// 之前正是因此让先验静默加载失败，历史旋转退回 UE 旋转通道，
+		// 模型输入与训练骨轴不同源，播放出来整个人是塌的。
+		IFileManager::Get().FindFilesRecursive(
+			FixtureFiles, *FixtureRoot, TEXT("history.f32"), true, false);
+		if (FixtureFiles.Num() == 0)
+		{
+			OutError = TEXT("模型包没有 fixtures/*/history.f32，无法建立旋转先验。");
+			return false;
+		}
+
+		const int32 Stride = BoneCount * FRefPosePoseContract::BoneStride + 7;
+		const int32 ExpectedFloats = HistoryFrames * Stride;
+
+		// 累积每根骨 6D 的前两列；列内偏移与 Decode6D 一致：
+		// col0 = (v0, v2, v4)，col1 = (v1, v3, v5)。
+		TArray<double> SumCol0;
+		TArray<double> SumCol1;
+		SumCol0.SetNumZeroed(BoneCount * 3);
+		SumCol1.SetNumZeroed(BoneCount * 3);
+		// 每根骨的每个子骨一个累加器：统计 R^T·d 的平均方向与集中度。
+		TArray<TArray<FVector3d>> ChildDirectionSums;
+		TArray<TArray<int32>> ChildDirectionCounts;
+		ChildDirectionSums.SetNum(BoneCount);
+		ChildDirectionCounts.SetNum(BoneCount);
+		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+		{
+			for (int32 Child = 0; Child < BoneCount; ++Child)
+			{
+				if (Bones[Child].Parent == Bone)
+				{
+					ChildDirectionSums[Bone].Add(FVector3d::ZeroVector);
+					ChildDirectionCounts[Bone].Add(0);
+				}
+			}
+		}
+		int32 SampleCount = 0;
+
+		for (const FString& FileName : FixtureFiles)
+		{
+			TArray<uint8> Bytes;
+			if (!FFileHelper::LoadFileToArray(Bytes, *FileName))
+			{
+				continue;
+			}
+			if (Bytes.Num() != ExpectedFloats * static_cast<int32>(sizeof(float)))
+			{
+				OutError = FString::Printf(
+					TEXT("fixture %s 长度应为 %d 个 float，实际 %d 字节。"),
+					*FileName, ExpectedFloats, Bytes.Num());
+				return false;
+			}
+			const float* Values = reinterpret_cast<const float*>(Bytes.GetData());
+			for (int32 Frame = 0; Frame < HistoryFrames; ++Frame)
+			{
+				const float* FrameBase = Values + static_cast<int64>(Frame) * Stride;
+				TArray<FVector3d> Positions;
+				Positions.SetNumUninitialized(BoneCount);
+				for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+				{
+					const float* BoneBase = FrameBase
+						+ static_cast<int64>(Bone) * FRefPosePoseContract::BoneStride
+						+ FRefPosePoseContract::PositionStride;
+					const int32 Base = Bone * 3;
+					SumCol0[Base + 0] += BoneBase[0];
+					SumCol0[Base + 1] += BoneBase[2];
+					SumCol0[Base + 2] += BoneBase[4];
+					SumCol1[Base + 0] += BoneBase[1];
+					SumCol1[Base + 1] += BoneBase[3];
+					SumCol1[Base + 2] += BoneBase[5];
+					const float* PositionBase = FrameBase
+						+ static_cast<int64>(Bone) * FRefPosePoseContract::BoneStride;
+					Positions[Bone] = FVector3d(
+						PositionBase[0] * Std[Base + 0] + Mean[Base + 0],
+						PositionBase[1] * Std[Base + 1] + Mean[Base + 1],
+						PositionBase[2] * Std[Base + 2] + Mean[Base + 2]);
+				}
+
+				// 逐骨求 R^T·d：R 的两列已在上面的 Sum 里，但这里需要逐帧值，
+				// 因此直接从 6D 解码。d 是「骨 → 子骨」的单位方向。
+				for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+				{
+					if (ChildDirectionSums[Bone].Num() == 0)
+					{
+						continue;
+					}
+					const float* RotationBase = FrameBase
+						+ static_cast<int64>(Bone) * FRefPosePoseContract::BoneStride
+						+ FRefPosePoseContract::PositionStride;
+					const FQuat4d Rotation = FRefPosePoseContract::Decode6D(
+						MakeArrayView(RotationBase, FRefPosePoseContract::RotationStride));
+					int32 ChildSlot = 0;
+					for (int32 Child = 0; Child < BoneCount; ++Child)
+					{
+						if (Bones[Child].Parent != Bone)
+						{
+							continue;
+						}
+						const FVector3d Direction =
+							(Positions[Child] - Positions[Bone]).GetSafeNormal();
+						if (!Direction.IsNearlyZero())
+						{
+							ChildDirectionSums[Bone][ChildSlot] +=
+								Rotation.Inverse().RotateVector(Direction);
+							++ChildDirectionCounts[Bone][ChildSlot];
+						}
+						++ChildSlot;
+					}
+				}
+			}
+			SampleCount += HistoryFrames;
+		}
+
+		if (SampleCount == 0)
+		{
+			OutError = TEXT("fixtures 里没有可读的 history.f32。");
+			return false;
+		}
+
+		OutPrior.SetNumUninitialized(BoneCount * FRefPosePoseContract::RotationStride);
+		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+		{
+			const int32 Base = Bone * 3;
+			FVector3d Col0(
+				SumCol0[Base + 0] / SampleCount,
+				SumCol0[Base + 1] / SampleCount,
+				SumCol0[Base + 2] / SampleCount);
+			FVector3d Col1(
+				SumCol1[Base + 0] / SampleCount,
+				SumCol1[Base + 1] / SampleCount,
+				SumCol1[Base + 2] / SampleCount);
+			if (!Col0.Normalize() || !Col1.Normalize())
+			{
+				OutError = FString::Printf(
+					TEXT("fixture 第 %d 根骨的平均旋转列退化为零。"), Bone);
+				return false;
+			}
+			Col1 = (Col1 - Col0 * (Col1 | Col0)).GetSafeNormal();
+			if (Col1.IsNearlyZero())
+			{
+				OutError = FString::Printf(
+					TEXT("fixture 第 %d 根骨的平均旋转两列共线。"), Bone);
+				return false;
+			}
+
+			float* Out = OutPrior.GetData() + Bone * FRefPosePoseContract::RotationStride;
+			Out[0] = static_cast<float>(Col0.X);
+			Out[2] = static_cast<float>(Col0.Y);
+			Out[4] = static_cast<float>(Col0.Z);
+			Out[1] = static_cast<float>(Col1.X);
+			Out[3] = static_cast<float>(Col1.Y);
+			Out[5] = static_cast<float>(Col1.Z);
+		}
+
+		// 选「旋转坐标系里最稳定」的子骨作为该骨的朝向锚点。
+		// 阈值用平均合矢量长度：接近 1 表示该方向在整段训练数据里是常量。
+		OutAxis.SetNum(BoneCount);
+		OutChild.Init(INDEX_NONE, BoneCount);
+		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+		{
+			OutAxis[Bone] = FVector3d::ZeroVector;
+			if (ChildDirectionSums[Bone].Num() == 0)
+			{
+				continue;
+			}
+			int32 BestSlot = INDEX_NONE;
+			double BestConcentration = 0.0;
+			FVector3d BestMean = FVector3d::ZeroVector;
+			int32 ChildSlot = 0;
+			for (int32 Child = 0; Child < BoneCount; ++Child)
+			{
+				if (Bones[Child].Parent != Bone)
+				{
+					continue;
+				}
+				if (ChildDirectionCounts[Bone][ChildSlot] > 0)
+				{
+					const FVector3d MeanDirection =
+						ChildDirectionSums[Bone][ChildSlot]
+						/ static_cast<double>(ChildDirectionCounts[Bone][ChildSlot]);
+					const double Concentration = MeanDirection.Size();
+					if (Concentration > BestConcentration)
+					{
+						BestConcentration = Concentration;
+						BestSlot = ChildSlot;
+						BestMean = MeanDirection.GetSafeNormal();
+					}
+				}
+				++ChildSlot;
+			}
+			if (BestSlot != INDEX_NONE && BestConcentration >= 0.2)
+			{
+				int32 FoundChild = INDEX_NONE;
+				int32 ScanSlot = 0;
+				for (int32 Child = 0; Child < BoneCount; ++Child)
+				{
+					if (Bones[Child].Parent != Bone)
+					{
+						continue;
+					}
+					if (ScanSlot == BestSlot)
+					{
+						FoundChild = Child;
+						break;
+					}
+					++ScanSlot;
+				}
+				OutAxis[Bone] = BestMean;
+				OutChild[Bone] = FoundChild;
+			}
+		}
+		return true;
+	}
 }
 
 URefPoseModelAsset* URefPoseModelAsset::CreateFromOnnxFile(const FString& OnnxPath, FString& OutError)
@@ -256,6 +497,20 @@ bool URefPoseModelAsset::LoadContractFromPackage(const FString& PackageDir, FStr
 	{
 		return false;
 	}
+
+	// 旋转先验是可选增强：老包没有 fixtures 时保持为空，装配器会退回
+	// 逐帧 UE 旋转并告警。不把「缺 fixtures」当成加载失败。
+	FString PriorError;
+	if (!LoadRotationPrior(
+		PackageDir, BoneCount, HistoryFrames, Bones, PoseMean, PoseStd,
+		RotationPrior6D, RotationAxis, RotationChild, PriorError))
+	{
+		RotationPrior6D.Reset();
+		RotationAxis.Reset();
+		RotationChild.Reset();
+		UE_LOG(LogTemp, Warning,
+			TEXT("[RefPose] 未建立旋转先验：%s"), *PriorError);
+	}
 	return true;
 }
 
@@ -285,6 +540,57 @@ bool URefPoseModelAsset::HasUsableContract() const
 		{
 			return false;
 		}
+	}
+	return true;
+}
+
+bool URefPoseModelAsset::HasRotationCalibration() const
+{
+	return BoneCount > 0
+		&& RotationAxis.Num() == BoneCount
+		&& RotationChild.Num() == BoneCount;
+}
+
+bool URefPoseModelAsset::EncodeRotationsFromPositions(
+	TConstArrayView<FVector3d> PositionsMeters,
+	TArray<float>& OutRotations6D) const
+{
+	if (!HasRotationCalibration() || PositionsMeters.Num() != BoneCount)
+	{
+		return false;
+	}
+
+	OutRotations6D.SetNumUninitialized(BoneCount * FRefPosePoseContract::RotationStride);
+	TArray<FQuat4d> GlobalRotations;
+	GlobalRotations.SetNumUninitialized(BoneCount);
+	for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+	{
+		FQuat4d Rotation = FQuat4d::Identity;
+		if (Bone > 0)
+		{
+			const int32 Child = RotationChild[Bone];
+			if (Child != INDEX_NONE && !RotationAxis[Bone].IsNearlyZero())
+			{
+				const FVector3d Direction =
+					(PositionsMeters[Child] - PositionsMeters[Bone]).GetSafeNormal();
+				if (!Direction.IsNearlyZero())
+				{
+					Rotation = FRefPosePoseContract::SwingBetween(
+						RotationAxis[Bone], Direction);
+				}
+			}
+			if (Rotation.IsIdentity())
+			{
+				// 叶子骨（无子骨）没有可观测的朝向，沿用父骨；这与训练数据里
+				// End 骨跟随父骨的统计行为一致，也避免写出一条全零 6D。
+				const int32 Parent = Bones[Bone].Parent;
+				Rotation = Parent >= 0 ? GlobalRotations[Parent] : FQuat4d::Identity;
+			}
+		}
+		GlobalRotations[Bone] = Rotation;
+		FRefPosePoseContract::Encode6D(
+			Rotation,
+			OutRotations6D.GetData() + Bone * FRefPosePoseContract::RotationStride);
 	}
 	return true;
 }

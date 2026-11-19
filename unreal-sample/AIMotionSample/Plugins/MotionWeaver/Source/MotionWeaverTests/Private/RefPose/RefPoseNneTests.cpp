@@ -373,7 +373,9 @@ bool FRefPoseSolverRealOutputTest::RunTest(const FString& Parameters)
 		for (int32 Bone = 0; Bone < Parents.Num(); ++Bone)
 		{
 			const int32 Parent = Parents[Bone];
-			if (Parent < 0)
+			// 骨 1 是 Root→骨盆辅助链：模型里 Root 是独立轨道，Hips 的位置
+			// 不是「骨长 × 方向」，因此不参与方向自检。
+			if (Parent < 0 || Bone == 1)
 			{
 				continue;
 			}

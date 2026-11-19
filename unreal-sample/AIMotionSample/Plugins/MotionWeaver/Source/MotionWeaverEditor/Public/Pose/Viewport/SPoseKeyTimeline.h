@@ -3,8 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RefPose/RefPoseGenerationSettings.h"
 #include "Styling/SlateColor.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Views/SListView.h"
 
 class FPoseGroupProxyAssetEditor;
@@ -71,6 +73,35 @@ private:
 	FReply OnGenerateClicked();
 	FReply OnTogglePlaybackClicked();
 	FReply OnStopPlaybackClicked();
+	FReply OnPrevFrameClicked();
+	FReply OnNextFrameClicked();
+	FReply OnPrevKeyClicked();
+	FReply OnNextKeyClicked();
+	FReply OnPrevAnomalyClicked();
+	FReply OnNextAnomalyClicked();
+	FReply OnJumpToWorstFrameClicked();
+
+	/** 播放进度条。 */
+	float GetPlaybackSliderValue() const;
+	void OnPlaybackSliderChanged(float Value);
+	bool HasPlaybackFrames() const;
+	FText GetPlaybackFrameText() const;
+
+	/** 异常帧统计：多少帧被判为抽搐、当前帧是否异常。 */
+	FText GetAnomalySummaryText() const;
+	FSlateColor GetAnomalySummaryColor() const;
+
+	/** 当前帧的「生成帧 → 求解帧 → 作者时间」调试行。 */
+	FText GetPlaybackDebugText() const;
+
+	/** 时间轴刻度提示：每个关键帧的秒数 + 硬参考节奏。 */
+	FText GetKeyframeStripText() const;
+
+	ECheckBoxState GetKeepKeyframesCheckState() const;
+	void OnKeepKeyframesChanged(ECheckBoxState NewState);
+
+	ECheckBoxState GetAuthorGhostCheckState() const;
+	void OnAuthorGhostChanged(ECheckBoxState NewState);
 
 	/** 播放状态文字：帧号 / 状态。 */
 	FText GetPlaybackStatusText() const;
@@ -81,8 +112,45 @@ private:
 	/** 选中行的秒数被人改过之后换算回帧号并写回资产。 */
 	void OnSecondsCommitted(const FText& NewText, ETextCommit::Type CommitType, FRowPtr Row);
 
+	//~ Begin 生成设置
+	TSharedRef<SWidget> OnGenerateReferenceOption(
+		TSharedPtr<ERefPoseReferencePattern> Item) const;
+	void OnReferencePatternChanged(
+		TSharedPtr<ERefPoseReferencePattern> Item, ESelectInfo::Type SelectInfo);
+	FText GetSelectedReferencePatternText() const;
+	TSharedPtr<ERefPoseReferencePattern> FindReferenceOption(
+		ERefPoseReferencePattern Pattern) const;
+
+	int32 GetStartKeyIndexForWidget() const;
+	TOptional<int32> GetStartKeyIndexMax() const;
+	void OnStartKeyCommitted(int32 Value, ETextCommit::Type CommitType);
+	FText GetStartKeyTimeText() const;
+	FReply OnStartFromSelectedClicked();
+
+	FText GetPackagePathText() const;
+	void OnPackagePathCommitted(const FText& NewText, ETextCommit::Type CommitType);
+	FReply OnBrowsePackageClicked();
+
+	ECheckBoxState GetUseGroupFrameRateCheckState() const;
+	void OnUseGroupFrameRateChanged(ECheckBoxState NewState);
+
+	ECheckBoxState GetTransferAuthoredTwistCheckState() const;
+	void OnTransferAuthoredTwistChanged(ECheckBoxState NewState);
+
+	FReply OnExportDiagnosticsClicked();
+	FText GetDiagnosticsText() const;
+	FText GetDiagnosticsExportStatusText() const;
+	//~ End 生成设置
+
 	TWeakPtr<FPoseGroupProxyAssetEditor> EditorPtr;
 
 	TArray<FRowPtr> Rows;
 	TSharedPtr<SListView<FRowPtr>> ListView;
+
+	/** 参考档位下拉项；指向固定枚举值，生命周期与控件一致。 */
+	TArray<TSharedPtr<ERefPoseReferencePattern>> ReferenceOptions;
+	TSharedPtr<SComboBox<TSharedPtr<ERefPoseReferencePattern>>> ReferenceComboBox;
+
+	/** 「导出诊断」最近一次结果，直接显示在按钮旁。 */
+	FString DiagnosticsExportStatus;
 };
