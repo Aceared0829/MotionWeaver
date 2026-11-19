@@ -10,6 +10,7 @@
 #include "Pose/Viewport/SPoseKeyTimeline.h"
 #include "Pose/Viewport/SPoseGroupViewport.h"
 
+#include "Containers/Ticker.h"
 #include "Editor.h"
 #include "Framework/Docking/TabManager.h"
 #include "Modules/ModuleManager.h"
@@ -111,6 +112,11 @@ void FPoseGroupProxyAssetEditor::InitPoseGroupProxyAssetEditor(
 
 	RegenerateMenusAndToolbars();
 
+	// 播放时钟：只在编辑器打开期间存在，关闭时解绑。
+	// 用 ticker 而不是给控件加 Tick：播放是编辑器状态，不属于某个控件的绘制周期。
+	PlaybackTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateSP(this, &FPoseGroupProxyAssetEditor::TickPlaybackTick));
+
 	// 打开就选中第 0 帧，避免「什么都没选中」的空状态。
 	SetSelectedKeyIndex(GroupAsset != nullptr && GroupAsset->Keys.Num() > 0 ? 0 : INDEX_NONE);
 }
@@ -173,7 +179,19 @@ void FPoseGroupProxyAssetEditor::SetSelectedKeyIndex(int32 InKeyIndex)
 	const int32 MaxIndex = GroupAsset != nullptr ? GroupAsset->Keys.Num() - 1 : INDEX_NONE;
 
 	// 越界时收敛到合法范围，不要留下一个「选了个不存在的帧」的状态。
-	SelectedKeyIndex = (InKeyIndex >= 0 && InKeyIndex <= MaxIndex) ? InKeyIndex : INDEX_NONE;
+	const int32 NewIndex =
+		(InKeyIndex >= 0 && InKeyIndex <= MaxIndex) ? InKeyIndex : INDEX_NONE;
+	const bool bSelectionChanged = SelectedKeyIndex != NewIndex;
+	SelectedKeyIndex = NewIndex;
+
+	// 播放中切帧：视口会退出播放预览，但播放时钟在编辑器这一侧。
+	// 不同时停掉的话，bIsPlaying 仍在后台推进，状态文字会继续报「播放中」，
+	// 而画面上已经回到关键帧——两边各说各话。
+	if (bSelectionChanged
+		&& (bIsPlaying || (ViewportWidget.IsValid() && ViewportWidget->IsPlaybackVisible())))
+	{
+		StopPlayback();
+	}
 
 	if (ViewportWidget.IsValid())
 	{
@@ -222,6 +240,9 @@ void FPoseGroupProxyAssetEditor::OnAssetPropertyChanged(const FPropertyChangedEv
 		return;
 	}
 
+	// 资产内容变了，旧生成结果不再对应当前关键帧/轨迹。
+	MarkGenerationStale();
+
 	if (ViewportWidget.IsValid())
 	{
 		ViewportWidget->RefreshFromAsset();
@@ -259,6 +280,7 @@ void FPoseGroupProxyAssetEditor::AddKey()
 	GroupAsset->Keys.Add(NewKey);
 	GroupAsset->Solve();
 	GroupAsset->MarkPackageDirty();
+	MarkGenerationStale();
 
 	const int32 NewIndex = GroupAsset->Keys.Num() - 1;
 	RefreshFromAsset();
@@ -278,6 +300,7 @@ void FPoseGroupProxyAssetEditor::DeleteSelectedKey()
 	GroupAsset->Keys.RemoveAt(SelectedKeyIndex);
 	GroupAsset->Solve();
 	GroupAsset->MarkPackageDirty();
+	MarkGenerationStale();
 
 	RefreshFromAsset();
 
@@ -287,36 +310,81 @@ void FPoseGroupProxyAssetEditor::DeleteSelectedKey()
 
 void FPoseGroupProxyAssetEditor::SetSelectedKeyFrame(int32 NewFrame)
 {
-	if (GroupAsset == nullptr || !GroupAsset->Keys.IsValidIndex(SelectedKeyIndex))
+	SetKeyFrame(SelectedKeyIndex, NewFrame);
+}
+
+void FPoseGroupProxyAssetEditor::SetKeyTimeSeconds(int32 KeyIndex, double Seconds)
+{
+	if (GroupAsset == nullptr || !GroupAsset->Keys.IsValidIndex(KeyIndex))
 	{
 		return;
 	}
+	if (GroupAsset->Settings.FrameRate <= 0.0)
+	{
+		bLastGenerationFailed = true;
+		GenerationStatus = TEXT("帧率必须大于 0，无法按秒换算帧号。");
+		return;
+	}
+	SetKeyFrame(
+		KeyIndex,
+		FMath::RoundToInt(Seconds * GroupAsset->Settings.FrameRate));
+}
 
-	if (NewFrame < 0 || NewFrame == GroupAsset->Keys[SelectedKeyIndex].Frame)
+void FPoseGroupProxyAssetEditor::SetKeyFrame(int32 KeyIndex, int32 NewFrame)
+{
+	if (GroupAsset == nullptr || !GroupAsset->Keys.IsValidIndex(KeyIndex))
+	{
+		return;
+	}
+	if (NewFrame < 0)
+	{
+		bLastGenerationFailed = true;
+		GenerationStatus = FString::Printf(TEXT("帧号不能为负：%d。"), NewFrame);
+		return;
+	}
+	if (NewFrame == GroupAsset->Keys[KeyIndex].Frame)
 	{
 		return;
 	}
 
 	// 帧号必须严格递增：这里不静默纠正，而是拒绝并保持原值。
 	// 悄悄改掉作者刚输入的数是更糟的体验——他会以为改成功了。
-	const bool bHasPrev = SelectedKeyIndex > 0;
-	const bool bHasNext = GroupAsset->Keys.IsValidIndex(SelectedKeyIndex + 1);
+	const bool bHasPrev = KeyIndex > 0;
+	const bool bHasNext = GroupAsset->Keys.IsValidIndex(KeyIndex + 1);
 
-	if (bHasPrev && NewFrame <= GroupAsset->Keys[SelectedKeyIndex - 1].Frame)
+	if (bHasPrev && NewFrame <= GroupAsset->Keys[KeyIndex - 1].Frame)
 	{
+		bLastGenerationFailed = true;
+		GenerationStatus = FString::Printf(
+			TEXT("帧号必须严格递增：%d 必须大于前一帧 %d。"),
+			NewFrame, GroupAsset->Keys[KeyIndex - 1].Frame);
 		return;
 	}
-	if (bHasNext && NewFrame >= GroupAsset->Keys[SelectedKeyIndex + 1].Frame)
+	if (bHasNext && NewFrame >= GroupAsset->Keys[KeyIndex + 1].Frame)
 	{
+		bLastGenerationFailed = true;
+		GenerationStatus = FString::Printf(
+			TEXT("帧号必须严格递增：%d 必须小于后一帧 %d。"),
+			NewFrame, GroupAsset->Keys[KeyIndex + 1].Frame);
 		return;
 	}
 
 	const FScopedTransaction Transaction(LOCTEXT("EditPoseKeyFrame", "修改关键帧帧号"));
 	GroupAsset->Modify();
 
-	GroupAsset->Keys[SelectedKeyIndex].Frame = NewFrame;
+	GroupAsset->Keys[KeyIndex].Frame = NewFrame;
 	GroupAsset->Solve();
 	GroupAsset->MarkPackageDirty();
+	MarkGenerationStale();
+
+	bLastGenerationFailed = false;
+	GenerationStatus = FString::Printf(
+		TEXT("关键帧 %d 已改为 %.3f s（帧 %d）。"),
+		KeyIndex,
+		GroupAsset->Settings.FrameRate > 0.0
+			? static_cast<double>(NewFrame) / GroupAsset->Settings.FrameRate
+			: 0.0,
+		NewFrame);
 
 	RefreshFromAsset();
 }
@@ -324,7 +392,14 @@ void FPoseGroupProxyAssetEditor::SetSelectedKeyFrame(int32 NewFrame)
 
 void FPoseGroupProxyAssetEditor::OnClose()
 {
-	// 元素层的委托是静态的，不解绑会留下悬空回调。
+	// 播放时钟必须在这里停掉：编辑器关掉后 ticker 仍会持有 this。
+	if (PlaybackTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(PlaybackTickerHandle);
+		PlaybackTickerHandle.Reset();
+	}
+
+	// 元素层委托是静态的，不解绑会留下悬空回调。
 	UnbindElementMovement();
 
 	if (UndoRedoHandle.IsValid())

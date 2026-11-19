@@ -42,7 +42,14 @@ void SPoseGroupViewport::SetGroupAsset(UPoseGroupProxyAsset* InAsset)
 
 void SPoseGroupViewport::SetSelectedKey(int32 KeyIndex)
 {
+	const bool bSelectionChanged = SelectedKeyIndex != KeyIndex;
 	SelectedKeyIndex = KeyIndex;
+	// 选中关键帧意味着要回到编辑视图；否则播放组件仍显示，
+	// 关键帧组件被隐藏，gizmo 却还在操作看不见的组件。
+	if (bSelectionChanged && bPlaybackVisible)
+	{
+		SetPlaybackVisible(false);
+	}
 	ApplySelectionHighlight();
 
 	if (FPoseGroupViewportClient* ViewportClientPtr = GetPoseViewportClient())
@@ -165,6 +172,9 @@ void SPoseGroupViewport::SyncPoseComponents()
 	}
 
 	ApplySelectionHighlight();
+	// ApplyKeyToComponent 会按「有没有网格」重新显示关键帧组件；
+	// 如果当前处于播放预览，关键帧仍应保持隐藏，否则新旧姿态会叠在一起。
+	SetPlaybackVisible(bPlaybackVisible);
 
 	if (FPoseGroupViewportClient* ViewportClientPtr = GetPoseViewportClient())
 	{
@@ -241,5 +251,98 @@ void SPoseGroupViewport::AddReferencedObjects(FReferenceCollector& Collector)
 	{
 		Collector.AddReferencedObject(Component);
 	}
+	Collector.AddReferencedObject(PlaybackComponent);
 	Collector.AddReferencedObject(GroupAsset);
+}
+
+void SPoseGroupViewport::SetPlaybackFrames(const TArray<TArray<FTransform>>& LocalPerFrame)
+{
+	PlaybackFrames = LocalPerFrame;
+	PlaybackFrameIndex = PlaybackFrames.Num() > 0 ? 0 : INDEX_NONE;
+
+	if (!PreviewScene.IsValid())
+	{
+		return;
+	}
+
+	// 预览组件只在第一次播放时创建；之后复用，避免每播一次就新建一个蒙皮组件。
+	if (PlaybackComponent == nullptr)
+	{
+		PlaybackComponent = CreatePoseComponent();
+		if (PlaybackComponent == nullptr)
+		{
+			return;
+		}
+	}
+
+	// 每次生成都重新应用关键帧的网格与材质：组件复用，但骨架/网格可能被作者换过。
+	// 播放角色必须与关键帧姿态来自同一骨架，否则骨名对不上，播放出来是一具静止的参考姿态。
+	if (GroupAsset != nullptr)
+	{
+		for (const FPoseKey& Key : GroupAsset->Keys)
+		{
+			if (Key.PoseAsset != nullptr
+				&& !Key.PoseAsset->PreviewMesh.IsNull()
+				&& Key.PoseAsset->IsValidPose())
+			{
+				PlaybackComponent->ApplyPoseAsset(Key.PoseAsset);
+				break;
+			}
+		}
+	}
+
+	SetPlaybackFrame(PlaybackFrameIndex);
+}
+
+void SPoseGroupViewport::ClearPlaybackFrames()
+{
+	PlaybackFrames.Reset();
+	PlaybackFrameIndex = INDEX_NONE;
+	bPlaybackVisible = false;
+	if (PlaybackComponent != nullptr)
+	{
+		PlaybackComponent->SetVisibility(false);
+	}
+	SetPlaybackVisible(false);
+}
+
+void SPoseGroupViewport::SetPlaybackFrame(int32 FrameIndex)
+{
+	if (!PlaybackFrames.IsValidIndex(FrameIndex) || PlaybackComponent == nullptr)
+	{
+		return;
+	}
+	PlaybackFrameIndex = FrameIndex;
+
+	const TArray<FTransform>& Frame = PlaybackFrames[FrameIndex];
+	// PoseableMesh 的 BoneSpaceTransforms 就是组件空间的骨骼局部变换；
+	// 按 UE 骨架的骨槽位写入，找不到的骨保持参考姿态。
+	// 生成后又换了预览网格时，两边骨数可能不同；只写两边都存在的槽位，
+	// 避免越界写进 BoneSpaceTransforms。
+	const int32 BoneCount = FMath::Min(Frame.Num(), PlaybackComponent->BoneSpaceTransforms.Num());
+	for (int32 BoneIndex = 0; BoneIndex < BoneCount; ++BoneIndex)
+	{
+		PlaybackComponent->BoneSpaceTransforms[BoneIndex] = Frame[BoneIndex];
+	}
+	// BoneSpaceTransforms 是父级相对（根骨相对组件）的局部变换；
+	// 根骨已经在 Frame[0] 里带上了整段位移/朝向，不能再写组件变换，
+	// 否则最终骨骼矩阵 = 组件变换 × 根局部变换会把根运动叠加两次。
+	PlaybackComponent->MarkRefreshTransformDirty();
+	PlaybackComponent->RefreshBoneTransforms();
+}
+
+void SPoseGroupViewport::SetPlaybackVisible(bool bVisible)
+{
+	bPlaybackVisible = bVisible;
+	for (TObjectPtr<UPoseComponent>& Component : PoseComponents)
+	{
+		if (Component != nullptr)
+		{
+			Component->SetVisibility(!bVisible);
+		}
+	}
+	if (PlaybackComponent != nullptr)
+	{
+		PlaybackComponent->SetVisibility(bVisible);
+	}
 }

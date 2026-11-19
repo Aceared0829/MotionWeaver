@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Styling/SlateColor.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
 
@@ -16,6 +17,9 @@ struct FPoseKeyRow
 
 	/** 帧号。时间轴上按它排序，也是这一段运动的真实时间轴。 */
 	int32 Frame = 0;
+
+	/** 帧号换算出的秒数；编辑器按它展示与编辑。 */
+	double Seconds = 0.0;
 
 	/** 这一帧用的姿态资产名，没有时显示「空」。 */
 	FString PoseName;
@@ -63,8 +67,19 @@ private:
 	FReply OnAddClicked();
 	FReply OnDeleteClicked();
 
-	/** 选中行的帧号被人改过之后写回资产。 */
-	void OnFrameCommitted(const FText& NewText, ETextCommit::Type CommitType, FRowPtr Row);
+	/** 生成并播放；未生成或已过期时由编辑器自动生成。 */
+	FReply OnGenerateClicked();
+	FReply OnTogglePlaybackClicked();
+	FReply OnStopPlaybackClicked();
+
+	/** 播放状态文字：帧号 / 状态。 */
+	FText GetPlaybackStatusText() const;
+
+	/** 状态文字颜色：失败标红、过期标黄、播放中标蓝。 */
+	FSlateColor GetPlaybackStatusColor() const;
+
+	/** 选中行的秒数被人改过之后换算回帧号并写回资产。 */
+	void OnSecondsCommitted(const FText& NewText, ETextCommit::Type CommitType, FRowPtr Row);
 
 	TWeakPtr<FPoseGroupProxyAssetEditor> EditorPtr;
 

@@ -62,6 +62,15 @@ double UPoseGroupProxyAsset::GetDurationSeconds() const
 
 void UPoseGroupProxyAsset::Solve()
 {
+	// Seconds 是派生字段：帧号才是序列化真值。每次求解统一同步一次，
+	// 细节面板与时间轴看到的秒数才不会和帧号各说各话。
+	for (FPoseKey& Key : Keys)
+	{
+		Key.Seconds = Settings.FrameRate > 0.0
+			? static_cast<double>(Key.Frame) / Settings.FrameRate
+			: 0.0;
+	}
+
 	// 求解器是纯数据层（只吃数组、只吐数组），不碰 UWorld。
 	// 资产直接调它，因此「同一条链」在编辑器、关卡、导出三处算出来的
 	// 永远是同一份结果——不存在两套求解实现互相漂移的可能。
@@ -76,6 +85,17 @@ void UPoseGroupProxyAsset::PostEditChangeProperty(FPropertyChangedEvent& Propert
 
 	// 不按属性名过滤：改 Keys 里某一项时事件名是 "LocalLocation" 而不是 "Keys"，
 	// 白名单会漏掉最常见的那种改动。求解是纯内存计算，一次几毫秒，重算不心疼。
+	// 唯一的例外是 Seconds：它是派生字段，编辑后必须先换算回 Frame 再求解，
+	// 否则这次改动会被 Solve() 同步覆盖掉，表现为「按秒改了却没生效」。
+	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(FPoseKey, Seconds))
+	{
+		const int32 KeyIndex = PropertyChangedEvent.GetArrayIndex(TEXT("Keys"));
+		if (Keys.IsValidIndex(KeyIndex) && Settings.FrameRate > 0.0)
+		{
+			Keys[KeyIndex].Frame = FMath::Max(
+				0, FMath::RoundToInt(Keys[KeyIndex].Seconds * Settings.FrameRate));
+		}
+	}
 	Solve();
 
 	// 改完数据要让内容浏览器与已打开的编辑器知道资产变了，

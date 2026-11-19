@@ -43,6 +43,27 @@ public:
 	/** 只重贴选中帧，用于拖拽结束或元素层移动。 */
 	void RefreshSelectedPose();
 
+	/**
+	 * 生成结果预览。
+	 *
+	 * 刻意与关键帧组件池分开：关键帧是编辑数据，生成结果只是临时预览，
+	 * 播放时不能移动或改写任何关键帧。
+	 */
+	void SetPlaybackFrames(const TArray<TArray<FTransform>>& LocalPerFrame);
+	void ClearPlaybackFrames();
+
+	/** 播放游标：把生成结果的某一帧贴到预览组件上。 */
+	void SetPlaybackFrame(int32 FrameIndex);
+
+	/** 当前是否有可播放的生成结果。 */
+	bool HasPlaybackFrames() const { return PlaybackFrames.Num() > 0; }
+	int32 GetPlaybackFrameCount() const { return PlaybackFrames.Num(); }
+	int32 GetPlaybackFrameIndex() const { return PlaybackFrameIndex; }
+
+	/** 是否显示生成结果（播放中）而隐藏关键帧组件。 */
+	void SetPlaybackVisible(bool bVisible);
+	bool IsPlaybackVisible() const { return bPlaybackVisible; }
+
 	/** 视口里拖拽产生的改动。由编辑器接走，避免控件直接改资产。 */
 	DECLARE_DELEGATE_OneParam(FOnPoseKeyDragged, const FPoseKey& /*NewKeyValue*/);
 	FOnPoseKeyDragged OnKeyDragged;
@@ -99,4 +120,18 @@ private:
 	TObjectPtr<UPoseGroupProxyAsset> GroupAsset = nullptr;
 
 	int32 SelectedKeyIndex = INDEX_NONE;
+
+	/**
+	 * 生成结果预览组件。
+	 *
+	 * 用独立的 UPoseComponent，与关键帧组件池分开：生成结果需要每帧
+	 * 改写骨骼，而关键帧组件在编辑时必须保持静止可拖。
+	 */
+	TObjectPtr<UPoseComponent> PlaybackComponent = nullptr;
+
+	/** 每帧每骨的局部变换；空表示还没有生成结果。 */
+	TArray<TArray<FTransform>> PlaybackFrames;
+
+	int32 PlaybackFrameIndex = INDEX_NONE;
+	bool bPlaybackVisible = false;
 };

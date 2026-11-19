@@ -6,9 +6,18 @@ UE 5.8 动画工具链插件。当前提供两条链路：
 2. **姿态代理组**：把多个姿态按帧号串成一段运动，支持求解轨迹与视口拖动编辑；
    视口里所有关键帧同屏显示，选中帧实体高亮，其余帧以线框幽灵呈现
 
-当前另提供 **RefPose 阶段二 NNE 推理**：加载四输入 ONNX，在 `NNERuntimeORTCpu`
-上执行并校验 `joints` 输出。暂不做骨架转换、蒙皮或 AnimGraph；也没有异步调度。
-`Public/RefPose/` 下是模型资产和会话，`MotionWeaverTests` 提供真实窗口数值门禁。
+当前另提供 **RefPose 生成与播放**：加载四输入 ONNX 与骨架契约
+（`skeleton.json` / `stats.bin` / `manifest.json` timing），在 `NNERuntimeORTCpu`
+上推理并校验 `joints` 输出；随后解码 6D 旋转、由位置差分求解逐骨局部变换、
+按显式映射重定向到 UE 骨架。姿态代理组编辑器里的「生成并播放」会用关键帧参考姿态
+与求解器产出的 Root 轨迹驱动这条链路。
+
+边界：不训练新模型、不预测 Root、不做 AnimGraph/玩家控制/碰撞/IK/打包；
+当前按求解轨迹整段连续生成：每窗口输入 48 帧（历史 24 + 未来 24）、输出 24 帧，
+所有窗口共用同一个播放原点，接缝不会重复叠加 Root。骨架映射覆盖 62/78 骨，
+面部 4 骨与 12 根末端骨保持参考姿态，因此还不是完整蒙皮效果。
+`Public/RefPose/` 下是模型契约、装配、解算、映射与生成器，`MotionWeaverTests`
+提供真实窗口数值门禁与完整管线测试。
 
 本地运行门禁前先按 `inference/export/export_refpose_ue.py` 导出模型包，再执行：
 
@@ -18,7 +27,8 @@ export MW_REFPOSE_UE_REPORT=/path/to/ue_nne_report.json
 bash scripts/ue.sh RunTests
 ```
 
-当前 Linux 只验 CPU；Windows DirectML、骨架映射与阶段三蒙皮另行验证。
+当前 Linux 只验 CPU；Windows DirectML 与阶段三蒙皮另行验证。完整管线测试使用
+`SKM_Manny`，因为 `-NullRHI` 下 `SK_UEFN_Mannequin` 可能加载不出 `USkeletalMesh`。
 
 本文件说明源码怎么分目录、模块怎么依赖，以及新功能该放哪。
 
