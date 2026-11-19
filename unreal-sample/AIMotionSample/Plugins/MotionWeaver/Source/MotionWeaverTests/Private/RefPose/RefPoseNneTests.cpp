@@ -6,6 +6,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "RefPose/RefPoseModel.h"
+#include "RefPose/RefPosePoseContract.h"
 #include "RefPose/RefPoseSession.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonReader.h"
@@ -291,6 +292,113 @@ bool FRefPoseNneRejectsBadInputTest::RunTest(const FString& Parameters)
 	double Milliseconds = 0.0;
 	TestFalse(TEXT("空输入被拒绝"), Session->Run(Inputs, Output, Milliseconds, Error));
 	TestFalse(TEXT("返回可诊断错误"), Error.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRefPoseSolverRealOutputTest,
+	"MotionWeaver.RefPose.Contract.SolverRebuildsRealOutput",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRefPoseSolverRealOutputTest::RunTest(const FString& Parameters)
+{
+	// 用真实窗口夹具的模型输出验证解算器：位置解码后逐骨求方向，
+	// 再用局部变换复算，方向必须逐骨回到模型输出。这条测试绕过了输入装配，
+	// 专门抓「解码布局」和「局部旋转未累计父级」两类问题。
+	const FString PackageDir = FPlatformMisc::GetEnvironmentVariable(TEXT("MW_REFPOSE_UE_PACKAGE"));
+	if (PackageDir.IsEmpty())
+	{
+		AddInfo(TEXT("未设置 MW_REFPOSE_UE_PACKAGE，跳过真实输出解算检查。"));
+		return true;
+	}
+
+	FString Error;
+	TStrongObjectPtr<URefPoseModelAsset> Asset(NewObject<URefPoseModelAsset>());
+	if (!TestTrue(TEXT("读取模型契约"), Asset->LoadContractFromPackage(PackageDir, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TArray<float> Raw;
+	const FString FixtureDir = PackageDir / TEXT("fixtures/sample_000");
+	if (!TestTrue(TEXT("读取 expected.f32"), LoadFloatArray(
+		FixtureDir / TEXT("expected.f32"), FrameCount * PoseFeatures, Raw, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TArray<FRefPosePoseContract::FDecodedFrame> Decoded;
+	if (!TestTrue(TEXT("解码真实输出"), FRefPosePoseContract::DecodeWindow(
+		Raw, BoneCount, FrameCount, Asset->PoseMean, Asset->PoseStd, Decoded, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	TArray<int32> Parents;
+	TArray<FTransform> Reference;
+	Parents.Reserve(Asset->Bones.Num());
+	Reference.Reserve(Asset->Bones.Num());
+	for (const FRefPoseBoneContract& Bone : Asset->Bones)
+	{
+		Parents.Add(Bone.Parent);
+		Reference.Add(FTransform(
+			FQuat::Identity, FVector(Bone.LocalPositionMeters * 100.0)));
+	}
+
+	TArray<TArray<FTransform>> Local;
+	FRefPoseSkeletonSolver::FMetrics Metrics;
+	if (!TestTrue(TEXT("解算真实输出"), FRefPoseSkeletonSolver::Solve(
+		Parents, Reference, Decoded, Local, Metrics, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+	TestEqual(TEXT("退化骨数"), Metrics.DegenerateBones, 0);
+	TestTrue(TEXT("骨长偏差为零"),
+		FMath::IsNearlyZero(Metrics.MaxBoneLengthDeviationCm, 1e-9));
+
+	TArray<TArray<FVector>> Rebuilt;
+	if (!TestTrue(TEXT("复算真实输出"), FRefPoseSkeletonSolver::RebuildSkeletonPositions(
+		Parents, Local, Rebuilt, Error)))
+	{
+		AddError(Error);
+		return true;
+	}
+
+	int32 ComparedDirections = 0;
+	for (int32 Frame = 0; Frame < Rebuilt.Num(); ++Frame)
+	{
+		for (int32 Bone = 0; Bone < Parents.Num(); ++Bone)
+		{
+			const int32 Parent = Parents[Bone];
+			if (Parent < 0)
+			{
+				continue;
+			}
+			const FVector3d Expected =
+				Decoded[Frame].PositionsMeters[Bone]
+				- Decoded[Frame].PositionsMeters[Parent];
+			if (Expected.IsNearlyZero(1e-6))
+			{
+				continue;
+			}
+			const FVector Actual =
+				Rebuilt[Frame][Bone] - Rebuilt[Frame][Parent];
+			const FVector3d ActualMotion =
+				FRefPosePoseContract::ToMotionPosition(Actual);
+			if (!TestTrue(
+				FString::Printf(TEXT("帧 %d 骨 %d 方向"), Frame, Bone),
+				ActualMotion.GetSafeNormal().Equals(
+					Expected.GetSafeNormal(), 1e-5)))
+			{
+				return true;
+			}
+			++ComparedDirections;
+		}
+	}
+	TestTrue(TEXT("比较了足够多的骨方向"), ComparedDirections > 1000);
 	return true;
 }
 

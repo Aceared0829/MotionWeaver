@@ -58,6 +58,17 @@ struct MOTIONWEAVER_API FPoseKey
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Key", meta = (ClampMin = "0"))
 	int32 Frame = 0;
 
+	/**
+	 * 时间（秒），由 Frame / Settings.FrameRate 派生。
+	 *
+	 * 只用于编辑器展示与按秒编辑；标 Transient 不参与序列化，
+	 * 避免「帧号」和「秒数」两份真值互相漂移。改这个字段后，
+	 * UPoseGroupProxyAsset::PostEditChangeProperty 会换算回 Frame。
+	 */
+	UPROPERTY(EditAnywhere, Transient, BlueprintReadWrite, Category = "Key",
+		meta = (DisplayName = "时间（秒）", ClampMin = "0.0"))
+	double Seconds = 0.0;
+
 	/** 标记这一帧确实停住（速度归零）。不标则曲线连续穿过。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Key")
 	bool bStopHere = false;

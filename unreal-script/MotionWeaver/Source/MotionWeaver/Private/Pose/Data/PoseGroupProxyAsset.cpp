@@ -2,6 +2,7 @@
 
 #include "Pose/Data/PoseGroupProxyAsset.h"
 
+#include "Core/MotionWeaverLog.h"
 #include "Pose/Solve/PoseChain.h"
 
 #include "Misc/DataValidation.h"
@@ -62,6 +63,15 @@ double UPoseGroupProxyAsset::GetDurationSeconds() const
 
 void UPoseGroupProxyAsset::Solve()
 {
+	// Seconds 是派生字段：帧号才是序列化真值。每次求解统一同步一次，
+	// 细节面板与时间轴看到的秒数才不会和帧号各说各话。
+	for (FPoseKey& Key : Keys)
+	{
+		Key.Seconds = Settings.FrameRate > 0.0
+			? static_cast<double>(Key.Frame) / Settings.FrameRate
+			: 0.0;
+	}
+
 	// 求解器是纯数据层（只吃数组、只吐数组），不碰 UWorld。
 	// 资产直接调它，因此「同一条链」在编辑器、关卡、导出三处算出来的
 	// 永远是同一份结果——不存在两套求解实现互相漂移的可能。
@@ -76,6 +86,45 @@ void UPoseGroupProxyAsset::PostEditChangeProperty(FPropertyChangedEvent& Propert
 
 	// 不按属性名过滤：改 Keys 里某一项时事件名是 "LocalLocation" 而不是 "Keys"，
 	// 白名单会漏掉最常见的那种改动。求解是纯内存计算，一次几毫秒，重算不心疼。
+	// 唯一的例外是 Seconds：它是派生字段，编辑后必须先换算回 Frame 再求解，
+	// 否则这次改动会被 Solve() 同步覆盖掉，表现为「按秒改了却没生效」。
+	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(FPoseKey, Seconds))
+	{
+		const int32 KeyIndex = PropertyChangedEvent.GetArrayIndex(TEXT("Keys"));
+		if (Keys.IsValidIndex(KeyIndex) && Settings.FrameRate > 0.0)
+		{
+			const int32 OldFrame = Keys[KeyIndex].Frame;
+			const double FrameValue = Keys[KeyIndex].Seconds * Settings.FrameRate;
+
+			// 细节面板这条路径没有时间轴那样的错误提示，但也不能把资产改坏：
+			// 非法帧号直接拒绝（恢复成旧秒数），并写日志说明原因。
+			const bool bValidRange =
+				FMath::IsFinite(FrameValue)
+				&& FrameValue >= 0.0
+				&& FrameValue <= static_cast<double>(TNumericLimits<int32>::Max());
+			const int32 NewFrame = bValidRange
+				? FMath::Max(0, FMath::RoundToInt(FrameValue))
+				: OldFrame;
+			const bool bHasPrev = KeyIndex > 0;
+			const bool bHasNext = Keys.IsValidIndex(KeyIndex + 1);
+			const bool bValidOrder =
+				(!bHasPrev || NewFrame > Keys[KeyIndex - 1].Frame)
+				&& (!bHasNext || NewFrame < Keys[KeyIndex + 1].Frame);
+			if (!bValidRange || !bValidOrder)
+			{
+				Keys[KeyIndex].Seconds =
+					static_cast<double>(OldFrame) / Settings.FrameRate;
+				UE_LOG(LogMotionWeaver, Warning,
+					TEXT("拒绝关键帧 %d 的秒数修改：%s。"),
+					KeyIndex,
+					!bValidRange ? TEXT("换算后的帧号超出范围") : TEXT("帧号不满足严格递增"));
+			}
+			else
+			{
+				Keys[KeyIndex].Frame = NewFrame;
+			}
+		}
+	}
 	Solve();
 
 	// 改完数据要让内容浏览器与已打开的编辑器知道资产变了，

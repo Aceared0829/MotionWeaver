@@ -68,6 +68,7 @@ void FPoseGroupProxyAssetEditor::ApplyDraggedKey(const FPoseKey& NewKeyValue)
 	// 拖拽期间不重解整条链——作者还在动，只有松手才需要最终结果。
 	// 但资产要标脏，松手时统一 Solve。
 	GroupAsset->MarkPackageDirty();
+	MarkGenerationStale();
 }
 
 void FPoseGroupProxyAssetEditor::FinishDrag()
@@ -88,6 +89,7 @@ void FPoseGroupProxyAssetEditor::FinishDrag()
 
 	GroupAsset->Solve();
 	RefreshFromAsset();
+	MarkGenerationStale();
 }
 
 void FPoseGroupProxyAssetEditor::SyncPreviewFromAsset()
@@ -182,6 +184,7 @@ void FPoseGroupProxyAssetEditor::OnPostUndoRedo()
 
 	GroupAsset->Solve();
 	RefreshFromAsset();
+	MarkGenerationStale();
 }
 
 #undef LOCTEXT_NAMESPACE
