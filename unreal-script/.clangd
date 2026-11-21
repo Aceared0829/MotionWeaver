@@ -2,7 +2,7 @@
 # 它生成编译数据库（unreal-sample/AIMotionSample 有自己的 .clangd，互不影响）。
 #
 # 这里的 compile_commands.json 由 unreal-script/gen_compile_commands.py 生成：主工程已
-# 验证的 UE 5.8 引擎 include 路径 + Definitions 宏，加上插件 Build.cs 声明的依赖模块
+# 验证的 UE 5.9 引擎 include 路径 + Definitions 宏，加上插件 Build.cs 声明的依赖模块
 # 路径与 *_API 宏，并为缺失的 UHT 生成头提供最小存根（.clangd-stubs/）。它让 clangd 能
 # 解析引擎类型、插件自身符号与反射宏，但它不是真实编译命令：
 #   - 源码有改动（新增文件、改 GENERATED_BODY 行号、改 Build.cs 依赖）后重跑该脚本；

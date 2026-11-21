@@ -2,6 +2,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- 在 Linux 上只做还原/编译，产物在 Windows 运行。 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -11,6 +13,6 @@
     <SelfContained>false</SelfContained>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
-    <ApplicationIcon>assets\motionbricks.ico</ApplicationIcon>
+    <ApplicationIcon>assets/motionbricks.ico</ApplicationIcon>
   </PropertyGroup>
 </Project>

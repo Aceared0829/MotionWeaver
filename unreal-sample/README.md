@@ -1,6 +1,6 @@
 # Unreal 实验宿主与资产边界
 
-`AIMotionSample/AIMotionSample.uproject` 是 UE 5.8 的实验宿主，用于逐步测试 UE 内实际推理及动画工具链，验证后再考虑正式使用；**不承担动作数据导入、清洗或数据集处理**。
+`AIMotionSample/AIMotionSample.uproject` 是 UE 5.9 的实验宿主，用于逐步测试 UE 内实际推理及动画工具链，验证后再考虑正式使用；**不承担动作数据导入、清洗或数据集处理**。
 
 ## 当前状态：GASP 副本 + 已挂载 MotionWeaver 插件
 
@@ -23,13 +23,13 @@
 
 外部 `D:/GameAnimationSample` 是已有数据流程使用的工程，不迁入本宿主。
 
-## Linux 开发环境（UE 5.8）
+## Linux 开发环境（UE 5.9）
 
 仓库只保存工程配置，不提交引擎、`Binaries/`、`Intermediate/` 与 `Saved/`。
 Linux 侧统一通过 `scripts/ue.sh` 操作宿主工程：
 
 ```bash
-export UE_ROOT=/path/to/UE_5.8     # 或写入被忽略的 .vscode/ue-root
+export UE_ROOT=/path/to/UE_5.9     # 或写入被忽略的 .vscode/ue-root
 bash scripts/ue.sh Check
 bash scripts/ue.sh BuildEditor      # 首次构建，同时按源码清单刷新 clangd 索引
 bash scripts/ue.sh LaunchEditor
@@ -44,6 +44,12 @@ bash scripts/ue.sh LaunchEditor
 | `GenerateProjectFiles` | 生成 IDE 工程文件 |
 | `LaunchEditor` | 带 `DISPLAY` / `XDG_RUNTIME_DIR` 启动编辑器 |
 | `RunTests` | 以 NullRHI 跑 `MotionWeaver` 自动化测试 |
+
+COSMIC 等 Wayland 桌面下编辑器经 Xwayland 运行，Slate 的 tooltip 和通知会
+生成额外的无标题顶层窗口，既多出一个窗口，又会截走鼠标点击。工程在
+`Config/DefaultEngine.ini` 的 `[ConsoleVariables]` 中关闭了这两类窗口，
+`LaunchEditor` / `DebugServer` 也固定 `SDL_VIDEODRIVER=x11`。需要编辑器内
+tooltip 时可在 `Cmd` 中临时执行 `Slate.EnableTooltips 1`（窗口问题会回来）。
 
 `.vscode/tasks.json` 里有同名任务。clangd 只读 UBT 生成的数据库；新增、改名或
 删除 C++ 文件后重跑 `GenerateClangDatabase`，或在 VS Code 里允许自动任务、

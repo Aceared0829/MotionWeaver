@@ -183,7 +183,7 @@ tools/compat/       历史命令与检查点导入兼容源码
 
 | 位置 | 用途 |
 | --- | --- |
-| [unreal-sample](unreal-sample/README.md) | UE 5.8 实验宿主 `AIMotionSample` 的边界；当前尚未接入模型推理 |
+| [unreal-sample](unreal-sample/README.md) | UE 5.9 实验宿主 `AIMotionSample` 的边界；当前尚未接入模型推理 |
 | [unreal-script](unreal-script/README.md) | UE 插件安装、动画导出、数据约定与训练说明 |
 | [模型与参考演示说明](docs/motionbricks/README.md) | 上游模型技术说明与 G1 参考演示 |
 | [动作表示](docs/motionbricks/motion_representation.md) | 骨架、Root Motion、姿态特征和坐标约定 |
