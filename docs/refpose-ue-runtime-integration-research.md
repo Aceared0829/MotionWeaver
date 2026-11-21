@@ -55,7 +55,7 @@
 | **A. 新 AnimNode（推荐）** | 新建 `FAnimNode_RefPose`，沿用旧节点的「anim worker 同步 RunSync + PoseBuffer 融合」骨架，输出 `FCompactPose` | 与旧实验链路同构，工作台/测试夹具可复用；线程约束已被验证（旧节点实测推理线程 ID 与 GameThread 不同，`README.md:52`） | 必须在 `Evaluate` 里同时拿到「未来 Root 计划」与「参考帧」，而 `FPoseContext` 只给姿态——需要一条 GameThread→AnimProxy 的数据通道 |
 | **B. AnimInstance 原生覆写** | 在 `UAnimInstance::NativeUpdateAnimation` 里算、`NativeEvaluateAnimation` 里写 | 数据通道最自由（可直接读 CMC/Mover/GameplayTarget） | 会与 Motion Matching 节点的求值顺序耦合；失去 AnimGraph 里可插拔/可调试的节点粒度 |
 | **C. PoseSearch 前置** | 用 PoseSearch 生成 `FTransformTrajectory`（含未来预测段）作为 `root_plan` 来源，再把 refpose 作为后置节点 | 未来轨迹**不用自己发明**，官方已有 CMC 地面模拟 | PoseSearch 的 trajectory 采样率/粒度需对齐到 120 Hz 的 24 帧网格；Motion Matching 数据库与 refpose 生成结果可能打架 |
-| **D. Mover** | 用 Mover 的模拟状态产出未来轨迹 | GASP 已启用 Mover（`GameAnimationSample.uproject` 的 Plugins 列表含 `Mover`/`ChaosMover`），且 Mover 有 `AnimRootMotionLayeredMove`/`RootMotionAttributeLayeredMove` | Mover 在 5.8 仍是 `Engine\Plugins\Experimental\Mover`；API 与回滚路径需按项目版本核验，不能假定与 CMC 等价（这点在 `docs/player-state-conditioned-animation-plan.md:17` 也已明确写过） |
+| **D. Mover** | 用 Mover 的模拟状态产出未来轨迹 | GASP 已启用 Mover（`GameAnimationSample.uproject` 的 Plugins 列表含 `Mover`/`ChaosMover`），且 Mover 有 `AnimRootMotionLayeredMove`/`RootMotionAttributeLayeredMove` | Mover 在 5.8 仍是 `Engine\Plugins\Experimental\Mover`；API 与回滚路径需按项目版本核验，不能假定与 CMC 等价（不能把 CMC 与 Mover 当成同一条执行路径；该计划已归档，见 [archive.md](archive.md)） |
 | **E. CMC Root 驱动** | CMC 负责胶囊位移，模型只出 root 相对姿态 | 与旧插件「Root 权威外置」一致，最保守 | 未来 24 帧的 Root 轨迹需要自己预测（CMC 只给当前 Velocity/Acceleration） |
 
 **建议：C/E 组合 + A 落地。** 即「CMC（或 Mover）拥有世界位移权威 → PoseSearch 的轨迹预测器提供未来 Root 计划 → 新 AnimNode 消费」。
@@ -86,7 +86,7 @@
 
 - **R1.1 数据通道**：`Evaluate_AnyThread` 里拿不到 GameThread 的轨迹；必须像旧节点那样用 `HasPreUpdate()` + `UAnimInstance` 侧快照（`AnimNode_AIAnimation.h:75-76`），并保证快照是原子的（旧代码的做法是只在 PreUpdate 访问 UObject，见 `AnimNode_AIAnimation.cpp:3` 注释）。
 - **R1.2 帧率不匹配**：模型训练是 120 Hz，GASP 动画资产是 30 Hz 采样、游戏以渲染帧推进。**必须先决定：抽到 30 Hz 再喂，还是重采样到 120 Hz 喂**。前者等于改变训练分布（未验证），后者需要 8.33 ms 网格（对 60 FPS 渲染意味着每帧最多 2 个采样点）。见「未证实」一节。
-- **R1.3 Root 双权威**：模型输出的是 root 相对姿态，世界位移必须只有一个执行者（CMC/Mover）。这条在 `docs/player-state-conditioned-animation-plan.md:11` 已作为硬边界写出。
+- **R1.3 Root 双权威**：模型输出的是 root 相对姿态，世界位移必须只有一个执行者（CMC/Mover）。这条硬边界仍有效；原计划已归档，见 [archive.md](archive.md)。
 
 ---
 
@@ -217,7 +217,7 @@ DmlFusedNode_1_4  provider=DmlExecutionProvider  dur 49-53 us
 ### 3.4 风险
 
 - **R3.1 120 vs 30 Hz 的语义漂移**：旧插件所有阈值（静止判定 0.01 cm / 0.001 rad、回绕、0.25 s 重置）都是 30 Hz 语义。直接搬到 120 Hz 会让「静止」判定变苛刻 4 倍。
-- **R3.2 未来窗口与响应性冲突**：200 ms 未来意味着玩家急停时模型仍看到「继续走」的旧计划，需要「按键/状态切换立即安排一次重规划」的旁路（`docs/player-state-conditioned-animation-plan.md:97` 已提出，尚未实现）。
+- **R3.2 未来窗口与响应性冲突**：200 ms 未来意味着玩家急停时模型仍看到「继续走」的旧计划，需要「按键/状态切换立即安排一次重规划」的旁路。原计划已归档，见 [archive.md](archive.md)，这条仍未实现。
 - **R3.3 GameThread 跳过**：旧节点在 GameThread 求值时直接放弃（`AnimNode_AIAnimation.cpp:179-183`）。refpose 推理更贵（4 输入拼装），若在 GameThread 求值会直接掉帧。
 
 ---

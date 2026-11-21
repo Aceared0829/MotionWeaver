@@ -1,7 +1,7 @@
 # MotionWeaver 代码整理方案
 
 > 状态：定稿，按阶段执行。创建于 2026-11-14。
-> 关联文档：[仓库目录](repository-layout.md)、[架构与路线](motionweaver-architecture.md)。
+> 关联文档：[仓库目录](repository-layout.md)、[官方与 refpose 对照](refpose-vs-motionbricks.md)。
 
 ## 一、结论
 

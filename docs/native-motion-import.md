@@ -2,7 +2,7 @@
 
 2026-10-18：本页仍描述保留来源骨架的导入层。后续固定目标骨架转换已实现为独立的 [UE → SOMA 重定向步骤](uefn-soma-retarget.md)，输出位于 `processed/gameanimation_soma`，不改变本页的原生存储契约。
 
-> 实现范围：来源读取 → 原生运动 → 坐标、单位、时间标准化 → 原生数据审核。输出仍使用来源骨架，跨骨架重定向尚未实现。2026-10-17 用户确认：统一训练目标为 SOMA uniform 固定人体骨架，UEFN 导出源骨架数据作为独立镜像来源保留，详见[训练骨架方向](soma-training-data-direction.md)。
+> 实现范围：来源读取 → 原生运动 → 坐标、单位、时间标准化 → 原生数据审核。输出仍使用来源骨架，跨骨架重定向尚未实现。2026-10-17 用户确认：统一训练目标为 SOMA uniform 固定人体骨架，UEFN 导出源骨架数据作为独立镜像来源保留。固定骨架转换见 [UE → SOMA 重定向](uefn-soma-retarget.md)。
 
 > 2026-10-17 恢复范围：从本聊天历史补丁还原 Python 运动契约、读写、标准化、格式适配、批次入口和原生审核接线及历史测试。CUE4Parse .NET 提取器源码不在本次恢复范围，下面的重新提取命令需要另行提供已编译提取器。已有 raw/processed 数据回读和审核无需提取器或 UE 环境。后面的 2026-10-15 CR 与浏览器验证是历史记录，当前恢复验证单独记录。
 
@@ -166,4 +166,4 @@ FBX 条目使用 `format: fbx`、`path` 和可选 Action 名称 `animation_id`�
 
 恢复模块已回读现有全部 1,970 条 UE 动画、226,502 帧，六类来源骨架各抽一条重新标准化并对照已有结果，错误为 0。审核队列哈希保持一致，1,970 条人工通过记录保留，数据库 `quick_check=ok`。恢复后的 HTTP 服务验证了首尾页和真实动画端点；历史导入、审核、BVH、查看器与预加载回归以及关键 Ruff 检查通过。
 
-另用一条真实 SOMA uniform BVH 验证了 78 节点读取、标准化及共享骨架往返。具体结果和边界见[恢复验证汇总](experiments/2026-10-17-native-motion-restoration.json)，Root/Hips 与采样时间的后续决策见[训练骨架方向](soma-training-data-direction.md)。
+另用一条真实 SOMA uniform BVH 验证了 78 节点读取、标准化及共享骨架往返。具体结果和边界见[恢复验证汇总](experiments/2026-10-17-native-motion-restoration.json)，Root/Hips 与采样时间的落地见 [SOMA 全库处理](soma-full-processing.md)。

@@ -1,6 +1,6 @@
 # 训练前复核与下一轮训推方案
 
-> 2026-09-28 架构方向更新：MotionWeaver 定义为基于原版 MotionBricks Tokenizer、Pose 网络和解码器的 UE 玩家模型；本文件第 6 节对 `ReferenceGuidedPose` 的继续训练仅作为轻量基线方案。见 [MotionWeaver 架构对比与迁移计划](../motionweaver-architecture.md)。
+> 2026-09-28 架构方向更新：MotionWeaver 定义为基于原版 MotionBricks Tokenizer、Pose 网络和解码器的 UE 玩家模型；本文件第 6 节对 `ReferenceGuidedPose` 的继续训练仅作为轻量基线方案。该架构文档已归档，现行对照见 [refpose 与官方](../refpose-vs-motionbricks.md)。
 
 | 字段 | 内容 |
 | --- | --- |
@@ -9,7 +9,7 @@
 | 本轮边界 | 读取导出、数据、训练、Python 推理、UE 实时推理及插件代码；两个现有 ONNX 各做一次 CPU 前向；不更新权重、不启动云 GPU、不修改运行时代码、不提交 |
 | 代码基点 | `e07aad29773bf24dcadd98e36271d3af1894e7fe`，dirty；当前工作目录为 `D:/AILocomotonSystem/GR00T-WholeBodyControl-p0-review` |
 | 相关未提交实现 | `unreal-script/AIAnimation/Source/AIAnimation/Private/` 中实时推理实现；桥接插件 `unreal-script/AIAnimationMotionMatching/`；既有实验脚本见下文证据 |
-| 前序 | [插件角色实跑](2026-09-27-motion-matching-plugin-playable.md)、[接触/速度采样短训](2026-09-27-contact-v2-pilot.md)、[总体计划](../player-state-conditioned-animation-plan.md) |
+| 前序 | [插件角色实跑](2026-09-27-motion-matching-plugin-playable.md)、[接触/速度采样短训](2026-09-27-contact-v2-pilot.md)；总体计划已归档，见 [archive.md](../archive.md) |
 
 ## 1. 建议决策
 

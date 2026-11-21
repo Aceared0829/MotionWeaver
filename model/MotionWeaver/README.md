@@ -20,4 +20,4 @@ Python 模型包名为 `motionweaver`，网络分别通过 `motionweaver.tokeniz
 
 MotionWeaver 支持三种运动来源：CMC、Mover 或模型生成的动画 Root motion。前两者给出轨迹，模型据此生成姿态；模型驱动时推理产生 Root motion 与配套姿态，UE 运动执行层处理碰撞、约束与最终位移，并把实际结果反馈给后续推理。每个更新步只有一个实际位移结果，姿态必须和该结果对齐。当前入口只实现“给定 Root → Pose Token → 解码”的源码编排；模型 Root 生成与 UE 运动执行尚未接入。模型姿态与实际 Root 的误差必须在蒙皮闭环中核对。
 
-实现和训练门槛见 [MotionWeaver 架构对比与迁移计划](../../docs/motionweaver-architecture.md)，20,000 步训练与本地推理结果见 [Actor Root 实验记录](../../docs/experiments/2026-09-28-motionweaver-a800-actor-root.md)。当前适配器已通过真实 UE VQ-VAE 和 Pose 权重的本地推理测试；UE 内 NNE、角色蒙皮和实时玩家闭环尚未执行。
+20,000 步训练与本地推理结果见 [Actor Root 实验记录](../../docs/experiments/2026-09-28-motionweaver-a800-actor-root.md)。当前主线与官方的差别见 [对照表](../../docs/refpose-vs-motionbricks.md)。当前适配器已通过真实 UE VQ-VAE 和 Pose 权重的本地推理测试；UE 内 NNE、角色蒙皮和实时玩家闭环尚未执行。

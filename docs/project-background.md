@@ -20,6 +20,6 @@ MuJoCo 和 Unitree G1 在此用于动画预览与参考骨架。现有预训练�
 4. 阅读 [逐帧推理](../inference/runtime/backbone/motion_inference.py)。
 5. 阅读 [VQ-VAE](../model/MotionWeaver/tokenizer)，理解动作 Token。
 6. 按 [训练说明](motionbricks/README.md#训练) 使用合成数据理解训练任务；合成数据结果不能代表真实角色动作质量。
-7. 参考 [通用数据集接入](motionbricks/adding_your_own_dataset.md) 或 [SOMA 数据与双路径推理](soma-training-data-direction.md) 接入实际动画资产。
+7. 参考 [通用数据集接入](motionbricks/adding_your_own_dataset.md) 或 [UE → SOMA 重定向](uefn-soma-retarget.md) 接入实际动画资产。模型差别见 [对照表](refpose-vs-motionbricks.md)。
 
 本页由 AIAnimationSystem 维护者于 2026-09-07 从原根 README 整理并补充；上游技术内容的来源与版权保留。

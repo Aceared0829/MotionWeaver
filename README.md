@@ -62,7 +62,7 @@ MotionWeaver（原 AIAnimationSystem）是面向 Unreal Engine 的 AI 角色动�
 | 软件著作权材料 | [paper/软著/](paper/软著/)（能力清单、说明书、源程序、申请表） |
 | 评测协议基线 | [docs/soma-inbetweening-baseline-full-v1.md](docs/soma-inbetweening-baseline-full-v1.md) |
 | 开发环境与测试 | [docs/development.md](docs/development.md) |
-| 架构与目录 | [docs/motionweaver-architecture.md](docs/motionweaver-architecture.md)、[docs/repository-layout.md](docs/repository-layout.md) |
+| 架构与目录 | [docs/refpose-vs-motionbricks.md](docs/refpose-vs-motionbricks.md)、[docs/repository-layout.md](docs/repository-layout.md) |
 | 代码整理计划 | [docs/refactor-plan.md](docs/refactor-plan.md) |
 
 现有 G1 权重与参考骨架绑定。自定义 UE 训练入口不支持直接加载 G1 权重微调，原 G1 演示也不能直接预览新的 UE 骨架检查点。
@@ -160,7 +160,7 @@ Windows 下默认打开中文单窗口界面，其他平台在不能嵌入 MuJoC
                                       动画模型 → 骨架适配 → UE 姿态
 ```
 
-运行时部分为开发目标。多人联机、统一人形模型、重定向与接触修正的职责和验收要求见 [SOMA 数据与双路径推理](docs/soma-training-data-direction.md)。
+运行时部分为开发目标。模型与官方的差别见 [对照表](docs/refpose-vs-motionbricks.md)；UE 侧范围见 [Unreal 集成](unreal-script/README.md)。
 
 ## 仓库与文档
 

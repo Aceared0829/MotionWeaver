@@ -1,6 +1,6 @@
 """把 SOMA processed 运动转换为训练/评测共用的四键 NPZ 与 Schema v3 clip。
 
-设计要点（与 docs/soma-training-execution-plan.md 对齐）：
+设计要点（旧执行方案已归档，以下规则以本模块为准）：
 
 1. SOMA 的 Root 节点是固定的，完整运动合并在 Hips 上。训练契约要求的
    `root_track` 是独立的权威 Root，因此这里从 Hips 合成一条可逆的 Root 代理：

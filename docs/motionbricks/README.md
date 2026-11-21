@@ -201,7 +201,7 @@ python -m training.pretrain.train_unreal --model root
 
 ### 数据集
 
-上游训练数据的介绍见 [BONES-SEED](https://huggingface.co/datasets/bones-studio/seed)。本节列出的三个模型入口默认使用**合成数据**，实现位于 `motionbricks/data/synthetic_dataset.py`，用于理解和检查训练流程。UE 自定义数据训练需要实际导出并预处理的数据，现行方向见 [SOMA 数据与双路径推理](../soma-training-data-direction.md)。
+上游训练数据的介绍见 [BONES-SEED](https://huggingface.co/datasets/bones-studio/seed)。本节列出的三个模型入口默认使用**合成数据**，实现位于 `motionbricks/data/synthetic_dataset.py`，用于理解和检查训练流程。UE 自定义数据训练需要实际导出并预处理的数据。现行主线见 [refpose v3 训练与评测](../refpose-v3-training-evaluation.md)，数据入口见 [SOMA 全库处理](../soma-full-processing.md)。
 
 ## 动作表示与自定义数据集
 
