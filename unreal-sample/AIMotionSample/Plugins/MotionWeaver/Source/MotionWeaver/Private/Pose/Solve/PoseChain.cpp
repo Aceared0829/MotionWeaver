@@ -382,7 +382,7 @@ bool FPoseChainSolver::Solve(
 			Iterations += 1;
 			Diagnostics.Warnings.Add(FString::Printf(
 				TEXT("整条链拉长到上限 %.2f 倍（%d 帧）后停止继续拉伸。"),
-				FMath::Max(1.0, Settings.MaxTimeDilation), FMath::RoundToInt(MaxTotalFrames)));
+				FMath::Max(1.0, Settings.MaxTimeDilation), FMath::RoundToInt32(MaxTotalFrames)));
 			RebuildAndSample();
 			break;
 		}

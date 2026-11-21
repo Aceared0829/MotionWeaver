@@ -7,7 +7,8 @@ public class AIMotionSampleEditorTarget : TargetRules
 	public AIMotionSampleEditorTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Editor;
-		DefaultBuildSettings = BuildSettingsVersion.V7;
+		DefaultBuildSettings = BuildSettingsVersion.V8;
+		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_9;
 
 		ExtraModuleNames.AddRange(["AIMotionSample"]);
 	}

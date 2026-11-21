@@ -115,3 +115,4 @@ struct MOTIONWEAVER_API FRefPoseWindowBuilder
 		FWindow& OutWindow,
 		FString& OutError);
 };
+

@@ -120,7 +120,12 @@ def main():
         source = Path(entry["file"])
         if not str(source).startswith(prefix):
             continue
-        mirror_source = MIRROR_PLUGIN / source.relative_to(HOST_PLUGIN)
+        relative = source.relative_to(HOST_PLUGIN)
+        # 宿主的编译数据库也会收录 Intermediate/ 下的生成源码；镜像树没有
+        # 这些文件，它们也不是需要索引的插件源码。
+        if relative.parts and relative.parts[0] in ("Intermediate", "Binaries"):
+            continue
+        mirror_source = MIRROR_PLUGIN / relative
         if not mirror_source.is_file():
             skipped.append(mirror_source.relative_to(MIRROR).as_posix())
             continue

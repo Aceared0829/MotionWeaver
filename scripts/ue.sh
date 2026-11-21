@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# UE 5.8 宿主的 Linux 构建 / 索引 / 启动脚本。
+# UE 5.9 宿主的 Linux 构建 / 索引 / 启动脚本。
 #
 # 引擎路径只从环境读取，不写死进仓库：
-#   export UE_ROOT=/path/to/UE_5.8
+#   export UE_ROOT=/path/to/UE_5.9
 # 或把绝对路径写进被忽略的 .vscode/ue-root。
 set -euo pipefail
 
@@ -18,7 +18,7 @@ PROJECT="$PROJECT_DIR/$PROJECT_NAME.uproject"
 
 UE_ROOT="${UE_ROOT:-$(cat "$REPO_ROOT/.vscode/ue-root" 2>/dev/null || true)}"
 if [[ -z "$UE_ROOT" || ! -f "$UE_ROOT/Engine/Build/Build.version" ]]; then
-    echo "error: 未找到引擎。请 export UE_ROOT=/path/to/UE_5.8，" >&2
+    echo "error: 未找到引擎。请 export UE_ROOT=/path/to/UE_5.9，" >&2
     echo "       或把绝对路径写入 $REPO_ROOT/.vscode/ue-root（该文件不入库）。" >&2
     exit 1
 fi
@@ -94,6 +94,40 @@ resolve_display() {
     echo ":0"
 }
 
+# Wayland 会话下 Xwayland 使用随机命名的授权文件；未显式设置 XAUTHORITY 时
+# 自动沿用当前用户会话的那一份，避免 "Authorization required" 直接退出。
+resolve_xauthority() {
+    if [[ -n "${XAUTHORITY:-}" ]]; then
+        echo "$XAUTHORITY"
+        return
+    fi
+    local candidate
+    for candidate in "/run/user/$(id -u)"/.mutter-Xwaylandauth.*; do
+        [[ -r "$candidate" ]] || continue
+        echo "$candidate"
+        return
+    done
+}
+
+# 固定 X11。找不到授权文件时不要把 XAUTHORITY 设成空字符串，否则会盖掉
+# 默认的 ~/.Xauthority，编辑器会以 Authorization required 退出。
+with_editor_display() {
+    local auth
+    auth="$(resolve_xauthority)"
+    if [[ -n "$auth" ]]; then
+        XAUTHORITY="$auth" \
+        DISPLAY="$(resolve_display)" \
+        SDL_VIDEODRIVER=x11 \
+        XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+            "$@"
+    else
+        DISPLAY="$(resolve_display)" \
+        SDL_VIDEODRIVER=x11 \
+        XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+            "$@"
+    fi
+}
+
 case "${1:-}" in
     Check)
         echo "repo:     $REPO_ROOT"
@@ -159,9 +193,7 @@ case "${1:-}" in
         ;;
     LaunchEditor)
         require_project
-        DISPLAY="$(resolve_display)" \
-        XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
-            "$EDITOR" "$PROJECT" -log
+        with_editor_display "$EDITOR" "$PROJECT" -log
         ;;
     DebugServer)
         require_project
@@ -170,10 +202,8 @@ case "${1:-}" in
             exit 1
         }
         echo "gdbserver 监听 127.0.0.1:$GDB_PORT；在 VS Code 里用 UE: Attach 调试配置连接。" >&2
-        DISPLAY="$(resolve_display)" \
-        XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
-            gdbserver --once --no-startup-with-shell "127.0.0.1:$GDB_PORT" \
-                "$EDITOR" "$PROJECT" -log
+        with_editor_display gdbserver --once --no-startup-with-shell "127.0.0.1:$GDB_PORT" \
+            "$EDITOR" "$PROJECT" -log
         ;;
     RunTests)
         require_project
